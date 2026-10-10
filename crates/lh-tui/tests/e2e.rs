@@ -27,7 +27,7 @@ async fn start(mut replies: Vec<Option<Response>>) -> Client {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let app = router(AppState::new(Script(Mutex::new(replies)), Settings { image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(COMPACT_AT), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![] }), token.clone(), port);
+    let app = router(AppState::new(Script(Mutex::new(replies)), Settings { maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(COMPACT_AT), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![] }), token.clone(), port);
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     Client::new(format!("http://127.0.0.1:{port}"), token)
 }
@@ -44,7 +44,7 @@ async fn models_turn_question_and_wrong_token() {
     assert_eq!(c.models().await.unwrap(), ["alpha", "beta"]);
 
     let dir = tempfile::tempdir().unwrap();
-    let id = c.create_session("alpha", dir.path(), false).await.unwrap();
+    let id = c.create_session("alpha", dir.path(), false, false).await.unwrap();
     let mut app = App::new("alpha");
     app.start_turn("write a file".into());
     let mut stream = c.turn(&id, "write a file").await.unwrap();
@@ -67,7 +67,7 @@ async fn models_turn_question_and_wrong_token() {
 async fn dropping_the_stream_frees_the_session() {
     let c = start(vec![None, reply("back", vec![])]).await; // first call hangs
     let dir = tempfile::tempdir().unwrap();
-    let id = c.create_session("alpha", dir.path(), false).await.unwrap();
+    let id = c.create_session("alpha", dir.path(), false, false).await.unwrap();
     let first = c.turn(&id, "one").await.unwrap();
     assert!(c.turn(&id, "two").await.err().unwrap().contains("already running"));
     drop(first);

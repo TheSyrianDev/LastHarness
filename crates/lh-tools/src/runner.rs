@@ -229,7 +229,7 @@ async fn execute<M: Model, T: Meter, A: Asker>(
     if tool == Tool::GenerateImage {
         return generate_image(model, meter, asker, opts, tools, perms.root(), &args).await;
     }
-    match tool.run(&args, perms.root(), tools.web()).await {
+    match tool.run(&args, perms.root(), tools).await {
         Ok(out) => (out.text, out.undo),
         Err(e) => fail(format!("Error: {e}")),
     }

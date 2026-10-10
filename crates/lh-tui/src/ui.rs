@@ -59,13 +59,35 @@ pub fn draw(f: &mut Frame, app: &App) {
     let from_top = max_scroll.saturating_sub(app.scroll.min(max_scroll));
     f.render_widget(para.scroll((from_top, 0)), rows[0]);
 
-    let title = if app.busy { "you (working, Esc to cancel)" } else { "you (Enter to send)" };
+    let title = if app.incognito { "you (incognito: nothing is remembered)" } else if app.busy { "you (working, Esc to cancel)" } else { "you (Enter to send, /review to look at what to remember)" };
     f.render_widget(Paragraph::new(app.input.as_str()).block(Block::bordered().title(title)), rows[1]);
 
     let usage = app.usage.map(|(p, c, k)| format!("  tokens: {p} in ({k} cached), {c} out")).unwrap_or_default();
     let hint = "Ctrl-T thinking  PgUp/PgDn scroll  Ctrl-D quit";
     f.render_widget(Paragraph::new(format!(" {}{usage}   {hint}", app.model)).style(Style::new().add_modifier(Modifier::DIM)), rows[2]);
 
+    if let Some(sg) = app.review.first() {
+        let area = centered(f.area(), 80, 16);
+        f.render_widget(Clear, area);
+        let what = match sg.kind.as_str() {
+            "update" => "Change a note",
+            "archive" => "Archive a note",
+            _ => "Remember this",
+        };
+        let mut text = vec![
+            Line::from(Span::styled(format!("{what} ({} left)", app.review.len()), Style::new().bold())),
+            Line::raw(""),
+            Line::from(Span::styled(format!("{}: {}", sg.layer, sg.title), Style::new().bold())),
+            Line::raw(clip(&sg.text, 400)),
+        ];
+        if !sg.evidence.is_empty() {
+            text.push(Line::from(Span::styled(format!("you said: \"{}\"", clip(&sg.evidence, 150)), Style::new().add_modifier(Modifier::DIM))));
+        }
+        text.push(Line::from(if sg.sensitive { format!("Sensitive ({}): stays on this machine", sg.reason) } else { "Not sensitive: may be shared with cloud models".to_string() }));
+        text.push(Line::raw(""));
+        text.push(Line::from(Span::styled("y = remember   n = drop   s = later   p = flip sensitive   Esc = close", Style::new().fg(Color::Yellow).bold())));
+        f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }).block(Block::default().borders(Borders::ALL).title("Memory review")), area);
+    }
     if let Some(q) = &app.question {
         let area = centered(f.area(), 70, 9);
         f.render_widget(Clear, area);
@@ -120,6 +142,24 @@ mod tests {
         a.apply(ServerEvent::Ask { id: "a1".into(), tool: "write_file".into(), what: "Write(\"/p/x\")".into(), reason: "changes files in the project".into(), worker: "assistant".into() });
         let s = screen(&a, 80, 20);
         assert!(s.contains("Permission needed") && s.contains("assistant wants to use write_file") && s.contains("y = allow"), "{s}");
+    }
+
+    #[test]
+    fn the_review_screen_shows_a_suggestion_and_how_to_decide() {
+        let mut a = App::new("m");
+        a.review = vec![
+            crate::app::Suggestion { id: 7, kind: "new".into(), layer: "facts".into(), title: "Home city".into(), text: "Lives in Berlin.".into(), evidence: "I live in Berlin".into(), sensitive: false, reason: String::new() },
+            crate::app::Suggestion { id: 8, kind: "update".into(), layer: "facts".into(), title: "Wifi".into(), text: "Password hunter2".into(), evidence: String::new(), sensitive: true, reason: "credentials".into() },
+        ];
+        let s = screen(&a, 100, 24);
+        for want in ["Memory review", "Remember this (2 left)", "facts: Home city", "Lives in Berlin.", "you said: \"I live in Berlin\"", "Not sensitive", "y = remember", "p = flip sensitive"] {
+            assert!(s.contains(want), "missing {want:?} in:\n{s}");
+        }
+        a.review.remove(0);
+        let s = screen(&a, 100, 24);
+        assert!(s.contains("Change a note (1 left)") && s.contains("Sensitive (credentials): stays on this machine"), "{s}");
+        a.incognito = true;
+        assert!(screen(&a, 100, 24).contains("incognito: nothing is remembered"));
     }
 
     #[test]

@@ -20,6 +20,26 @@ pub struct Question {
     pub worker: String,
 }
 
+/// One suggestion from the end-of-session review, as the screen shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Suggestion {
+    pub id: i64,
+    pub kind: String,
+    pub layer: String,
+    pub title: String,
+    pub text: String,
+    pub evidence: String,
+    pub sensitive: bool,
+    pub reason: String,
+}
+
+impl Suggestion {
+    pub fn from_json(v: &serde_json::Value) -> Self {
+        let s = |k: &str| v[k].as_str().unwrap_or("").to_string();
+        Self { id: v["id"].as_i64().unwrap_or(0), kind: s("kind"), layer: s("layer"), title: s("title"), text: s("text"), evidence: s("evidence"), sensitive: v["privacy"] == "sensitive", reason: s("privacy_reason") }
+    }
+}
+
 /// Everything the screen shows. Pure data; the event loop feeds it and `ui::draw` shows it.
 pub struct App {
     pub model: String,
@@ -31,12 +51,15 @@ pub struct App {
     /// Lines scrolled up from the bottom; 0 follows the newest text.
     pub scroll: u16,
     pub usage: Option<(u64, u64, u64)>,
+    /// Suggestions waiting for a decision; the first one is on screen.
+    pub review: Vec<Suggestion>,
+    pub incognito: bool,
     last_finish: Option<String>,
 }
 
 impl App {
     pub fn new(model: impl Into<String>) -> Self {
-        Self { model: model.into(), entries: vec![], input: String::new(), question: None, busy: false, show_thinking: false, scroll: 0, usage: None, last_finish: None }
+        Self { model: model.into(), entries: vec![], input: String::new(), question: None, busy: false, show_thinking: false, scroll: 0, usage: None, review: vec![], incognito: false, last_finish: None }
     }
 
     pub fn start_turn(&mut self, text: String) {

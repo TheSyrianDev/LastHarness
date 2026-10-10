@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use lh_memory::Destination;
 use lh_provider::ChatRequest;
 use lh_tools::{Answer, AskRequest, Asker, Permissions, ToolSet};
 use serde_json::{json, Value};
@@ -18,13 +19,21 @@ pub struct Session {
     pub busy: AtomicBool,
     /// Prompt plus reply size the server reported for the last model call; 0 if unknown.
     pub known_tokens: AtomicU64,
+    /// A temporary session: nothing is remembered, stored or learned.
+    pub incognito: bool,
+    /// Where memory in this session may be sent. `None` when memory is off for the session.
+    pub dest: Option<Destination>,
+    /// The id of the stored conversation, if one is being kept.
+    pub conv: Option<String>,
+    /// Page versions already in this conversation's history, so notes are not added twice.
+    pub injected: crate::memory_api::Injected,
     pending: Mutex<HashMap<String, oneshot::Sender<Answer>>>,
     next_ask: AtomicU64,
 }
 
 impl Session {
     pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet) -> Self {
-        Self { req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
+        Self { req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
     }
 
     pub fn try_start(&self) -> bool {

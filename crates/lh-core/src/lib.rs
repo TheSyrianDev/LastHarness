@@ -20,7 +20,10 @@
 
 pub mod auth;
 pub mod idle;
+mod memory_api;
 mod session;
+
+pub use memory_api::MemoryRuntime;
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -44,6 +47,10 @@ use tokio::sync::mpsc;
 use session::{ApiAsker, Session};
 
 pub struct Settings {
+    /// Run the memory maintenance pass (it only makes suggestions) when the core goes idle.
+    pub maintain_when_idle: bool,
+    /// Memory. `None` switches it off entirely.
+    pub memory: Option<MemoryRuntime>,
     /// Model used by the `generate_image` tool. `None` switches image generation off.
     pub image_model: Option<String>,
     /// Web search and fetch settings.
@@ -78,9 +85,22 @@ impl<M: Model + 'static> AppState<M> {
         let idle = idle::Idle::new(settings.idle_after);
         {
             let (model, store) = (model.clone(), settings.store.clone());
+            let mem = settings.memory.as_ref().map(|m| (m.memory.clone(), m.embedder.clone()));
+            let maintain = settings.maintain_when_idle;
             idle.on_change(move |going_idle| {
                 if going_idle {
                     model.release_idle();
+                    if let Some((memory, embedder)) = &mem {
+                        if maintain {
+                            let m = memory.clone();
+                            tokio::task::spawn_blocking(move || {
+                                let _ = m.maintenance();
+                            });
+                        }
+                        memory.release_vectors();
+                        let e = embedder.clone();
+                        tokio::spawn(async move { lh_memory::embed::Embedder::release(&*e).await });
+                    }
                     store.shrink();
                     idle::trim_memory();
                 }
@@ -90,7 +110,7 @@ impl<M: Model + 'static> AppState<M> {
         Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(1), idle })
     }
 
-    fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
+    pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
         self.sessions.lock().unwrap().get(id).cloned().ok_or(ApiError(StatusCode::NOT_FOUND, "no such session".into()))
     }
 }
@@ -111,6 +131,7 @@ pub fn router<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: 
         .route("/v1/sessions/{id}/answers/{ask}", post(answer::<M>))
         .route("/v1/sessions/{id}/cancel", post(cancel::<M>))
         .route("/v1/status", get(status::<M>))
+        .merge(memory_api::routes::<M>())
         .layer(axum::middleware::from_fn_with_state(guard, auth::require))
         .layer(axum::middleware::from_fn(move |req: axum::extract::Request, next: axum::middleware::Next| {
             let idle = idle.clone();
@@ -127,7 +148,7 @@ pub fn router<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: 
         .with_state(state)
 }
 
-struct ApiError(StatusCode, String);
+pub(crate) struct ApiError(pub(crate) StatusCode, pub(crate) String);
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.0, Json(json!({"error": self.1}))).into_response()
@@ -157,6 +178,9 @@ struct NewSession {
     /// Per-role sampling and template settings.
     sampling: Option<SamplingBody>,
     max_tokens: Option<u32>,
+    /// A temporary session: no memory is read or written, no conversation is stored.
+    #[serde(default)]
+    incognito: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -195,8 +219,36 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
         req.messages.push(Message::system(s));
     }
     let id = format!("s{}", st.next.fetch_add(1, Ordering::SeqCst));
-    st.sessions.lock().unwrap().insert(id.clone(), Arc::new(Session::new(req, perms, session_tools(&st.settings, tools_on))));
-    Ok(Json(json!({"id": id})))
+    let project = b.project_dir.as_ref().and_then(|d| std::fs::canonicalize(d).ok()).map(|d| d.to_string_lossy().to_string());
+    let mut tools = session_tools(&st.settings, tools_on);
+    let (mut dest, mut conv) = (None, None);
+    if let (Some(rt), false) = (&st.settings.memory, b.incognito) {
+        let d = rt.destination(project.clone());
+        let _ = rt.memory.scan(); // pick up pages edited by hand
+        let (about, refs) = rt.memory.about_you(&d, &rt.cfg).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if !about.is_empty() {
+            match req.messages.first_mut().filter(|m| m.role == lh_provider::Role::System) {
+                Some(sys) => sys.content = Some(format!("{}\n\n{about}", sys.content.as_deref().unwrap_or(""))),
+                None => req.messages.insert(0, Message::system(about)),
+            }
+            let pages: Vec<Value> = refs.iter().map(|r| json!({"page": r.id, "version": r.version})).collect();
+            let _ = st.settings.store.log("memory_sent", &id, "assistant", &json!({"with": "about_you", "trust": format!("{:?}", rt.trust), "pages": pages}));
+        }
+        let _ = rt.memory.start_conversation(&id, project.as_deref());
+        conv = Some(id.clone());
+        if tools_on {
+            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: rt.cfg.clone() }));
+        }
+        dest = Some(d);
+        let (m, e) = (rt.memory.clone(), rt.embedder.clone());
+        tokio::spawn(async move {
+            let _ = m.index_pending(&*e).await;
+        });
+    }
+    let mut session = Session::new(req, perms, tools);
+    (session.incognito, session.dest, session.conv) = (b.incognito, dest, conv);
+    st.sessions.lock().unwrap().insert(id.clone(), Arc::new(session));
+    Ok(Json(json!({"id": id, "incognito": b.incognito})))
 }
 
 fn session_tools(s: &Settings, tools_on: bool) -> lh_tools::ToolSet {
@@ -285,6 +337,8 @@ struct Recorder {
     store: Arc<lh_store::Store>,
     session: String,
     calls: HashMap<String, (String, String)>, // id -> (tool, arguments)
+    /// Incognito sessions still leave a security record, but without any text from the conversation.
+    incognito: bool,
 }
 
 impl Recorder {
@@ -301,18 +355,20 @@ impl Recorder {
                     Outcome::Declined => json!("declined_by_user"),
                     Outcome::Denied(why) => json!({"denied": why}),
                 };
-                self.store.log("permission", &self.session, "assistant", &json!({"tool": tool, "action": action, "outcome": o})).map(|_| ())
+                let detail = if self.incognito { json!({"tool": tool, "outcome": o, "incognito": true}) } else { json!({"tool": tool, "action": action, "outcome": o}) };
+                self.store.log("permission", &self.session, "assistant", &detail).map(|_| ())
             }
             TurnEvent::ToolResult { id, text, undo } => {
                 let (tool, args) = self.calls.remove(id).unwrap_or_default();
                 let preview: String = text.chars().take(300).collect();
-                let logged = self.store.log("tool_call", &self.session, "assistant", &json!({"tool": tool, "arguments": args, "result": preview}));
+                let detail = if self.incognito { json!({"tool": tool, "incognito": true}) } else { json!({"tool": tool, "arguments": args, "result": preview}) };
+                let logged = self.store.log("tool_call", &self.session, "assistant", &detail);
                 match (logged, undo) {
-                    (Ok(seq), Some(u)) => {
+                    (Ok(seq), Some(u)) if !self.incognito => {
                         let after = std::fs::read(&u.path).map(|b| lh_store::content_hash(&b)).unwrap_or(0);
                         self.store.log_file_change(seq, &u.path, u.previous.as_deref(), after)
                     }
-                    (Ok(_), None) => Ok(()),
+                    (Ok(_), _) => Ok(()),
                     (Err(e), _) => Err(e),
                 }
             }
@@ -336,12 +392,27 @@ async fn start_turn<M: Model + 'static>(
     let (tx, rx) = mpsc::unbounded_channel::<(String, Value)>();
     let task = {
         let compact_at = st.settings.compact_at;
+        let st2 = st.clone();
         let (s, model, tx, meter, store, id) = (s.clone(), st.model.clone(), tx.clone(), st.settings.spend.for_session(&id), st.settings.store.clone(), id.clone());
         tokio::spawn(async move {
             // Work on a copy; the session history only changes if the whole turn succeeds, so a
             // cancelled turn never leaves a tool call without its result.
             let mut work = s.req.lock().await.clone();
-            work.messages.push(Message::user(b.text));
+            let mut user_text = b.text.clone();
+            if let (Some(rt), Some(dest), false) = (&st2.settings.memory, &s.dest, s.incognito) {
+                // notes that match this message, from the keyword search and, if set up, the embedding search
+                let semantic = if rt.embedder.is_on() { rt.memory.semantic_search(&*rt.embedder, &b.text, 10).await.unwrap_or_default() } else { vec![] };
+                let already = s.injected.lock().unwrap().clone();
+                if let Ok(rec) = rt.memory.recall(&b.text, dest, &rt.cfg, &semantic, &already) {
+                    if !rec.notes.is_empty() {
+                        user_text = format!("{}\n{}", rec.render(), b.text);
+                        let pages: Vec<Value> = rec.refs().iter().map(|r| json!({"page": r.id, "version": r.version})).collect();
+                        s.injected.lock().unwrap().extend(rec.refs().into_iter().map(|r| (r.id, r.version)));
+                        let _ = store.log("memory_sent", &id, "assistant", &json!({"with": "recall", "trust": format!("{:?}", rt.trust), "pages": pages, "withheld": rec.withheld}));
+                    }
+                }
+            }
+            work.messages.push(Message::user(user_text));
             let known = s.known_tokens.load(Ordering::SeqCst);
             let threshold = match compact_at {
                 Some(n) => n,
@@ -363,7 +434,7 @@ async fn start_turn<M: Model + 'static>(
             let asker = ApiAsker { session: s.clone(), events: tx.clone() };
             let opts = TurnOptions::default();
             let events = tx.clone();
-            let mut rec = Recorder { store: store.clone(), session: id.clone(), calls: HashMap::new() };
+            let mut rec = Recorder { store: store.clone(), session: id.clone(), calls: HashMap::new(), incognito: s.incognito };
             let end = run_turn(&*model, &meter, &mut work, &s.tools, &s.perms, &asker, &opts, move |e| {
                 rec.record(&e);
                 if let Some(msg) = describe(&e) {
@@ -378,6 +449,12 @@ async fn start_turn<M: Model + 'static>(
                         s.known_tokens.store(u.prompt_tokens + u.completion_tokens, Ordering::SeqCst);
                     }
                     *s.req.lock().await = work;
+                    if let (Some(rt), Some(conv)) = (&st2.settings.memory, &s.conv) {
+                        let _ = rt.memory.append_message(conv, "user", &b.text);
+                        if !r.text.is_empty() {
+                            let _ = rt.memory.append_message(conv, "assistant", &r.text);
+                        }
+                    }
                     ("done".to_string(), json!({"type":"done","empty":empty}))
                 }
                 Ok(TurnEnd::Refused(why)) => ("refused".into(), json!({"type":"refused","message":why})),

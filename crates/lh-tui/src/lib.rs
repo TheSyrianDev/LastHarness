@@ -2,4 +2,5 @@
 
 pub mod app;
 pub mod client;
+pub mod memory_cli;
 pub mod ui;

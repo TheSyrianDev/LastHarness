@@ -12,6 +12,8 @@ pub enum Action {
     Run(String),
     /// Fetches a web address, or sends a search query. Leaves the machine.
     Fetch(String),
+    /// Reads (`write: false`) or changes (`write: true`) the user's memory. `what` is shown in the prompt.
+    Memory { write: bool, what: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -133,6 +135,8 @@ impl Permissions {
             Action::Write(_) => ask("writes outside the project folder"),
             Action::Delete(_) => ask("deletes a file"),
             Action::Fetch(_) => ask("uses the network"),
+            Action::Memory { write: false, .. } => Decision::Allow,
+            Action::Memory { write: true, .. } => ask("changes what is remembered about you"),
             Action::Run(cmd) => self.decide_command(cmd, &write_once),
         }
     }

@@ -1,6 +1,7 @@
 //! `lh`: terminal chat for the LastHarness core.
 //!
-//! lh [--url http://127.0.0.1:7842] [--token-file PATH] [--model NAME] [--ask-all]
+//! lh [--url http://127.0.0.1:7842] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]
+//! lh memory <command>     (see `lh memory help`)
 
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -9,7 +10,7 @@ use std::sync::Arc;
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use futures_util::StreamExt;
-use lh_tui::app::App;
+use lh_tui::app::{App, Suggestion};
 use lh_tui::client::{Client, ServerEvent};
 use lh_tui::ui;
 use ratatui::prelude::*;
@@ -30,12 +31,14 @@ fn default_token_path() -> PathBuf {
 enum Msg {
     Event(ServerEvent),
     End,
+    Review(Result<Vec<Suggestion>, String>),
 }
 
 #[tokio::main]
 async fn main() {
-    let mut a = std::env::args().skip(1);
-    let (mut url, mut token_file, mut model, mut ask_all) = ("http://127.0.0.1:7842".to_string(), default_token_path(), None, false);
+    let mut a = std::env::args().skip(1).peekable();
+    let (mut url, mut token_file, mut model, mut ask_all, mut incognito) = ("http://127.0.0.1:7842".to_string(), default_token_path(), None, false, false);
+    let mut memory_cmd: Option<Vec<String>> = None;
     while let Some(arg) = a.next() {
         let mut val = || a.next().unwrap_or_else(|| fail(format!("{arg} needs a value")));
         match arg.as_str() {
@@ -43,16 +46,28 @@ async fn main() {
             "--token-file" => token_file = PathBuf::from(val()),
             "--model" => model = Some(val()),
             "--ask-all" => ask_all = true,
+            "--incognito" => incognito = true,
+            "memory" => {
+                memory_cmd = Some(a.by_ref().collect());
+                break;
+            }
             other => fail(format!("unknown option {other}")),
         }
     }
     let client = Arc::new(Client::from_token_file(&url, &token_file).unwrap_or_else(|e| fail(e)));
+    if let Some(cmd) = memory_cmd {
+        match lh_tui::memory_cli::run(&client, &cmd).await {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
     let model = match model {
         Some(m) => m,
         None => pick_model(&client).await,
     };
     let dir = std::env::current_dir().unwrap_or_else(|e| fail(format!("cannot read the current folder: {e}")));
-    let session = client.create_session(&model, &dir, ask_all).await.unwrap_or_else(|e| fail(e));
+    let session = client.create_session(&model, &dir, ask_all, incognito).await.unwrap_or_else(|e| fail(e));
 
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |p| {
@@ -63,7 +78,9 @@ async fn main() {
     enable_raw_mode().unwrap_or_else(|e| fail(e));
     crossterm::execute!(io::stdout(), EnterAlternateScreen).unwrap_or_else(|e| fail(e));
     let mut term = Terminal::new(CrosstermBackend::new(io::stdout())).unwrap_or_else(|e| fail(e));
-    let result = run(&mut term, client, session, App::new(model)).await;
+    let mut app = App::new(model);
+    app.incognito = incognito;
+    let result = run(&mut term, client, session, app).await;
     let _ = disable_raw_mode();
     let _ = crossterm::execute!(io::stdout(), LeaveAlternateScreen);
     if let Err(e) = result {
@@ -101,12 +118,33 @@ async fn run(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: Arc<Clie
         tokio::select! {
             Some(msg) = rx.recv() => match msg {
                 Msg::Event(e) => app.apply(e),
+                Msg::Review(Ok(list)) if list.is_empty() => app.entries.push(lh_tui::app::Entry::Notice("Nothing new to remember from this conversation.".into())),
+                Msg::Review(Ok(list)) => app.review = list,
+                Msg::Review(Err(e)) => app.entries.push(lh_tui::app::Entry::Error(e)),
                 Msg::End => { turn = None; if app.busy { app.apply(ServerEvent::Error("The core closed the connection before the answer was finished.".into())); } }
             },
             Some(Ok(ev)) = keys.next() => {
                 let Event::Key(k) = ev else { continue };
                 if k.kind != KeyEventKind::Press { continue }
                 let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+                if !app.review.is_empty() {
+                    let (c, id) = (client.clone(), app.review[0].id);
+                    match k.code {
+                        KeyCode::Char('p') => { let s = &mut app.review[0]; s.sensitive = !s.sensitive; }
+                        KeyCode::Char('s') => { let first = app.review.remove(0); app.review.push(first); }
+                        KeyCode::Esc => app.review.clear(),
+                        KeyCode::Char('n') => {
+                            app.review.remove(0);
+                            tokio::spawn(async move { let _ = c.call("POST", &format!("/v1/memory/proposals/{id}/reject"), Some(serde_json::json!({}))).await; });
+                        }
+                        KeyCode::Char('y') => {
+                            let sg = app.review.remove(0);
+                            tokio::spawn(async move { let _ = c.call("POST", &format!("/v1/memory/proposals/{id}/accept"), Some(serde_json::json!({"privacy": if sg.sensitive { "sensitive" } else { "normal" }}))).await; });
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
                 if let Some(q) = app.question.clone() {
                     let yes = match k.code { KeyCode::Char('y' | 'Y') => true, KeyCode::Char('n' | 'N') | KeyCode::Esc => false, _ => continue };
                     app.question = None;
@@ -124,6 +162,15 @@ async fn run(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: Arc<Clie
                     KeyCode::PageDown => app.scroll = app.scroll.saturating_sub(10),
                     KeyCode::Backspace => { app.input.pop(); }
                     KeyCode::Char(c) if !ctrl => app.input.push(c),
+                    KeyCode::Enter if !app.busy && app.input.trim() == "/review" => {
+                        app.input.clear();
+                        let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
+                        tokio::spawn(async move {
+                            let r = c.call("POST", &format!("/v1/sessions/{s}/review"), Some(serde_json::json!({}))).await
+                                .map(|v| v["proposals"].as_array().map(|a| a.iter().map(Suggestion::from_json).collect()).unwrap_or_default());
+                            let _ = tx.send(Msg::Review(r));
+                        });
+                    }
                     KeyCode::Enter if !app.busy && !app.input.trim().is_empty() => {
                         let text = std::mem::take(&mut app.input);
                         app.start_turn(text.clone());

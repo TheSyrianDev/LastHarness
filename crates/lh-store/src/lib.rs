@@ -8,6 +8,7 @@ use std::sync::Mutex;
 mod activity;
 
 pub use activity::{content_hash, Entry, UndoResult};
+pub use rusqlite;
 pub use rusqlite::Connection;
 
 #[derive(Debug, thiserror::Error)]
@@ -58,6 +59,109 @@ const MIGRATIONS: &[&str] = &[r#"
       previous blob,                      -- null: the file did not exist before
       after_hash integer not null,        -- hash of what the tool wrote, to notice later edits
       undone_at integer
+    );
+"#, r#"
+    -- Memory pages. The Markdown file is the readable source; this table is its index and the place
+    -- where privacy class, version and archive state live.
+    create table pages(
+      id text primary key,
+      layer text not null check (layer in ('preferences','facts','projects')),
+      slug text not null,
+      title text not null,
+      body text not null,
+      search_text text not null,          -- title and body normalised for keyword search
+      gist text not null default '',
+      privacy text not null default 'normal' check (privacy in ('normal','sensitive')),
+      privacy_reason text not null default '',
+      pinned integer not null default 0,
+      project text,                       -- null = applies everywhere
+      source text not null default 'user',
+      version integer not null default 1,
+      archived_at integer,                -- null = live; otherwise left out of normal recall
+      file_hash integer not null default 0,
+      created integer not null,
+      updated integer not null,
+      owner text not null default 'me',
+      scope text not null default 'personal'
+    );
+    create unique index pages_live_slug on pages(layer, slug) where archived_at is null;
+    create virtual table pages_fts using fts5(search_text, content='pages', tokenize='unicode61 remove_diacritics 2');
+    create trigger pages_fts_ai after insert on pages begin insert into pages_fts(rowid, search_text) values (new.rowid, new.search_text); end;
+    create trigger pages_fts_ad after delete on pages begin insert into pages_fts(pages_fts, rowid, search_text) values ('delete', old.rowid, old.search_text); end;
+    create trigger pages_fts_au after update of search_text on pages begin
+      insert into pages_fts(pages_fts, rowid, search_text) values ('delete', old.rowid, old.search_text);
+      insert into pages_fts(rowid, search_text) values (new.rowid, new.search_text);
+    end;
+
+    -- Every change to memory, with the state it produced. Never edited; the only allowed update blanks
+    -- the text of a page the user deleted for good.
+    create table page_history(
+      seq integer primary key,
+      page_id text not null,
+      version integer not null,
+      op text not null,                   -- create, edit, hand_edit, archive, restore, reclassify, pin, delete
+      by text not null,                   -- user, assistant, hand_edit, maintenance, import
+      at integer not null,
+      title text not null,
+      body text not null,
+      privacy text not null,
+      note text not null default ''
+    );
+    create index page_history_page on page_history(page_id, seq);
+    create trigger page_history_no_delete before delete on page_history begin select raise(abort, 'memory history is append-only'); end;
+    create trigger page_history_only_scrub before update on page_history
+      when not (new.body = '' and new.title = '[deleted]' and new.seq = old.seq and new.page_id = old.page_id and new.op = old.op and new.version = old.version)
+      begin select raise(abort, 'memory history is append-only'); end;
+
+    create table embeddings(
+      page_id text not null,
+      model text not null,
+      version integer not null,           -- the page version this vector was made from
+      vec blob not null,
+      primary key (page_id, model)
+    );
+"#, r#"
+    -- Raw conversations: kept as they were said, never edited, searchable. Incognito sessions never get a row.
+    create table conversations(
+      id text primary key,
+      project text,
+      started integer not null,
+      ended integer,
+      owner text not null default 'me',
+      scope text not null default 'personal'
+    );
+    create table messages(
+      id integer primary key,
+      conv text not null references conversations(id),
+      seq integer not null,
+      role text not null,
+      content text not null,
+      search_text text not null,
+      at integer not null
+    );
+    create index messages_conv on messages(conv, seq);
+    create virtual table messages_fts using fts5(search_text, content='messages', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
+    create trigger messages_fts_ai after insert on messages begin insert into messages_fts(rowid, search_text) values (new.id, new.search_text); end;
+    create trigger messages_no_update before update on messages begin select raise(abort, 'conversations are never edited'); end;
+
+    -- Things the harness suggests remembering, waiting for the user to accept, edit or drop.
+    create table proposals(
+      id integer primary key,
+      kind text not null check (kind in ('new','update','archive')),
+      layer text not null,
+      title text not null,
+      body text not null,
+      gist text not null default '',
+      target_page text,                   -- for update and archive
+      privacy text not null default 'normal',
+      privacy_reason text not null default '',
+      evidence text not null default '',  -- a short quote from the conversation
+      conv text,
+      status text not null default 'pending' check (status in ('pending','accepted','rejected')),
+      created integer not null,
+      decided integer,
+      owner text not null default 'me',
+      scope text not null default 'personal'
     );
 "#];
 

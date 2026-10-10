@@ -49,6 +49,10 @@ pub enum Tool {
     WebFetch,
     WebSearch,
     GenerateImage,
+    Recall,
+    OpenNote,
+    Remember,
+    Forget,
 }
 
 impl Tool {
@@ -61,6 +65,10 @@ impl Tool {
             Tool::WebFetch => "web_fetch",
             Tool::WebSearch => "web_search",
             Tool::GenerateImage => "generate_image",
+            Tool::Recall => "recall",
+            Tool::OpenNote => "open_note",
+            Tool::Remember => "remember",
+            Tool::Forget => "forget",
         }
     }
 
@@ -82,6 +90,13 @@ impl Tool {
                 "Generate an image from a text description and save it in the project's `generated` folder.",
                 json!({"type":"object","properties":{"prompt":{"type":"string"},"size":{"type":"string","description":"for example 512x512"}},"required":["prompt"]}),
             ),
+            Tool::Recall => ("Search the user's memory for notes about a topic. Returns note ids, titles and text.", json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"]})),
+            Tool::OpenNote => ("Read one whole note from the user's memory, by the id that recall gave.", json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]})),
+            Tool::Remember => (
+                "Save something about the user to their memory, when they ask you to remember it. The user is asked to confirm.",
+                json!({"type":"object","properties":{"text":{"type":"string"},"title":{"type":"string"},"layer":{"type":"string","enum":["preferences","facts","projects"]}},"required":["text"]}),
+            ),
+            Tool::Forget => ("Remove one note from the user's memory, when they ask you to forget it. Use recall first to find its id. The user is asked to confirm.", json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]})),
         };
         ToolDef { name: self.name().into(), description: description.into(), parameters }
     }
@@ -101,12 +116,18 @@ impl Tool {
                 let prompt = args["prompt"].as_str().ok_or_else(|| ToolError::Args("`prompt` must be a string".into()))?;
                 Action::Write(root.join("generated").join(format!("{}.png", image_stem(prompt))))
             }
+            Tool::Recall => Action::Memory { write: false, what: format!("recall: {}", args["query"].as_str().unwrap_or("")) },
+            Tool::OpenNote => Action::Memory { write: false, what: format!("open note {}", args["id"].as_str().unwrap_or("")) },
+            Tool::Remember => Action::Memory { write: true, what: format!("remember: {}", lh_memory::excerpt(args["text"].as_str().ok_or_else(|| ToolError::Args("`text` must be a string".into()))?, 300)) },
+            Tool::Forget => Action::Memory { write: true, what: format!("forget note {}", args["id"].as_str().ok_or_else(|| ToolError::Args("`id` must be a string".into()))?) },
             Tool::RunCommand => Action::Run(args["command"].as_str().ok_or_else(|| ToolError::Args("`command` must be a string".into()))?.to_string()),
         })
     }
 
-    pub async fn run(self, args: &Value, root: &Path, web: &crate::WebConfig) -> Result<ToolOutput, ToolError> {
+    pub async fn run(self, args: &Value, root: &Path, set: &ToolSet) -> Result<ToolOutput, ToolError> {
+        let web = set.web();
         match self {
+            Tool::Recall | Tool::OpenNote | Tool::Remember | Tool::Forget => crate::memory_tools::run(self, args, set.memory().ok_or_else(|| ToolError::Failed("memory is not available in this session".into()))?).await.map(Into::into),
             Tool::GenerateImage => Err(ToolError::Failed("image generation runs through the turn loop".into())),
             Tool::WebFetch => crate::web::fetch(web, args["url"].as_str().unwrap_or("")).await.map(Into::into),
             Tool::WebSearch => crate::web::search(web, args["query"].as_str().unwrap_or(""), 5).await.map(Into::into),
@@ -209,11 +230,12 @@ pub struct ToolSet {
     tools: Vec<Tool>,
     web: crate::WebConfig,
     image_model: Option<String>,
+    memory: Option<std::sync::Arc<crate::MemoryHandle>>,
 }
 
 impl ToolSet {
     pub fn new(tools: impl IntoIterator<Item = Tool>) -> Self {
-        Self { tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None }
+        Self { tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None }
     }
     pub fn with_web(mut self, web: crate::WebConfig) -> Self {
         self.web = web;
@@ -226,6 +248,20 @@ impl ToolSet {
             self.tools.push(Tool::GenerateImage);
         }
         self
+    }
+    /// Give the worker the user's memory: `recall`, `remember` and `forget`. Leave this out for
+    /// incognito sessions.
+    pub fn with_memory(mut self, m: std::sync::Arc<crate::MemoryHandle>) -> Self {
+        self.memory = Some(m);
+        for t in [Tool::Recall, Tool::OpenNote, Tool::Remember, Tool::Forget] {
+            if !self.tools.contains(&t) {
+                self.tools.push(t);
+            }
+        }
+        self
+    }
+    pub fn memory(&self) -> Option<&crate::MemoryHandle> {
+        self.memory.as_deref()
     }
     pub fn image_model(&self) -> Option<&str> {
         self.image_model.as_deref()

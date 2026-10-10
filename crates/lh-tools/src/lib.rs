@@ -3,6 +3,7 @@
 
 mod command;
 mod compact;
+mod memory_tools;
 mod perm;
 mod runner;
 mod tools;
@@ -10,6 +11,7 @@ mod web;
 
 
 pub use command::{classify, Class};
+pub use memory_tools::MemoryHandle;
 pub use compact::{compact_if_needed, estimate_tokens, CompactError, CompactOptions, Compacted};
 pub use perm::{Action, Answer, AskRequest, Asker, Decision, Mode, Permissions};
 pub use runner::{run_turn, Meter, MeterVerdict, Model, NoMeter, Outcome, TurnEnd, TurnEvent, TurnOptions};

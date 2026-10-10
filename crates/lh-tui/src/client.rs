@@ -97,8 +97,8 @@ impl Client {
         Ok(v["models"].as_array().map(|a| a.iter().filter_map(|m| m.as_str().map(str::to_string)).collect()).unwrap_or_default())
     }
 
-    pub async fn create_session(&self, model: &str, project_dir: &Path, ask_all: bool) -> Result<String> {
-        let body = json!({"model": model, "project_dir": project_dir, "ask_all": ask_all});
+    pub async fn create_session(&self, model: &str, project_dir: &Path, ask_all: bool, incognito: bool) -> Result<String> {
+        let body = json!({"model": model, "project_dir": project_dir, "ask_all": ask_all, "incognito": incognito});
         let v: Value = self.send(self.req(reqwest::Method::POST, "/v1/sessions").json(&body)).await?.json().await.map_err(|e| e.to_string())?;
         v["id"].as_str().map(str::to_string).ok_or_else(|| "the core sent no session id".into())
     }
@@ -107,6 +107,17 @@ impl Client {
     pub async fn turn(&self, session: &str, text: &str) -> Result<TurnStream> {
         let rb = self.req(reqwest::Method::POST, &format!("/v1/sessions/{session}/turns")).json(&json!({"text": text}));
         Ok(TurnStream { resp: self.send(rb).await?, parser: SseParser::new(), queue: VecDeque::new() })
+    }
+
+    /// Any other call to the core, for the memory commands. Returns the JSON reply ({} for no body).
+    pub async fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value> {
+        let m = reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
+        let mut rb = self.req(m, path);
+        if let Some(b) = body {
+            rb = rb.json(&b);
+        }
+        let r = self.send(rb).await?;
+        Ok(r.json().await.unwrap_or(Value::Null))
     }
 
     pub async fn answer(&self, session: &str, ask: &str, yes: bool) -> Result<()> {
