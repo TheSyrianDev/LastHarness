@@ -8,5 +8,5 @@ mod tools;
 
 pub use command::{classify, Class};
 pub use perm::{Action, Answer, AskRequest, Asker, Decision, Mode, Permissions};
-pub use runner::{run_turn, Model, TurnEnd, TurnOptions};
+pub use runner::{run_turn, Model, TurnEnd, TurnEvent, TurnOptions};
 pub use tools::{default_tools, Tool, ToolError, ToolSet};

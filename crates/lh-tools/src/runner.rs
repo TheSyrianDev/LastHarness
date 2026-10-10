@@ -14,6 +14,17 @@ impl Model for Provider {
     }
 }
 
+/// What a front end sees during a turn.
+#[derive(Clone, Debug)]
+pub enum TurnEvent {
+    /// Streamed pieces from the model: text, thinking, usage, finish.
+    Model(Event),
+    /// A tool is about to be considered (before any permission prompt).
+    ToolStart { id: String, name: String, arguments: String },
+    /// The text that goes back to the model for that call.
+    ToolResult { id: String, text: String },
+}
+
 pub struct TurnOptions {
     /// Most model calls in one turn, so a confused model cannot loop forever. Default 20.
     pub max_steps: u32,
@@ -45,11 +56,11 @@ pub async fn run_turn<M: Model, A: Asker>(
     perms: &Permissions,
     asker: &A,
     opts: &TurnOptions,
-    mut on_event: impl FnMut(Event) + Send,
+    mut on_event: impl FnMut(TurnEvent) + Send,
 ) -> Result<TurnEnd, Error> {
     req.tools = tools.defs();
     for _ in 0..opts.max_steps.max(1) {
-        let resp = model.complete(req, &mut on_event).await?;
+        let resp = model.complete(req, &mut |e| on_event(TurnEvent::Model(e))).await?;
         if resp.tool_calls.is_empty() {
             req.messages.push(Message::assistant(resp.text.clone(), vec![]));
             return Ok(TurnEnd::Done(resp));
@@ -58,12 +69,14 @@ pub async fn run_turn<M: Model, A: Asker>(
         let cut_off = resp.finish == Some(FinishReason::Length);
         req.messages.push(resp.into_message());
         for call in calls {
+            on_event(TurnEvent::ToolStart { id: call.id.clone(), name: call.name.clone(), arguments: call.arguments.clone() });
             let result = if call.repaired || cut_off {
                 // Arguments that were cut short are a guess. Never run a guessed command.
                 "This tool call was cut off before it was complete, so it was not run. Try again with a shorter call.".to_string()
             } else {
                 execute(&call.name, call.parsed(), tools, perms, asker, opts).await
             };
+            on_event(TurnEvent::ToolResult { id: call.id.clone(), text: result.clone() });
             req.messages.push(Message::tool_result(&call.id, result));
         }
     }
