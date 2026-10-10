@@ -157,3 +157,4 @@ A harness for tech-literate power users (Linux users, Office-suite power users, 
 - Decision (user: 'do what you recommend'): the local store is SQLite and the embedding model is EmbeddingGemma 2. Open: a native Arabic reader should check the test set; hybrid fusion needs tuning.
 - Decision (user): Milestone 1 starts now.
 - Decision (user: 'do what you recommend'): the local API uses plain HTTP on localhost with server-sent events for streaming. Checkpoints are committed as the user and pushed to backup without asking each time.
+- Decision (user, leaving): the agents keep building without waiting; the user will design the GUI and branding together with the planning session on return. Until then no visual design or branding is invented. Questions that need the user go to .grill/parked.md.
