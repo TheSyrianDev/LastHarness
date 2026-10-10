@@ -1,0 +1,22 @@
+# Rust
+/target/
+**/target/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local state and secrets
+.env
+.env.*
+*.local
+*.log
+
+# Spike scratch data (models, indexes, test corpora)
+/spikes/**/data/
+/spikes/**/models/
+*.gguf
+*.onnx
+*.safetensors

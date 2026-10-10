@@ -1,0 +1,36 @@
+# Goose — Feature Dossier
+Registry: #86 | Category: 01 | Verified: 53,349 stars, Apache-2.0, last push 2026-08-24 (repo-verify.txt 2026-08-24)
+
+SCOPE: general-purpose extensible AI agent (desktop/CLI/API) under Agentic AI Foundation / Linux Foundation governance. LastHarness's worker substrate is locked to ephemeral Claude Agent SDK subagents (§16.2), so goose-the-harness is excluded substrate; this dossier extracts its extension/recipe/MCP mechanics as patterns.
+
+## Feature inventory
+- General-purpose agent in three form factors — native desktop app (macOS/Linux/Windows, Electron UI over a Rust core), full CLI, and embeddable API; "not just for code" positioning [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/README.md]
+- 15+ model providers (Anthropic, OpenAI, Google, Ollama, OpenRouter, Azure, Bedrock) plus ACP providers that reuse existing Claude/ChatGPT/Gemini subscriptions [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/README.md]
+- 70+ extensions connected via the MCP open standard [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/README.md]
+- Custom-distribution architecture: `init-config.yaml` applied on first run, config precedence env vars → `config.yaml` → defaults, provider lock-down and branding swap documented for org forks [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+- Declarative custom providers: JSON file (`~/.config/goose/custom_providers/`) with engine `openai|anthropic|ollama`, arbitrary `base_url`, per-model `context_limit`, streaming/auth flags — no-code registration of self-hosted LLM endpoints [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+- Recipes: YAML task definitions bundling instructions + extensions + parameters (six typed params incl. `select`/`date`/`file` with content import) + templated initial prompt + `activities` quick-start suggestions [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+- Sub-recipes invoked by name through the auto-granted Summon extension's `delegate(source, parameters)` tool, with pre-filled `values` [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+- Subagents: ad-hoc `delegate(instructions)`, `async: true` parallel fan-out with `load(task_id)` collection, per-subagent overrides (`model`, `max_turns`, `temperature`), and **extension scoping** limiting a subagent to named tools only [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+- `goose serve` ACP HTTP/WebSocket server on `:3284/acp`: `X-Secret-Key` header auth, browser clients use `?token=`, `--allowed-origin` replaces the default loopback origin allowlist [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+- `goose acp` stdio mode: session/new|load|prompt|cancel lifecycle with streamed `toolCall`/`toolCallUpdate` notifications and a `requestPermission` request from agent to client for sensitive operations [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+- Secrets in system keyring (`GOOSE_DISABLE_KEYRING=1` file fallback); optional PostHog telemetry disabled via `GOOSE_DISABLE_TELEMETRY=1` or repointed to a private instance [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+- Built-in/bundled extension manifests (`built-in-extensions.json`, `bundled-extensions.json`) letting distributions ship curated MCP servers enabled by default [VERIFIED-fetched:https://raw.githubusercontent.com/aaif-goose/goose/main/CUSTOM_DISTROS.md]
+
+## Per-feature verdict
+| Feature | Type | LastHarness landing | Rationale |
+|---|---|---|---|
+| Goose as standing general agent (desktop app/CLI resident) | ❌ | — | A persistently installed general harness is both excluded substrate under the §16.2 SDK lock and a standing process under §16.5; LastHarness workers are ephemeral Claude Agent SDK dispatches only. |
+| Recipe format (YAML instructions+params+extensions+prompt) | 🧩 | §16.5 dispatch-template format candidate | Recipes are exactly "goal + typed parameters + tool grants + initial prompt" — the same anatomy as a LastHarness dispatch record; the six-typed-parameter table is a ready schema for owner-facing dispatch forms. |
+| Subagent extension scoping (`extensions: ["developer"]`) | 🧩 | §4.4 deny-by-default allow-lists | Independent proof that per-subagent tool restriction by name works as a first-class workflow primitive; mirrors LastHarness's requirement that each worker gets the minimal allow-list. |
+| Async subagent fan-out + `load()` collection + per-subagent model overrides | 🧩 | §16.5 parallel fan-out | Same shape as LastHarness parallel dispatch: spawn N scoped workers, collect results by ID, tune model per task class. Mechanism transfers; residency does not. |
+| Declarative provider JSON with `base_url` override | ⚙ | Intelligence §14.4 | The no-code endpoint-registration pattern is precisely how local llama-server/llama-swap endpoints get declared as providers; `context_limit` per model feeds pack metadata. |
+| Ollama/local-model first-class path | ⚙ | Intelligence §14.4 hardware-tiered packs | Direct precedent for routing agent inference at local servers; supports the local-first invariant with zero cloud dependency when so configured. |
+| ACP `requestPermission` protocol (agent asks client before sensitive ops) | 🧩 | §16.10 Owner Surfaces approval-gate contract | Inverts initiative correctly — execution pauses until the human surface answers; matches the typed-confirmation gate LastHarness specs for irreversible actions. |
+| `goose serve` secret-key auth + origin allowlist semantics | 🧩 | §13.4 gateway access hygiene | Token-in-header vs `?token=`-for-browsers split and explicit replace-not-merge origin allowlist behavior are exactly the pitfalls the LastHarness ingress spec must state. |
+| MCP extension ecosystem (70+) | ⚙ | §14.5 vetted versioned intake | Ecosystem breadth proves MCP tool supply; LastHarness admits such tools only through kernel registration + sandbox scan + version pin, never runtime self-install. |
+| Bundled-extension manifests for distros | 🧩 | Hardware-tiered model packs analog | Curating which tools ship enabled-by-default per distribution maps onto per-tier pack composition. |
+| Keyring secrets + telemetry opt-out | ⚙ | Security §14.7 checklist | Correct defaults to demand of any adopted component; opt-out must be flipped at deploy time like scrapegraphai's telemetry row. |
+
+## Notable absences
+No sandbox/isolation story for what extensions and subagents may do on the host filesystem/network beyond extension *scoping* (which tools are visible) — no egress control, no audit trail, no policy layer deciding which agent may delegate to which; permission requests exist but the grantor is the client UI, not a policy kernel. Session persistence across restarts is presented as a feature without addressing the standing-process concern. No memory-scoping or multi-tenant isolation between recipes/projects. Docs live off-repo (goose-docs.ai) and were not fetched — README-level verification only.

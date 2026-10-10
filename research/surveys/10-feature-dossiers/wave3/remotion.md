@@ -1,0 +1,30 @@
+# Remotion — Feature Dossier
+Registry: #31 | Category: 07 | Verified: 57,242 stars, custom license (GitHub NOASSERTION; company license required in some cases), pushed 2026-08-24 (GitHub API 2026-08-24)
+
+Note-tier dossier. Recorded disposition: code-driven reproducible video rendering → §16.4 fast-follow + §11.3 (renders as verifiable artifacts?). The render/parametrize model, in full: **default props** define the data shape statically (editable in Remotion Studio, schema-validatable) → **input props** supplied at render time override defaults via a documented merge (input priority) → **`calculateMetadata()`** post-processes props asynchronously and can derive video metadata (width/height/duration/fps) or fetch data into props → the resolved **final props** are passed to the React component, which deterministically renders frames → a renderer turns that into media. Same component + same props = same video: rendering is a pure function of versioned inputs, which is what makes a render checkable as an artifact rather than an unrepeatable generation event.
+
+## Feature inventory
+- "Video tools for the agent era": three authoring modes — agentic (your coding agent writes it), interactive Studio drag-and-drop, programmatic data-driven — with **React code as the source of truth** you can switch between freely [VERIFIED-fetched:https://raw.githubusercontent.com/remotion-dev/remotion/main/README.md]
+- Parametrized-rendering contract: default props → optional schema validation → input-props override merge (input priority) → `calculateMetadata()` dynamic metadata/data fetch → final props to component [VERIFIED-fetched:https://www.remotion.dev/docs/parametrized-rendering]
+- Rendering surfaces: self-hosted **Node.js APIs** (`@remotion/renderer` server-side rendering), cloud Lambda, Vercel Sandbox, and client-side browser rendering, with an official comparison of options [VERIFIED-fetched:https://raw.githubusercontent.com/remotion-dev/remotion/main/README.md]
+- Video-automation pitch: design systems (org-wide animated asset libraries), **batch rendering millions of videos on your own infrastructure**, and shipping render-backed applications [VERIFIED-fetched:https://raw.githubusercontent.com/remotion-dev/remotion/main/README.md]
+- Component vocabulary shipped by the framework: Elements, Effects, Shapes, Transitions, Sound Effects, Captions, Fonts [VERIFIED-fetched:https://raw.githubusercontent.com/remotion-dev/remotion/main/README.md]
+- First-class agent support: published Agent Skills and prompt libraries for coding agents [VERIFIED-fetched:https://raw.githubusercontent.com/remotion-dev/remotion/main/README.md]
+- `<Player>` embed for real-time in-app preview without rendering [VERIFIED-fetched:https://raw.githubusercontent.com/remotion-dev/remotion/main/README.md]
+- Editor Starter + Mediabunny integration listed under app-building surface [VERIFIED-fetched:https://raw.githubusercontent.com/remotion-dev/remotion/main/README.md]
+- License: special/custom terms — companies may require obtaining a paid company license [VERIFIED-fetched:https://raw.githubusercontent.com/remotion-dev/remotion/main/README.md]
+
+## Per-feature verdict
+| Feature | Type | LastHarness landing | Rationale |
+|---|---|---|---|
+| React-code-as-source-of-truth deterministic rendering | 🧩 Mechanism only | §11.3 renders-as-verifiable-artifacts + §16.4 fast-follow design-note | A video becomes (code commit + props JSON) → artifact. Diffable, reviewable, reproducible — the property §11.3 wants when asking whether renders can be treated like build outputs and logged in the immutable decision log. |
+| Parametrize model (defaults/schema/input-props/`calculateMetadata`) | 🧩 Mechanism only | §16.4 templated-media job contract | Exactly the dispatch shape for kernel→worker media jobs: validated props payload, computed metadata before render, one pure render call per job. No stateful session needed — fits ephemeral workers precisely. |
+| Self-hosted Node.js renderer (`@remotion/renderer`) | ⚙ Feature adoption candidate | Media §16.4 fast-follow infra slot | Headless Chromium-based frame rendering runs inside the ONE Linux-env boundary on the local stack; no third-party runtime executes the workload. The only rendering path LastHarness would wire. |
+| Batch rendering at scale on own infrastructure | 🧩 Mechanism only | §16.5 parallel fan-out pattern | Precedent for chunked parallel renders across workers with artifacts persisted per job; maps to ephemeral-worker fan-out with checkpointed outputs. |
+| Lambda / Vercel Sandbox / client-side render paths | ❌ Conflict-skip | — | Cloud execution of rendering workloads violates local-first and the ONE-boundary invariant; excluded wherever the self-hosted renderer covers the need. |
+| Agent Skills + prompts for coding agents | ⚙ Feature adoption | §14.5 skill intake lifecycle | Version-pinned skill intake is exactly how a Media-dept worker would acquire remotion-authoring competence; kernel-mediated, reviewed, never live-fetched. |
+| Studio / Player / Editor Starter product surfaces | ❌ Conflict-skip | — | Owner-facing editing/preview UX belongs to Personal Agent territory; LastHarness consumes rendered artifacts, not editors. |
+| Special license requiring company license in some cases | ❌ Conflict-skip (adoption gate) | Legal precondition before any ⚙ above | Not a technical conflict, but any §16.4 adoption must first clear the license terms (company-size thresholds); treat as a hard gate on the fast-follow, not a default-in. |
+
+## Notable absences
+No content-generation story: Remotion renders what code describes but ships no script/voice/caption generation — those stages must come from elsewhere (cf. MoneyPrinterTurbo's pipeline), reinforcing §16.4's multi-stage design-note. Render determinism depends on pinned fonts/assets/audio being locally available — nothing in the docs surfaced here guarantees provenance hashing of inputs. No audit/provenance signing of output files. The marketing README pushes Lambda heavily; the self-host path exists but is comparatively under-documented in the entry points fetched.

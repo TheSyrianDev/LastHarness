@@ -1,0 +1,22 @@
+# Agent Skills "Flow" (kzarzycki/agent-skills) — Feature Dossier
+Registry: #98 | Category: 05 | Verified: 0 stars, no license detected (GitHub API license: null), last push 2026-08-21 (GitHub API 2026-08-24)
+
+## Feature inventory
+- Monorepo organization: a distribution monorepo of five independently versioned capability packs — **workflow**, **research**, **engineering**, **content**, **experimental** — each installable alone, versioned by package-scoped semver tags (`engineering-v0.3.0`) [VERIFIED-fetched:https://raw.githubusercontent.com/kzarzycki/agent-skills/main/README.md]
+- Pack payloads: workflow = persistent project workspaces, subagent orchestration, a read-only main-thread mode, session search, learning consolidation, durable human-gated workflows; research = deep-research orchestration (parallel multi-source web search → cited reports) plus delegation to hosted research assistants; engineering = safely vetting/adopting third-party code and capturing project conventions; content = reproducing a person's writing voice for outreach/proposals [VERIFIED-fetched:https://raw.githubusercontent.com/kzarzycki/agent-skills/main/README.md]
+- Dual distribution: APM project dependency (`dependencies.apm: git: kzarzycki/agent-skills/engineering, ref: ^0.3.0` → `apm install && apm compile --validate` compiling for the agents the project declares) OR native Claude plugin marketplace (`/plugin marketplace add kzarzycki/agent-skills` then per-plugin `/plugin install`) [VERIFIED-fetched:https://raw.githubusercontent.com/kzarzycki/agent-skills/main/README.md]
+- Pinned-import mechanics in `engineering`: imported payload is generated from a pinned vendir lock, then qualified and patched via an owned patch series — contributors are told to edit `vendir.yml`/patches, never the imported skill files [VERIFIED-fetched:https://raw.githubusercontent.com/kzarzycki/agent-skills/main/README.md]
+- Documentation-layer conventions: `marketplace.json` and each `plugin.json` stay deliberately plugin-level (per-skill detail lives only in each SKILL.md, surfaced in the `/plugin` browser); `experimental` unstable **by contract** ("may change, break, or be removed at any time", pin a commit); Conventional Commits PR titles [VERIFIED-fetched:https://raw.githubusercontent.com/kzarzycki/agent-skills/main/README.md]
+
+## Per-feature verdict
+| Feature | Type | LastHarness landing | Rationale |
+|---|---|---|---|
+| Discipline-partitioned pack layout (workflow/research/engineering/content as sibling packs) | ⚙ Feature adoption | §16.8 Step 2 dept-aligned pack layout | Direct structural evidence that skills organize cleanly one-pack-per-discipline; maps 1:1 onto LastHarness departments with independently versioned dept registries |
+| Pinned vendir lock + owned patch series over imported upstream skills | ⚙ Feature adoption | §14.5 intake lifecycle — pin step (proposal #2 evidence) | A shipped implementation of provenance→scan→pin→register: upstream content is hash-pinned, scanned/qualified, patched locally, and treated as read-only generated output |
+| Read-only main-thread mode inside the workflow pack | 🧩 Mechanism only | Kernel routing §4.x | Planner/executor separation enforced at the thread level — main thread observes and routes while workers mutate |
+| Durable human-gated workflows | 🧩 Mechanism only | Owner approval gates § | Long-lived workflows that pause for human decisions match LastHarness's approval-gated execution model |
+| `experimental` instability contract + graduation path | 🧩 Mechanism only | §14.5 staging tier | A quarantine ring before stable registration — same shape as gstack's domain-skill quarantine; adopt as a registry maturity tier |
+| Hosted-research-assistant delegation in the research pack | ❌ Conflict-skip as-written | — (gateway-gated at most) | Delegation ships queries to third-party hosted assistants; fails local-first/egress litmus unless re-hosted inside the boundary |
+
+## Notable absences
+No license file anywhere (GitHub API: null) — legally unadoptable verbatim despite MIT-typical ecosystem norms; resolve before any copy. Zero stars/forks/community: single-maintainer project, no hardening pressure. README documents plugins only (by stated convention), so per-skill behavior requires cloning to audit. No CI, tests, or evaluation harness mentioned. Not THIN-SOURCE — the docs present are substantive — but depth stops at pack level.

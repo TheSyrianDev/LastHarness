@@ -1,0 +1,29 @@
+# Support Skills — Feature Dossier
+Registry: #41 | Category: 05 | Verified: ~18 stars, 2 forks (GitHub API 2026-08-23), license CONFLICTING (Apache-2.0 badge in header, "License MIT" footer; GitHub API detects none), last push 2026-04-21
+
+## Feature inventory
+- Pack of ~40 customer-support skills for Claude Code/Codex/Cursor in 9 categories: Ticket Management (11: ticket-triage for Gorgias/Zendesk/Freshdesk/Zoho Desk, intercom-resolve, inbox-zero batch-scan, auto-tag with confidence scores, merge-tickets duplicate detection, sla-monitor breach dashboard, ticket-summarize, whatsapp-support) [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+- Customer Intelligence (7): customer-360 profile merging ticket history + CRM data, vip-alert cross-referencing high-value customers, sentiment-check (-2..+2 scale with urgency/churn risk), contact-sync, lead-enrich, email-verify, root-cause via Five Whys over ticket clusters [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+- Communication (7): draft-reply, response-templates canned-response generation, csat-followup, customer-winback, tone-rewriter (formal/casual/technical/empathetic/concise), translate-ticket two-way language handling, angry-customer-playbook de-escalation guide [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+- Workflow Automation (5): escalate (ticket → issue tracker + team notification with confirmation before executing), bug-report (structured engineering-ready repro extraction), handoff-notes shift summaries, refund-processor eligibility assessment prep-for-approval, macro-builder recurring-pattern playbook mining [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+- Remaining categories: Analytics & Reporting (support-metrics, weekly-digest to Slack), Quality & Training (knowledge-search, qa-response pre-send quality review, chatbot-review hallucination audit), Feedback & Surveys (nps-collect, feedback-digest), Sales & Outreach (outreach-campaign, proposal-draft, call-summary) [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+- Install mechanics: `./install.sh /path/to/project` copies skills into `.claude/skills/` where they surface as `/slash-commands`; each skill is a directory with one self-contained SKILL.md prompt [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+- External-tool execution loop every connected skill follows: discover tool via `composio search`, inspect schema with `--get-schema` or safe `--dry-run` preview, execute, recover from missing connections via `composio link <toolkit>`, analyze results, present output, and confirm before any external action (sending emails, creating issues, posting messages) [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+- Standalone reasoning-only skills requiring no external connections: sentiment-check, tone-rewriter, qa-response, angry-customer-playbook, response-templates [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+- Backend integration rides Composio CLI + cloud (Gorgias, HubSpot, Gmail, Slack, Linear, Google Sheets, Notion; browser-based `composio login` org/project session) [VERIFIED-fetched:https://raw.githubusercontent.com/composio-community/support-skills/main/README.md]
+
+## Per-feature verdict
+| Feature | Type | LastHarness landing | Rationale |
+|---|---|---|---|
+| Ticket triage taxonomy (P0–P3 priority × category × SLA status) | ⚙ Feature adoption | Support/Ops dept | The classification scheme and triage workflow text is directly reusable locally against LastHarness's own task/incident queues |
+| Confirm-before-execution as a mandatory final step of any external action | 🧩 Mechanism only | Kernel approval gate § | Explicit prior art for human-in-the-loop gating of side-effectful operations |
+| dry-run/schema-inspect before execute | 🧩 Mechanism only | Egress gateway § | Preview-then-commit pattern maps onto allow-listed egress calls with pre-flight validation |
+| Standalone reasoning-only skills (sentiment/tone/QA/de-escalation/templates) | ⚙ Feature adoption | Support/Ops dept § | Zero-dependency prompt assets — adoptable verbatim under local-first inference |
+| Escalate-to-issue-tracker + bug-report structured handoff to engineering | 🧩 Mechanism only | Orchestrator § + Kernel routing § | Dept-to-dept escalation via structured artifacts = kernel-mediated routing, not peer-to-peer messaging |
+| macro-builder mining recurring patterns into reusable playbooks | 🧩 Mechanism only | Memory dept § | Pattern→playbook distillation fits gated department-scoped memory growth |
+| SLA monitor / weekly digest / metrics export | ⚙ Feature adoption | Support/Ops dept reporting § | Reporting recipes computable from local decision-log data without any SaaS |
+| Composio CLI cloud execution backend (Gorgias/HubSpot/Gmail/Slack/Linear/SaaS auth) | ❌ Conflict-skip | — | WHERE DOES EXECUTION HAPPEN? Vendor-hosted tool relay with standing cloud accounts violates self-hosted boundary and default-deny egress |
+| Sales & Outreach category (lemlist/Reply.io sequences, proposals) | ❌ Conflict-skip | — | Depends on outbound marketing SaaS clouds; also outside a personal-assistant OS function set |
+
+## Notable absences
+No local/self-hosted ticketing backend — every stateful skill presumes an external SaaS system of record. No persistent memory between sessions (no customer history store beyond what CRM returns), no audit log of triage decisions. License is ambiguous (badge vs footer vs API disagree). Tiny community footprint (18 stars, dormant since April 2026).

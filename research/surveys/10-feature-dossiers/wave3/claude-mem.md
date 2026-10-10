@@ -1,0 +1,32 @@
+# Claude-Mem (thedotmack/claude-mem) — Feature Dossier
+Registry: #14 | Category: 02 | Verified: 91,678 stars, Apache-2.0, last push 2026-08-23 (GitHub API 2026-08-24)
+
+Skip-confirmation dossier. Recorded disposition: session persistence ≈ Session Archive + compaction harvests. This dossier CONFIRMS that equivalence from the primary source.
+
+## Feature inventory
+- **Core loop**: automatically captures tool-usage observations during sessions via lifecycle hooks, generates AI semantic summaries, stores them, and injects relevant context into future sessions via SessionStart — continuity "even after sessions end or reconnect" [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **Five lifecycle hooks (six scripts)**: SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd — plus a cached dependency-checker pre-hook; smart installer registers hooks/plugin via `npx claude-mem install` or plugin marketplace [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **Standing Worker Service**: "Local HTTP API with web viewer UI and search endpoints, managed by Bun" — a persistent daemon process serving memory to sessions and a real-time web stream of observations [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **Storage stack**: SQLite database for sessions/observations/summaries with FTS5 keyword search, PLUS a Chroma vector database for hybrid semantic search (uv Python manager auto-installed if missing); docs list Database (SQLite schema & FTS5) and Search Architecture pages separately [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **3-layer progressive-disclosure search**: MCP tools `search` (compact index w/ IDs, ~50–100 tokens/result) → `timeline` (chronological context around hits) → `get_observations` (full details by ID batch, ~500–1,000 tokens/result); claimed ~10× token savings by filtering before fetching [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **mem-search skill + citations**: natural-language queries over project history; observations referenceable by ID through the worker API or viewable in the web viewer [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **Cloud Sync to cmem.ai**: optional backup of memories to a hosted service — "no daemon, the worker syncs on write" [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **Privacy escape hatch**: `<private>` tags exclude sensitive content from storage; settings in `~/.claude-mem/settings.json` control model, worker port, data directory, injection behavior [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **Multi-harness reach**: Claude Code, OpenCode, Antigravity CLI installs; OpenClaw gateway plugin with real-time observation feeds to Telegram/Discord/Slack; modes/languages via `CLAUDE_MEM_MODE` (e.g. `code--zh`) [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **Runtime requirements**: Node.js ≥20, Bun (auto-installed), uv (auto-installed), bundled SQLite 3; built with Claude Agent SDK [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+- **CMEM token association**: README closes with an officially-embraced third-party community crypto token (BASE contract address printed) [VERIFIED-fetched:https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md]
+
+## Per-feature verdict
+| Feature | Type | LastHarness landing | Rationale |
+|---|---|---|---|
+| Hook-capture → AI-summary → SessionStart reinjection loop | 🧩 Mechanism only | Validates existing Session Archive + compaction harvests | The recorded equivalence confirmed feature-for-feature: LastHarness archives sessions and harvests compaction output into gated memory; claude-mem is the same loop implemented as a plugin around Claude Code. Adopting it would duplicate the kernel's memory pipeline. |
+| 3-layer index→timeline→full-fetch progressive disclosure | 🧩 Mechanism only | Validates §6.3 bounded access | Token-tiered retrieval (cheap index first, expensive full fetch only for selected IDs) is exactly LastHarness's bounded-access discipline; independent confirmation the pattern generalizes. |
+| `<private>` content-exclusion tags at capture time | 🧩 Mechanism only | Harvest-filter pattern | Source-side redaction before storage is the right place for gating; transfers as a tag convention in harvest pipelines. |
+| Standing Bun-managed Worker daemon (HTTP API + web UI) | ❌ Conflict-skip | — | A permanent resident process contradicts ephemeral Claude Agent SDK workers / no standing processes; LastHarness memory serves through kernel-mediated calls, not an always-on sidecar. |
+| Chroma vector DB alongside SQLite FTS5 | ❌ Conflict-skip | — | Second datastore + auto-installed uv/Python runtime beyond the SQLite-centric stack; hybrid search value not demonstrated at single-owner corpus scale vs FTS5 alone. |
+| Cloud Sync to cmem.ai (worker syncs on write) | ❌ Conflict-skip | — | Continuous replication of captured agent activity to a third-party host violates local-first and default-deny egress; also a standing outbound channel. |
+| OpenClaw feed integration (Telegram/Discord/Slack push) | ❌ Conflict-skip | — | Pushes observation streams to external messaging platforms — egress + surface expansion outside the owner-boundary. |
+| CMEM crypto-token promotion in README | ❌ Conflict-skip | — | Not a technical feature; flags project-governance noise worth knowing when weighing upstream dependence. |
+
+## Notable absences
+No department scoping or access gating: memory is a per-project global store injected wholesale at SessionStart — no allow-lists deciding WHICH dept may see WHAT, which is LastHarness's core memory invariant. No linkage between stored observations and any decision log (summaries are mutable AI prose, not immutable records). Injection policy exists but nothing like consent-per-source. Runtime sprawl (Node ≥20 + Bun + uv + SQLite + Chroma) inside one tool. Windows gets setup notes but the worker/Bun story there is thinner than macOS/Linux. No export/migration format documented in the README beyond the cloud sync target.

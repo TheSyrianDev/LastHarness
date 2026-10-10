@@ -1,0 +1,12 @@
+PASS: old file: stubbed (0 table rows) - reconciliation via archive
+PASS: archive present
+PASS: all deliverable rows field-complete
+PASS: corrections ledger: 1 entries (#45)
+PASS: C1 reconciliation: all 109 accounted
+PASS: Current Research.md is pointer stub
+PASS: C3 extraction coverage: all 129 active entries present
+PASS: C4 dossier coverage: all 40 present with required sections
+PASS: C5 wave-2 dossier coverage: all 36 present (conflict sketches included)
+FAIL: C6 wave-3 dossiers: 0/51 ok; bad: #9 caveman, #12 headroom-cli, #13 supercompress, #14 claude-mem, #16 elasticsearch, #70 localstudio, #106 localai, #42 opencode, #43 pi, #52 prime-agent, #56 magnitude, #57 lm-studio, #60 openworker, #65 langchain, #67 zcode, #71 kittylitter, #49 grok-build, #76 jcode, #79 superset, #80 vorflux, #84 muse-code, #85 antigravity-cli, #89 longhorizon-harness, #17 moneyprinterturbo, #22 opencut, #31 remotion, #34 open-chatgpt-atlas, #55 boltai, #75 hermesoffice, #83 openclaw, #131 img2threejs, #1 gstack, #3 agency-agents, #6 matt-pocock-skills, #8 dictionary-of-ai-coding, #26 official-design-md, #88 yc-qm, #96 competitive-ads-extractor, #98 agent-skills-flow, #99 elevenlabs-skills, #15 wekan, #23 voltagent, #38 composio-open-agents, #47 chatgpt-codex, #51 mimo-code, #53 hermes-agent, #77 devin-ai, #101 odysseus-ai, #102 vercel-ai-sdk, #115 handle, #129 agentreach
+---
+VERDICT: RED (1 failures)

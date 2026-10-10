@@ -1,0 +1,30 @@
+# DeepSeek Harness (dsh) — Feature Dossier
+Registry: #29 | Category: 01 | Verified: ~184.9k stars, MIT, last push 2026-08-21 (GitHub API 2026-08-23)
+
+## Feature inventory
+- Everything-is-a-plugin architecture on Cordis: model adapter, tool registry, session log, and the agent loop itself are all plugins contributing services, typed events, and reversible effects to a shared context; registrations unwind when their plugin unloads; no privileged core [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+- Profile/bundle composition: `dsh-base` first layer (model adapters, tools, persistence, sandbox and approval policy, settings, credentials, telemetry); `dsh-web-app` adds the browser app; `dsh-headless` adds a one-shot runner with no server; ordered patch layers (profile bundles → profile `cordis.patch.yml` → home patch → `--patch` overlay) replace config rows by id; `dsh --profile web --dump-config` prints the exact boot tree [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+- Append-only SessionEvent log as the single source of context: `deriveMessages()` projects model history from it; runtime invariant "model-visible means logged" asserts every model request is reconstructable from the log; fork/resume/transcripts/telemetry all derive from the stream [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+- Turn/step flow with guarded tool pipeline: turn/start → input claim → prompt+schema assembly → `agent/pre-step` rewrite-or-reject gate → step → `tools/pre-execute → tools/execute → tools/post-execute` waterfalls → turn/end; a rejected/empty first claim still closes a durable turn recording the attempt [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+- Capability seams: `ctx.fs` providers + `fs/*` policy events; `ctx.sandbox` backends wrapping argv before spawn; filesystem and subprocess share one execution world so repointing at a remote sandbox moves Bash/PTY/LSP together without provider forks [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+- Scoped tool registry: per-agent preset composition with `isolate` realms giving one session a different capability set; per-agent scoped registration primitive [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+- Background work seam: `ctx.jobs` registry with `job_*` tools to collect or stop background work within the session [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+- Extension cookbook mapping goals→mechanisms: add LLM adapter, tool, shell backend, persistent terminal backend (`dsh-tool-terminal`), human command (dispatches without a model turn), fs policy, sandbox backend, request/tool/turn interception, context injection via `agent.inject()` [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+- Web UI launch: `npx @deepseek-ai/dsh web` serves a local Web UI at `http://127.0.0.1:3080` (loopback default); headless bundle is the server-less alternative; developer preview with promised compatibility breaks [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/README.md]
+- Experimental Agent Teams: private opt-in coordination seam on `ctx.agentTeams` with durable roster, task board, and mailbox layered over continuable subagents [VERIFIED-fetched:https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md]
+
+## Per-feature verdict
+| Feature | Type | LastHarness landing | Rationale |
+|---|---|---|---|
+| Everything-is-a-plugin w/ reversible effect registration | 🧩 Mechanism only | Kernel architecture § | Composition discipline LastHarness's kernel already wants; Cordis itself stays external |
+| Append-only session-event log + "model-visible means logged" invariant | ⚙ Feature adoption | Immutable decision-log § | Direct architectural precedent for LastHarness's immutable SQLite decision log — every model-visible input becomes a logged fact, enforced by runtime assertion |
+| `agent/pre-step` rewrite-or-reject admission gate | 🧩 Mechanism only | Kernel admission § | Kernel-mediated message admission with reject-still-logs semantics; exactly the control point for routing policy |
+| Guarded tool waterfall (pre-execute→execute→post-execute) | 🧩 Mechanism only | Kernel hook points § | Natural enforcement points for allow-lists, redaction, and auditing around every tool call |
+| Sandbox + approval policy as base-bundle substrate | 🧩 Mechanism only | Execution boundary § | Confirms sandbox/approval belong in the kernel base layer, swappable per deployment |
+| Patch-layer config composition + `--dump-config` | 🧩 Mechanism only | Config / onboarding § | Ordered-override model is a good fit for hardware-tiered pack selection and user patches |
+| Headless one-shot runner bundle (no server) | ⚙ Feature adoption | Worker runtime § | Server-less one-shot execution matches the ephemeral SDK worker shape exactly |
+| Experimental Agent Teams durable mailbox/roster | ❌ Conflict-skip | — | Durable mailboxes are standing inboxes — violates ephemeral-worker invariant (also experimental/private API) |
+| Loopback Web UI server | 🧩 Mechanism only | Console UI § | Local-only UI acceptable inside the self-hosted boundary; not a dependency |
+
+## Notable absences
+Developer preview: compatibility-breaking changes expected; docs target plugin developers, not end users. No non-technical onboarding surface. No local-inference story documented in README/architecture (adapter seam exists; hardware tiering absent). No egress-gateway concept — network policy is delegated entirely to whichever sandbox/fs provider is mounted. End-user feature list is thin relative to star count; most value is architectural.

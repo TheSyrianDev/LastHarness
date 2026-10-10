@@ -1,0 +1,30 @@
+# Scientific Agent Skills — Feature Dossier
+Registry: #123 | Category: 05 | Verified: MIT (badge in README), version 2.64.0, 163 skills, CI security-scan + skill-test badges; ~34k stars and "175k+ researchers" reported by registry/description, not independently verified
+
+## Feature inventory
+- 163 ready-to-use scientific/research skills for any Agent-Skills-standard host (Cursor, Claude Code, Codex, Google Antigravity): bioinformatics/genomics (27), cheminformatics/drug discovery (10), clinical evidence workflows (8), medical imaging (4), ML/AI (14), materials/physics (7), engineering/simulation (6), data analysis/visualization (22), lab automation (6), scientific communication (27), databases (11→100+ DBs), infrastructure/platforms (11), research methodology (13), regulatory/standards (2) [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+- Unified `database-lookup` skill: deterministic REST access to 78 public databases (PubChem, ChEMBL, UniProt, ClinicalTrials.gov, USPTO, SEC EDGAR…) with retrieval contracts, pagination/count reconciliation, auditable filters, and endpoint provenance [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+- 70+ version-aware Python package skills (RDKit, Scanpy, PyTorch Lightning, pymatgen, Qiskit…) documented as curated paths while the agent may still use any package; each skill ships SKILL.md + examples + references, and any skill bundling `scripts/` must ship a test suite (CI-enforced) [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+- Security program: LLM-based security scans (Cisco AI Defense Skill Scanner) run weekly on every skill with published results in docs/security-report.md; explicit disclaimer to review before install, install topical subsets only, and self-scan locally via `skill-scanner` [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+- Reproducible installs with supply-chain provenance: `gh skill install <repo> [skill] --pin v2.64.0|<sha>` records provenance metadata and supports update flows; repo also packaged as an Agent Plugins 1.0.0 bundle (`plugin.json` + `skills/`) [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+- Domain safety boundaries encoded in skill text: clinical outputs are visibly-marked drafts from verified source-fact manifests ("never a diagnosis/treatment decision"), regulatory lane keeps certification/accreditation boundaries distinct ("never a compliance decision"), healthcare AI restricted to retrospective research [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+- Fail-closed analysis posture: bounded local EDA "with unknown formats failing closed"; lab-automation skills are offline-first planning/simulation with physical execution behind explicit operator safety gates [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+- Paperclip full-text corpus skill: read-only virtual filesystem over ~11M papers + 217k regulatory documents with source-scoped semantic search, corpus grep, SQL metadata queries, and line-pinned citations [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+- Documents a default-deny deployment precedent: NemoClaw/OpenShell runs agents with default-deny outbound networking where network-using skills work only after operator pre-approves domains in the TUI [VERIFIED-fetched:https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/main/README.md]
+
+## Per-feature verdict
+| Feature | Type | LastHarness landing | Rationale |
+|---|---|---|---|
+| Science-domain skill content (genomics, chemistry, clinical…) | ❌ Conflict-skip | — | Not a LastHarness business function; adopt mechanisms, not the catalog |
+| Provenance-rich deterministic database-lookup pattern | 🧩 Mechanism only | §data-access skills | Auditable filters + count reconciliation + endpoint provenance = template for any governed external-data skill |
+| Weekly automated security scanning of skills w/ published report | ⚙ Feature adoption | §skill-ingestion pipeline | Direct fit: every third-party skill entering LastHarness gets scanned, results logged |
+| Version-pinned installs with recorded provenance | ⚙ Feature adoption | §skill-ingestion pipeline | Supply-chain integrity for the skill allow-list |
+| Per-skill test-suite CI gate | 🧩 Mechanism only | §skill-format QA | Skills that ship scripts must ship tests — cheap quality bar |
+| Encoded domain safety boundaries in skill prose | 🧩 Mechanism only | §skill-format | Pattern of hard "never a X decision" clauses inside skill docs transfers to any high-stakes dept |
+| Fail-closed EDA / offline-first automation gates | 🧩 Mechanism only | §worker-runtime policy | Unknown-input fail-closed matches deny-by-default invariant |
+| Line-pinned citations (Paperclip-style VFS) | 🧩 Mechanism only | §evidence-schema | Citation precision mechanism for any research/evidence reporting |
+| Cloud-compute/hosted-API skills (Modal, Rowan, Tamarind, hosted Genomic Intelligence…) | ❌ Conflict-skip | — | Execution on third-party cloud violates self-hosted boundary |
+| Default-deny egress deployment note (NemoClaw) | 🧩 Mechanism only | §egress-gateway | Independent confirmation that agent-skill ecosystems function under per-domain operator approval |
+
+## Notable absences
+No runtime permission enforcement of its own — safety boundaries live in prose, trusting the host harness; many skills require API keys for external services by design; no local-only mode for the majority of database/paper skills (they are REST clients); no decision-log or audit trail integration; collection size (~163 skills) is explicitly warned against installing wholesale due to context cost.

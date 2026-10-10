@@ -1,0 +1,656 @@
+﻿[
+    {
+        "num":  1,
+        "name":  "GStack",
+        "official":  "-",
+        "github":  "https://github.com/garrytan/gstack"
+    },
+    {
+        "num":  2,
+        "name":  "ECC (Everything Claude Code)",
+        "official":  "-",
+        "github":  "https://github.com/WorldFlowAI/everything-claude-code"
+    },
+    {
+        "num":  3,
+        "name":  "Agency Agents",
+        "official":  "-",
+        "github":  "https://github.com/msitarzewski/agency-agents"
+    },
+    {
+        "num":  4,
+        "name":  "TokenGoat",
+        "official":  "-",
+        "github":  "https://github.com/DFKHelper/token-goat"
+    },
+    {
+        "num":  5,
+        "name":  "TokenGoat Mem",
+        "official":  "-",
+        "github":  "https://github.com/DFKHelper/token-goat-mem"
+    },
+    {
+        "num":  6,
+        "name":  "Matt Pocock Skills",
+        "official":  "https://www.aihero.dev/skills",
+        "github":  "https://github.com/mattpocock/skills"
+    },
+    {
+        "num":  7,
+        "name":  "Sandcastle",
+        "official":  "-",
+        "github":  "https://github.com/mattpocock/sandcastle"
+    },
+    {
+        "num":  8,
+        "name":  "Dictionary of AI Coding",
+        "official":  "-",
+        "github":  "https://github.com/mattpocock/dictionary-of-ai-coding"
+    },
+    {
+        "num":  9,
+        "name":  "Caveman",
+        "official":  "https://getcaveman.dev",
+        "github":  "https://github.com/JuliusBrussee/caveman"
+    },
+    {
+        "num":  10,
+        "name":  "Ponytail",
+        "official":  "https://ponytail.dev",
+        "github":  "https://github.com/DietrichGebert/ponytail"
+    },
+    {
+        "num":  11,
+        "name":  "Context-Mode",
+        "official":  "https://context-mode.com",
+        "github":  "https://github.com/mksglu/context-mode"
+    },
+    {
+        "num":  12,
+        "name":  "Headroom CLI",
+        "official":  "https://docs.headroomlabs.ai",
+        "github":  "https://github.com/headroomlabs-ai/headroom"
+    },
+    {
+        "num":  13,
+        "name":  "Super Compress",
+        "official":  "https://www.supercompress.dev",
+        "github":  "https://github.com/Supercompress/Supercompress"
+    },
+    {
+        "num":  14,
+        "name":  "Claude-Mem",
+        "official":  "https://claude-mem.ai",
+        "github":  "https://github.com/thedotmack/claude-mem"
+    },
+    {
+        "num":  15,
+        "name":  "Wekan",
+        "official":  "https://wekan.fi",
+        "github":  "https://github.com/wekan/wekan"
+    },
+    {
+        "num":  16,
+        "name":  "Elasticsearch",
+        "official":  "https://www.elastic.co",
+        "github":  "https://github.com/elastic/elasticsearch"
+    },
+    {
+        "num":  17,
+        "name":  "MoneyPrinterTurbo",
+        "official":  "-",
+        "github":  "https://github.com/harry0703/MoneyPrinterTurbo"
+    },
+    {
+        "num":  18,
+        "name":  "Munder-Diffin",
+        "official":  "-",
+        "github":  "https://github.com/chaitanyagiri/munder-difflin"
+    },
+    {
+        "num":  19,
+        "name":  "AI Memory",
+        "official":  "-",
+        "github":  "https://github.com/akitaonrails/ai-memory"
+    },
+    {
+        "num":  20,
+        "name":  "Open Viking",
+        "official":  "https://openviking.ai",
+        "github":  "https://github.com/volcengine/OpenViking"
+    },
+    {
+        "num":  21,
+        "name":  "Anthropic Cybersecurity Skills",
+        "official":  "-",
+        "github":  "https://github.com/mukul975/Anthropic-Cybersecurity-Skills"
+    },
+    {
+        "num":  22,
+        "name":  "OpenCut",
+        "official":  "https://opencut.app",
+        "github":  "https://github.com/OpenCut-app/OpenCut"
+    },
+    {
+        "num":  23,
+        "name":  "VoltAgent",
+        "official":  "https://voltagent.dev",
+        "github":  "https://github.com/VoltAgent/voltagent"
+    },
+    {
+        "num":  24,
+        "name":  "TencentDB-Agent-Memory",
+        "official":  "-",
+        "github":  "https://github.com/TencentCloud/tencentdb-agent-memory"
+    },
+    {
+        "num":  25,
+        "name":  "Awesome Design.md",
+        "official":  "-",
+        "github":  "https://github.com/VoltAgent/awesome-design-md"
+    },
+    {
+        "num":  26,
+        "name":  "Official Design.md",
+        "official":  "-",
+        "github":  "https://github.com/VoltAgent/official-design-md"
+    },
+    {
+        "num":  27,
+        "name":  "Karpathy-Inspired Guidelines",
+        "official":  "-",
+        "github":  "https://github.com/multica-ai/andrej-karpathy-skills"
+    },
+    {
+        "num":  28,
+        "name":  "Emil Kowalski\u0027s Skills",
+        "official":  "-",
+        "github":  "https://github.com/emilkowalski/skills"
+    },
+    {
+        "num":  29,
+        "name":  "Deepseek Harness",
+        "official":  "-",
+        "github":  "https://github.com/deepseek-ai/deepseek-harness"
+    },
+    {
+        "num":  30,
+        "name":  "Flowise",
+        "official":  "https://flowiseai.com",
+        "github":  "https://github.com/FlowiseAI/Flowise"
+    },
+    {
+        "num":  31,
+        "name":  "Remotion",
+        "official":  "https://remotion.dev",
+        "github":  "https://github.com/remotion-dev/remotion"
+    },
+    {
+        "num":  32,
+        "name":  "Open Claude Cowork",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/open-claude-cowork"
+    },
+    {
+        "num":  33,
+        "name":  "Secure OpenClaw",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/secure-openclaw"
+    },
+    {
+        "num":  34,
+        "name":  "Open ChatGPT Atlas",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/open-chatgpt-atlas"
+    },
+    {
+        "num":  35,
+        "name":  "Awesome Claude Plugins",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/awesome-claude-plugins"
+    },
+    {
+        "num":  36,
+        "name":  "Awesome Codex Skills",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/awesome-codex-skills"
+    },
+    {
+        "num":  37,
+        "name":  "Vercel Open Agents",
+        "official":  "-",
+        "github":  "https://github.com/vercel-labs/open-agents"
+    },
+    {
+        "num":  38,
+        "name":  "Composio Open Agents",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/open-agents"
+    },
+    {
+        "num":  39,
+        "name":  "Browser Skills",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/browser-skills"
+    },
+    {
+        "num":  40,
+        "name":  "OpenClaw Composio Plugin",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/openclaw-composio-plugin"
+    },
+    {
+        "num":  41,
+        "name":  "Support Skills",
+        "official":  "-",
+        "github":  "https://github.com/composio-community/support-skills"
+    },
+    {
+        "num":  42,
+        "name":  "OpenCode",
+        "official":  "https://opencode.ai",
+        "github":  "https://github.com/anomalyco/opencode"
+    },
+    {
+        "num":  43,
+        "name":  "Pi",
+        "official":  "https://pi.dev",
+        "github":  "https://github.com/earendil-works/pi"
+    },
+    {
+        "num":  44,
+        "name":  "oh-my-openagent",
+        "official":  "-",
+        "github":  "https://github.com/code-yeongyu/oh-my-openagent"
+    },
+    {
+        "num":  45,
+        "name":  "oh-my-opencode",
+        "official":  "-",
+        "github":  "https://github.com/code-yeongyu/oh-my-openagent"
+    },
+    {
+        "num":  46,
+        "name":  "oh-my-pi",
+        "official":  "-",
+        "github":  "https://github.com/can1357/oh-my-pi"
+    },
+    {
+        "num":  47,
+        "name":  "ChatGPT Codex",
+        "official":  "https://openai.com/codex",
+        "github":  "https://github.com/openai/codex"
+    },
+    {
+        "num":  48,
+        "name":  "Claude Code",
+        "official":  "https://claude.com/product/claude-code",
+        "github":  "https://github.com/anthropics/claude-code"
+    },
+    {
+        "num":  49,
+        "name":  "Grok Build",
+        "official":  "-",
+        "github":  "https://github.com/xai-org/grok-build"
+    },
+    {
+        "num":  50,
+        "name":  "T3 Code",
+        "official":  "https://t3.codes",
+        "github":  "https://github.com/pingdotgg/t3code"
+    },
+    {
+        "num":  51,
+        "name":  "MiMo Code",
+        "official":  "-",
+        "github":  "https://github.com/XiaomiMiMo/MiMo-Code"
+    },
+    {
+        "num":  52,
+        "name":  "Prime Agent",
+        "official":  "https://www.primeintellect.ai",
+        "github":  "https://github.com/PrimeIntellect-ai/prime-agent"
+    },
+    {
+        "num":  53,
+        "name":  "Hermes Agent",
+        "official":  "https://hermes-agent.nousresearch.com",
+        "github":  "https://github.com/NousResearch/hermes-agent"
+    },
+    {
+        "num":  54,
+        "name":  "Cursor",
+        "official":  "https://cursor.com",
+        "github":  "https://github.com/cursor/cursor"
+    },
+    {
+        "num":  55,
+        "name":  "BoltAI",
+        "official":  "https://boltai.com",
+        "github":  "-"
+    },
+    {
+        "num":  56,
+        "name":  "Magnitude",
+        "official":  "-",
+        "github":  "https://github.com/magnitudedev/magnitude"
+    },
+    {
+        "num":  57,
+        "name":  "LM Studio",
+        "official":  "https://lmstudio.ai",
+        "github":  "https://github.com/lmstudio-ai/lms"
+    },
+    {
+        "num":  58,
+        "name":  "Catalyst",
+        "official":  "-",
+        "github":  "https://github.com/imbue-ai/catalyst"
+    },
+    {
+        "num":  59,
+        "name":  "T-search",
+        "official":  "-",
+        "github":  "https://github.com/turbo-llm/t-search-harness"
+    },
+    {
+        "num":  60,
+        "name":  "OpenWorker",
+        "official":  "-",
+        "github":  "https://github.com/andrewyng/openworker"
+    },
+    {
+        "num":  61,
+        "name":  "Cloudflare Computer",
+        "official":  "-",
+        "github":  "https://github.com/cloudflare/computer"
+    },
+    {
+        "num":  62,
+        "name":  "OpenCodex",
+        "official":  "-",
+        "github":  "https://github.com/lidge-jun/opencodex"
+    },
+    {
+        "num":  63,
+        "name":  "Deep Agents",
+        "official":  "-",
+        "github":  "https://github.com/langchain-ai/deepagents"
+    },
+    {
+        "num":  64,
+        "name":  "LangFuse",
+        "official":  "https://langfuse.com",
+        "github":  "https://github.com/langfuse/langfuse"
+    },
+    {
+        "num":  65,
+        "name":  "LangChain",
+        "official":  "https://langchain.com",
+        "github":  "https://github.com/langchain-ai/langchain"
+    },
+    {
+        "num":  66,
+        "name":  "LangGraph",
+        "official":  "https://langchain.com/langgraph",
+        "github":  "https://github.com/langchain-ai/langgraph"
+    },
+    {
+        "num":  67,
+        "name":  "ZCode",
+        "official":  "-",
+        "github":  "https://zcode.z.ai"
+    },
+    {
+        "num":  68,
+        "name":  "Oh-my-Hermes",
+        "official":  "-",
+        "github":  "https://github.com/Salomondiei08/oh-my-hermes"
+    },
+    {
+        "num":  69,
+        "name":  "local.ai",
+        "official":  "https://local.ai",
+        "github":  "-"
+    },
+    {
+        "num":  70,
+        "name":  "localstudio.ai",
+        "official":  "https://localstudio.ai",
+        "github":  "-"
+    },
+    {
+        "num":  71,
+        "name":  "kittylitter",
+        "official":  "https://kittylitter.app",
+        "github":  "-"
+    },
+    {
+        "num":  72,
+        "name":  "Semantica",
+        "official":  "-",
+        "github":  "https://github.com/semantica-agi/semantica"
+    },
+    {
+        "num":  73,
+        "name":  "open-kritt",
+        "official":  "-",
+        "github":  "https://github.com/Kritt-ai/open-kritt"
+    },
+    {
+        "num":  74,
+        "name":  "Firecrawl",
+        "official":  "https://firecrawl.dev",
+        "github":  "https://github.com/firecrawl/firecrawl"
+    },
+    {
+        "num":  75,
+        "name":  "HermesOffice",
+        "official":  "-",
+        "github":  "https://github.com/criptogus/HermesOffice"
+    },
+    {
+        "num":  76,
+        "name":  "JCode",
+        "official":  "-",
+        "github":  "https://github.com/1jehuang/jcode"
+    },
+    {
+        "num":  77,
+        "name":  "Devin AI",
+        "official":  "https://devin.ai",
+        "github":  "-"
+    },
+    {
+        "num":  78,
+        "name":  "Conductor",
+        "official":  "https://conductor.build",
+        "github":  "-"
+    },
+    {
+        "num":  79,
+        "name":  "Superset",
+        "official":  "https://superset.sh",
+        "github":  "https://github.com/superset-sh/superset"
+    },
+    {
+        "num":  80,
+        "name":  "Vorflux",
+        "official":  "https://vorflux.com",
+        "github":  "-"
+    },
+    {
+        "num":  81,
+        "name":  "Herdr",
+        "official":  "https://herdr.dev",
+        "github":  "https://github.com/herdrdev/herdr"
+    },
+    {
+        "num":  82,
+        "name":  "pi-black",
+        "official":  "-",
+        "github":  "https://github.com/paoloanzn/pi-black"
+    },
+    {
+        "num":  83,
+        "name":  "OpenClaw",
+        "official":  "https://openclaw.ai",
+        "github":  "https://github.com/openclaw/openclaw"
+    },
+    {
+        "num":  84,
+        "name":  "Muse Code",
+        "official":  "https://musecodes.io",
+        "github":  "-"
+    },
+    {
+        "num":  85,
+        "name":  "Antigravity CLI",
+        "official":  "https://antigravity.google",
+        "github":  "https://github.com/google-antigravity/antigravity-cli"
+    },
+    {
+        "num":  86,
+        "name":  "Goose",
+        "official":  "https://goose-docs.ai",
+        "github":  "https://github.com/aaif-goose/goose"
+    },
+    {
+        "num":  87,
+        "name":  "Buzz",
+        "official":  "https://buzz.xyz",
+        "github":  "https://github.com/block/buzz"
+    },
+    {
+        "num":  88,
+        "name":  "YC QM",
+        "official":  "https://qm.ycombinator.com",
+        "github":  "https://github.com/yc-software/qm"
+    },
+    {
+        "num":  89,
+        "name":  "LongHorizon-Harness",
+        "official":  "https://lh-harness.pages.dev",
+        "github":  "https://github.com/AMAP-ML/LongHorizon-Harness"
+    },
+    {
+        "num":  90,
+        "name":  "SearXNG",
+        "official":  "https://searxng.org",
+        "github":  "https://github.com/searxng/searxng"
+    },
+    {
+        "num":  91,
+        "name":  "Aider",
+        "official":  "https://aider.chat",
+        "github":  "https://github.com/Aider-AI/aider"
+    },
+    {
+        "num":  92,
+        "name":  "Windsurf",
+        "official":  "https://windsurf.com",
+        "github":  "-"
+    },
+    {
+        "num":  93,
+        "name":  "Cline",
+        "official":  "https://cline.bot",
+        "github":  "https://github.com/cline/cline"
+    },
+    {
+        "num":  94,
+        "name":  "Exa",
+        "official":  "https://exa.ai",
+        "github":  "https://github.com/exa-labs/exa-mcp-server"
+    },
+    {
+        "num":  95,
+        "name":  "Tavily",
+        "official":  "https://tavily.com",
+        "github":  "https://github.com/tavily-ai/tavily-python"
+    },
+    {
+        "num":  96,
+        "name":  "Competitive Ads Extractor",
+        "official":  "https://buildwithclaude.com/skill/competitive-ads-extractor",
+        "github":  "https://github.com/ComposioHQ/awesome-claude-skills"
+    },
+    {
+        "num":  97,
+        "name":  "Deep Research Skills",
+        "official":  "-",
+        "github":  "https://github.com/Weizhena/deep-research-skills"
+    },
+    {
+        "num":  98,
+        "name":  "Agent Skills",
+        "official":  "-",
+        "github":  "https://github.com/kzarzycki/agent-skills"
+    },
+    {
+        "num":  99,
+        "name":  "ElevenLabs Skills",
+        "official":  "https://elevenlabs.io/",
+        "github":  "https://github.com/elevenlabs/skills"
+    },
+    {
+        "num":  100,
+        "name":  "Scrapling",
+        "official":  "-",
+        "github":  "https://github.com/D4Vinci/Scrapling"
+    },
+    {
+        "num":  101,
+        "name":  "Odysseus AI",
+        "official":  "https://odysseusai.dev",
+        "github":  "https://github.com/odysseus-dev/odysseus"
+    },
+    {
+        "num":  102,
+        "name":  "Vercel AI SDK",
+        "official":  "https://ai-sdk.dev",
+        "github":  "https://github.com/vercel/ai"
+    },
+    {
+        "num":  103,
+        "name":  "Lemonade AI",
+        "official":  "https://lemonade-server.ai",
+        "github":  "https://github.com/lemonade-sdk/lemonade"
+    },
+    {
+        "num":  104,
+        "name":  "AnyDoc",
+        "official":  "https://firecrawl.dev",
+        "github":  "https://github.com/firecrawl/anydoc"
+    },
+    {
+        "num":  105,
+        "name":  "OpenTag",
+        "official":  "-",
+        "github":  "https://github.com/CopilotKit/OpenTag"
+    },
+    {
+        "num":  106,
+        "name":  "LocalAI",
+        "official":  "https://localai.io",
+        "github":  "https://github.com/mudler/LocalAI"
+    },
+    {
+        "num":  107,
+        "name":  "pi-rlm",
+        "official":  "-",
+        "github":  "https://github.com/manojlds/pi-rlm"
+    },
+    {
+        "num":  108,
+        "name":  "Google Skills",
+        "official":  "-",
+        "github":  "https://github.com/google/skills"
+    },
+    {
+        "num":  109,
+        "name":  "Google Agents CLI",
+        "official":  "-",
+        "github":  "https://github.com/google/agents-cli"
+    }
+]

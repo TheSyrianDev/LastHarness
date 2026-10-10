@@ -1,0 +1,10 @@
+PASS: old file: stubbed (0 table rows) - reconciliation via archive
+PASS: archive present
+PASS: all deliverable rows field-complete
+PASS: corrections ledger: 1 entries (#45)
+PASS: C1 reconciliation: all 109 accounted
+PASS: Current Research.md is pointer stub
+PASS: C3 extraction coverage: all 129 active entries present
+FAIL: C4 dossiers: 0/40 ok; bad: #21 anthropic-cybersecurity-skills, #25 awesome-design-md, #27 karpathy-guidelines, #28 emil-kowalski-skills, #35 awesome-claude-plugins, #36 awesome-codex-skills, #41 support-skills, #2 ecc, #4 tokengoat, #5 tokengoat-mem, #10 ponytail, #11 context-mode, #29 deepseek-harness, #44 oh-my-openagent, #24 tencentdb-agent-memory, #39 browser-skills, #54 cursor, #59 t-search, #64 langfuse, #73 open-kritt, #93 cline, #69 localai-benchmarks, #90 searxng, #91 aider, #92 windsurf, #100 scrapling, #104 anydoc, #97 deep-research-skills, #108 google-skills, #113 deerflow, #117 yap, #121 needle-2, #123 scientific-agent-skills, #46 oh-my-pi, #48 claude-code, #66 langgraph, #78 conductor, #95 tavily, #107 pi-rlm, #109 google-agents-cli
+---
+VERDICT: RED (1 failures)

@@ -1,0 +1,11 @@
+PASS: old file: stubbed (0 table rows) - reconciliation via archive
+PASS: archive present
+PASS: all deliverable rows field-complete
+PASS: corrections ledger: 2 entries (#38,#45)
+PASS: C1 reconciliation: all 109 accounted
+PASS: C3 extraction coverage: all 135 ledger entries present (132 active + merged/delisted history)
+PASS: C4 dossier coverage: all 40 present with required sections
+PASS: C5 wave-2 dossier coverage: all 36 present (conflict sketches included)
+PASS: C6 wave-3 dossier coverage: all 51 present
+---
+VERDICT: GREEN (0 failures)

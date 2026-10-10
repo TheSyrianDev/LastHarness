@@ -1,0 +1,11 @@
+EKKOLearnAI/hermes-studio | stars=10595 | NOASSERTION | pushed=2026-08-25 | archived=False | Web dashboard for Hermes Agent — multi-platform AI chat, session management, scheduled job
+huangruiteng/loopx | stars=5132 | Apache-2.0 | pushed=2026-08-25 | archived=False | Long-horizon agent control plane for durable, governed work across Codex, Claude Code, and
+colbymchenry/codegraph | stars=68068 | MIT | pushed=2026-08-25 | archived=False | Pre-indexed code knowledge graph, auto syncs on code changes, for Claude Code, Codex, Gemi
+rohitg00/agentmemory | stars=27408 | Apache-2.0 | pushed=2026-08-24 | archived=False | #1 Persistent memory for AI coding agents based on real-world benchmarks
+agentscope-ai/QwenPaw | stars=34453 | Apache-2.0 | pushed=2026-08-25 | archived=False | Your Personal AI Assistant; easy to install, deploy on your own machine or on the cloud; s
+AstrBotDevs/AstrBot | stars=39597 | AGPL-3.0 | pushed=2026-08-25 | archived=False | AI Agent Assistant & development framework that integrates lots of IM platforms, LLMs, plu
+ruvnet/ruflo | stars=69378 | MIT | pushed=2026-08-25 | archived=False | 🌊 The original agent meta-harness. Deploy intelligent multi-player swarms, coordinate auto
+decolua/9router | stars=26301 | MIT | pushed=2026-08-14 | archived=False | Unlimited FREE AI coding. Connect Claude Code, Codex, Cursor, Cline, Copilot, Antigravity 
+manaflow-ai/cmux | stars=26458 | NOASSERTION | pushed=2026-08-25 | archived=False | Open source Ghostty-based macOS terminal with vertical tabs and notifications for AI codin
+QwenLM/qwen-code | stars=27362 | Apache-2.0 | pushed=2026-08-25 | archived=False | An open-source AI coding agent that lives in your terminal.
+NousResearch/hermes-agent | stars=236302 | MIT | pushed=2026-08-25 | archived=False | The agent that grows with you

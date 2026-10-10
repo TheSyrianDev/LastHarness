@@ -1,0 +1,35 @@
+mattpocock/sandcastle | stars=7609 | MIT | pushed=2026-06-29 | Orchestrate sandboxed coding agents in TypeScript with sandcastle.run()
+chaitanyagiri/munder-difflin | stars=3930 | NOASSERTION | pushed=2026-08-24 | local multi-agent harness
+akitaonrails/ai-memory | stars=4288 | MIT | pushed=2026-08-24 | Solution for long term memory for agent coding CLIs and to facilitate handoff be
+composio-community/open-claude-cowork | stars=4329 | MIT | pushed=2026-05-23 | Open Source version of Claude Cowork with 500+ SaaS app integrations
+composio-community/secure-openclaw | stars=1188 | MIT | pushed=2026-07-25 | A personal 24x7 AI assistant like OpenClaw that runs on your messaging platforms
+vercel-labs/open-agents | stars=5787 | MIT | pushed=2026-08-20 | An open source template for building cloud agents.
+composio-community/openclaw-composio-plugin | stars=44 | none | pushed=2026-05-07 | Access 1000+ third-party tools in OpenClaw via Composio — Gmail, Slack, GitHub, 
+cloudflare/computer | stars=8608 | MIT | pushed=2026-08-21 | Give your agent a computer 👾
+lidge-jun/opencodex | stars=11954 | MIT | pushed=2026-08-24 | Universal provider proxy for OpenAI Codex & Claude Code — use any LLM (Claude, G
+herdrdev/herdr | stars=31922 | Apache-2.0 | pushed=2026-08-24 | the runtime your coding agents live on
+paoloanzn/pi-black | stars=155 | MIT | pushed=2026-08-19 | Claude subscription wire compatibility for Pi.
+block/buzz | stars=30334 | Apache-2.0 | pushed=2026-08-24 | A hive mind communication platform
+ScrapeGraphAI/Scrapegraph-ai | stars=29852 | MIT | pushed=2026-08-23 | Python scraper based on AI
+HKUDS/ViMax | stars=12084 | MIT | pushed=2026-07-29 | "ViMax: Agentic Video Generation (Director, Screenwriter, Producer, and Video Ge
+trycompai/crm | stars=8866 | MIT | pushed=2026-08-21 | Comp AI CRM is an open source, CRM designed for AI agents. Agentic-first CRM.
+Zackriya-Solutions/meetily | stars=29807 | MIT | pushed=2026-06-05 | Privacy first, AI meeting assistant with 4x faster Parakeet/Whisper live transcr
+altic-dev/FluidVoice | stars=10856 | GPL-3.0 | pushed=2026-08-23 | Fastest and only macOS Dictation app with on-device STT and custom trained AI en
+smicallef/spiderfoot | stars=21383 | MIT | pushed=2026-04-13 | SpiderFoot automates OSINT for threat intelligence and mapping your attack surfa
+frappe/erpnext | stars=38437 | GPL-3.0 | pushed=2026-08-24 | Free and Open Source Enterprise Resource Planning (ERP)
+MengTo/threeui | stars=3221 | MIT | pushed=2026-08-23 | Open-source ThreeUI Community catalog with live interactive components and compl
+lunarphp/lunar | stars=3683 | MIT | pushed=2026-08-24 | An open-source package that brings the power of modern headless e-commerce funct
+pocketbase/pocketbase | stars=60786 | MIT | pushed=2026-08-23 | Open Source realtime backend in 1 file
+joeseesun/qiaomu-seo | stars=390 | MIT | pushed=2026-08-03 | Audit, diagnose, research, plan, implement, experiment on, and verify website SE
+volcengine/OpenViking | stars=32760 | AGPL-3.0 | pushed=2026-08-24 | Self-evolving Context Database for AI Agents. Unify Agent Memory, Knowledge RAG 
+FlowiseAI/Flowise | stars=55388 | NOASSERTION | pushed=2026-08-13 | Build AI Agents, Visually
+pingdotgg/t3code | stars=20248 | MIT | pushed=2026-08-24 | 
+imbue-ai/catalyst | stars=32 | AGPL-3.0 | pushed=2026-08-15 | A tool for semi-autonomous scientific research and discovery.
+langchain-ai/deepagents | stars=28330 | MIT | pushed=2026-08-24 | The batteries-included agent harness.
+semantica-agi/semantica | stars=10590 | MIT | pushed=2026-08-24 | Graph-Native Infrastructure for Context and Accountable AI Systems
+firecrawl/firecrawl | stars=171568 | AGPL-3.0 | pushed=2026-08-24 | The context API to search, scrape, and interact with the web at scale. 🔥
+aaif-goose/goose | stars=53349 | Apache-2.0 | pushed=2026-08-24 | an open source, extensible AI agent that goes beyond code suggestions - install,
+exa-labs/exa-mcp-server | stars=4919 | MIT | pushed=2026-08-21 | Exa MCP for web search and web crawling!
+lemonade-sdk/lemonade | stars=5447 | Apache-2.0 | pushed=2026-08-24 | Lemonade helps users discover and run local AI apps by serving optimized LLMs ri
+CopilotKit/OpenTag | stars=1114 | MIT | pushed=2026-08-21 | OpenTag: The Channels SDK starter application, a self-hosted AI on-call triage b
+Salomondiei08/oh-my-hermes | stars=854 | none | pushed=2026-07-28 | An opinionated workflow layer for building, shipping, and operating apps with He

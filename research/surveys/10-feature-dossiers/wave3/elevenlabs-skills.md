@@ -1,0 +1,20 @@
+# ElevenLabs Skills (elevenlabs/skills) — Feature Dossier
+Registry: #99 | Category: 05 | Verified: 425 stars, MIT, last push 2026-08-22 (GitHub API 2026-08-24)
+
+## Feature inventory
+- Ten official first-party skills following the [agentskills.io specification](https://agentskills.io/specification): `text-to-speech` (lifelike speech from text), `speech-to-text` (transcription with timestamps), `speech-engine` (real-time voice conversations for a custom LLM/chat agent), `agents` (conversational voice-AI agents), `sound-effects` (SFX from text descriptions), `music` (AI-composed tracks), `voice-changer` (speech-to-speech voice transformation), `voice-isolator` (background-noise removal/vocal isolation), `dubbing` (audio/video translation preserving original speakers' voices), `setup-api-key` (guided key acquisition/configuration) [VERIFIED-fetched:https://raw.githubusercontent.com/elevenlabs/skills/main/README.md]
+- Install + credential model: `npx skills add elevenlabs/skills`; every skill requires an `ELEVENLABS_API_KEY` environment variable, obtained via the setup-api-key skill or the ElevenLabs dashboard [VERIFIED-fetched:https://raw.githubusercontent.com/elevenlabs/skills/main/README.md]
+- SDK triad per skill: Python (`pip install elevenlabs`), JavaScript/TypeScript (`@elevenlabs/elevenlabs-js`, with an explicit warning against the outdated v1.x package name), and raw cURL REST — full setup guides in each skill's `references/` folder [VERIFIED-fetched:https://raw.githubusercontent.com/elevenlabs/skills/main/README.md]
+- Evaluation harness in `evals/`: **trigger evals** (does the skill fire for the right queries, ~3 min) and **functional evals** (does it produce correct output, ~15 min); runner `python3 evals/run_all.py` with per-skill selection and custom-model flag; each functional case runs in an isolated `cursor-agent` workspace that never modifies skill sources; results land in `evals/results/<timestamp>/report.md` + `results.json` [VERIFIED-fetched:https://raw.githubusercontent.com/elevenlabs/skills/main/README.md]
+
+## Per-feature verdict
+| Feature | Type | LastHarness landing | Rationale |
+|---|---|---|---|
+| Official TTS/music/SFX generation skills | ⚙ Feature adoption | Audio/media modality via §7.1 egress gateway | The recipes are worth registering for the audio dept, but by construction every call ships content to the ElevenLabs cloud API — permissible only as explicit allow-listed, owner-consented egress; never a default path |
+| Speech-to-text / voice-isolator skills | 🧩 Mechanism only | Audio dept §7.1 note | Transcription and isolation have strong local-first alternatives (e.g. local Whisper-class models); vendor API reserved for quality-critical cases behind gateway grants — locality litmus decides per workload |
+| `speech-engine` / `agents` real-time voice skills | 🧩 Mechanism only | Personal-agent audio surface § (gateway-gated) | Real-time voice loops mean continuous bidirectional egress; pattern documented, execution denied unless explicitly granted |
+| `setup-api-key` onboarding skill | 🧩 Mechanism only | Credential onboarding § | Env-var + guided-dashboard key provisioning is the right shape for any allow-listed external service LastHarness eventually grants |
+| Trigger + functional eval harness with isolated workspaces | ⚙ Feature adoption | §14.5 intake lifecycle — scan/validate step (proposal #2 evidence) | "Does it fire when it should / does it work when it fires" is precisely the automated validation a skill must pass between scan and register; isolated eval workspaces keep pinned sources pristine |
+
+## Notable absences
+Zero local/offline execution paths — every capability is a cloud-API round trip, so audio content leaves the boundary by design (privacy posture undocumented at README level). No rate-limit, retry, or cost-cap guidance. Evals depend on Cursor Agent CLI authentication — an external tool dependency inside the validation loop itself. No memory/state or decision-log integration. Skill set is exactly scoped to vendor APIs; nothing generalizes beyond the audio domain except the eval harness.

@@ -1,0 +1,11 @@
+PASS: old file: stubbed (0 table rows) - reconciliation via archive
+PASS: archive present
+PASS: all deliverable rows field-complete
+PASS: corrections ledger: 1 entries (#45)
+PASS: C1 reconciliation: all 109 accounted
+PASS: Current Research.md is pointer stub
+PASS: C3 extraction coverage: all 129 active entries present
+PASS: C4 dossier coverage: all 40 present with required sections
+FAIL: C5 wave-2 dossiers: 0/36 ok; bad: #7 sandcastle, #18 munder-difflin, #19 ai-memory, #32 open-claude-cowork, #33 secure-openclaw, #37 vercel-open-agents, #40 openclaw-composio-plugin, #61 cloudflare-computer, #62 opencodex, #81 herdr, #82 pi-black, #87 buzz, #110 scrapegraphai, #111 vimax, #112 galileo-stitch, #114 comp-crm, #119 meetily, #120 fluidvoice, #122 spiderfoot, #124 erpnext, #125 threeui, #126 lunar, #130 pocketbase, #128 qiaomu-seo, #20 open-viking, #30 flowise, #50 t3-code, #58 catalyst, #63 deep-agents, #72 semantica, #74 firecrawl, #86 goose, #94 exa, #103 lemonade, #105 opentag, #68 oh-my-hermes
+---
+VERDICT: RED (1 failures)
