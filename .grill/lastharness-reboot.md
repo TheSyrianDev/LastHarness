@@ -156,3 +156,4 @@ A harness for tech-literate power users (Linux users, Office-suite power users, 
 - Spikes 1 to 5 ran. Tool calls work natively on all 7 llama-swap models; thinking arrives in reasoning_content; tool_choice none and forced tool choice are ignored. Terminal front end: 3.3 MB at start, 5.7 MB after 30 turns. Embeddings find 9 to 10 of 10 paraphrases in English and Arabic, keyword alone 4 of 10. SQLite handles 100,000 pages. Append-only prompts cut extraction cost 4x to 20x. Not done: Ollama or LM Studio run, cloud run.
 - Decision (user: 'do what you recommend'): the local store is SQLite and the embedding model is EmbeddingGemma 2. Open: a native Arabic reader should check the test set; hybrid fusion needs tuning.
 - Decision (user): Milestone 1 starts now.
+- Decision (user: 'do what you recommend'): the local API uses plain HTTP on localhost with server-sent events for streaming. Checkpoints are committed as the user and pushed to backup without asking each time.
