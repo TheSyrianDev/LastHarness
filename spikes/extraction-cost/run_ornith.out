@@ -1,0 +1,16 @@
+== Ornith-1.5-35B-A3B: server ready in 5s, target ~3000 words of conversation
+  warm up (loads kernels, fills cache)       prompt_n=  2709 cache_n=     0 prompt_ms=     9076  wall=  9.10s
+ run 1
+  A cold: whole session + question           prompt_n=  2740 cache_n=     0 prompt_ms=     8657  wall=  8.67s
+     (session turns processed during chat)   prompt_n=  2709 cache_n=     0 prompt_ms=     8895  wall=  8.91s
+  B cache hit: question after session        prompt_n=    31 cache_n=  2709 prompt_ms=      789  wall=  0.80s
+  C slot saved after session: save 0.20s, file 342 MB; restore 0.18s (2709 tokens)
+  C after restore: question                  prompt_n=    31 cache_n=  2709 prompt_ms=      728  wall=  0.74s
+  D prefix changed (new system line)         prompt_n=  2751 cache_n=     0 prompt_ms=     8217  wall=  8.23s
+ run 2
+  A cold: whole session + question           prompt_n=  2740 cache_n=     0 prompt_ms=     8682  wall=  8.69s
+     (session turns processed during chat)   prompt_n=  2709 cache_n=     0 prompt_ms=     8889  wall=  8.90s
+  B cache hit: question after session        prompt_n=    31 cache_n=  2709 prompt_ms=      830  wall=  0.84s
+  C slot saved after session: save 0.27s, file 342 MB; restore 0.15s (2709 tokens)
+  C after restore: question                  prompt_n=    31 cache_n=  2709 prompt_ms=      756  wall=  0.77s
+  D prefix changed (new system line)         prompt_n=  2751 cache_n=     0 prompt_ms=     8263  wall=  8.28s

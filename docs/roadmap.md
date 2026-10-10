@@ -41,8 +41,8 @@ Throwaway code that answers the questions the design depends on.
 
 - [ ] Stream chat and tool calls against three servers (your llama-swap, Ollama or LM Studio, one cloud API). Record every place their behaviour differs.
 - [ ] Measure a minimal Rust terminal app's RAM (PSS, not RSS) idle and in a long session.
-- [ ] Prototype memory retrieval two ways (keyword only; keyword plus a small built-in embedding model) on real conversation text in English and Arabic, and compare. Candidate models: EmbeddingGemma 2 (text-only 270M configuration; Apache 2.0), EmbeddingGemma 1, BGE-M3, multilingual-e5-small. Measure RAM, load time and query time, and check each model's licence.
-- [ ] Decide the local store (SQLite is the default candidate).
+- [x] Prototype memory retrieval two ways (keyword only; keyword plus a small built-in embedding model) on real conversation text in English and Arabic, and compare. Candidate models: EmbeddingGemma 2 (text-only 270M configuration; Apache 2.0), EmbeddingGemma 1, BGE-M3, multilingual-e5-small. Measure RAM, load time and query time, and check each model's licence.
+- [x] Decide the local store: SQLite.
 - [ ] Measure end-of-session extraction cost on a local model: cold prefill vs prefix-cache hit vs slot save/restore (llama.cpp), on this machine.
 
 **Exit:** a short written answer to each, with numbers.

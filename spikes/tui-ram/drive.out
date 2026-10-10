@@ -1,0 +1,8 @@
+start        pss=3276 kB rss=5560 kB
+idle 10s     pss=3275 kB rss=5560 kB
+turn 1       pss=4349 kB rss=7496 kB
+turn 5       pss=4625 kB rss=7816 kB
+turn 10      pss=5025 kB rss=8216 kB
+turn 20      pss=5409 kB rss=8600 kB
+turn 30      pss=5689 kB rss=8880 kB
+idle after   pss=5609 kB rss=8800 kB  peak_pss=5689 kB

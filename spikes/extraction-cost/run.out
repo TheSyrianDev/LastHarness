@@ -1,0 +1,33 @@
+== LFM2.5-2.6B: server ready in 2s, target ~6000 words of conversation
+  warm up (loads kernels, fills cache)       prompt_n=  5175 cache_n=     0 prompt_ms=     1818  wall=  1.83s
+ run 1
+  A cold: whole session + question           prompt_n=  5201 cache_n=     0 prompt_ms=     1840  wall=  1.85s
+     (session turns processed during chat)   prompt_n=  5175 cache_n=     0 prompt_ms=     1826  wall=  1.84s
+  B cache hit: question after session        prompt_n=  1054 cache_n=  4147 prompt_ms=      409  wall=  0.42s
+  C slot saved after session: save 0.03s, file 44 MB; restore 0.01s (5175 tokens)
+  C after restore: question                  prompt_n=  1054 cache_n=  4147 prompt_ms=      411  wall=  0.43s
+  D prefix changed (new system line)         prompt_n=  5212 cache_n=     0 prompt_ms=     1843  wall=  1.86s
+ run 2
+  A cold: whole session + question           prompt_n=  5201 cache_n=     0 prompt_ms=     1837  wall=  1.85s
+     (session turns processed during chat)   prompt_n=  5175 cache_n=     0 prompt_ms=     1827  wall=  1.84s
+  B cache hit: question after session        prompt_n=  1054 cache_n=  4147 prompt_ms=      409  wall=  0.42s
+  C slot saved after session: save 0.05s, file 44 MB; restore 0.01s (5175 tokens)
+  C after restore: question                  prompt_n=  1054 cache_n=  4147 prompt_ms=      414  wall=  0.43s
+  D prefix changed (new system line)         prompt_n=  5212 cache_n=     0 prompt_ms=     1840  wall=  1.86s
+== Spark-X2.5-4B: server ready in 2s, target ~6000 words of conversation
+  warm up (loads kernels, fills cache)       prompt_n=  5194 cache_n=     0 prompt_ms=     3158  wall=  3.20s
+ run 1
+  A cold: whole session + question           prompt_n=  5216 cache_n=     0 prompt_ms=     3198  wall=  3.23s
+     (session turns processed during chat)   prompt_n=  5194 cache_n=     0 prompt_ms=     3160  wall=  3.19s
+  B cache hit: question after session        prompt_n=   120 cache_n=  5096 prompt_ms=      179  wall=  0.21s
+  C slot saved after session: save 0.14s, file 212 MB; restore 0.05s (5194 tokens)
+  C after restore: question                  prompt_n=   169 cache_n=  5047 prompt_ms=      205  wall=  0.23s
+  D prefix changed (new system line)         prompt_n=  5224 cache_n=     0 prompt_ms=     3235  wall=  3.27s
+ run 2
+  A cold: whole session + question           prompt_n=  5216 cache_n=     0 prompt_ms=     3240  wall=  3.27s
+     (session turns processed during chat)   prompt_n=  5194 cache_n=     0 prompt_ms=     3240  wall=  3.27s
+  B cache hit: question after session        prompt_n=   120 cache_n=  5096 prompt_ms=      161  wall=  0.19s
+  C slot saved after session: save 0.18s, file 212 MB; restore 0.06s (5194 tokens)
+  C after restore: question                  prompt_n=   169 cache_n=  5047 prompt_ms=      206  wall=  0.23s
+  D prefix changed (new system line)         prompt_n=  5224 cache_n=     0 prompt_ms=     3264  wall=  3.29s
+server died: /tmp/ex-Ornith-1.5-35B-A3B.log

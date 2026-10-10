@@ -77,7 +77,7 @@ LastHarness is a harness for AI models. It is **department-led**, **local-first*
 ```
 
 - **Core in Rust**, exposing a local API. All front ends are thin clients.
-- **Local store.** SQLite is the default candidate; confirmed by the Milestone 0 spike.
+- **Local store.** SQLite (decided after the Milestone 0 spike: 100,000 pages gave a 482 MB file, a 25 ms keyword query and a 70 ms plain vector scan; no corruption after kill -9).
 - **OS-specific code** (paths, shell, key storage, process control) sits behind one thin layer so the core ports to macOS and Windows without a rewrite.
 - Platforms: development is Linux-only and private; the first public release ships on Linux, macOS and Windows (§14).
 
@@ -212,7 +212,7 @@ A maintenance pass looks for contradictions, duplicates, stale facts and orphan 
 
 ### 6.7 Search and storage — Decided (shape), Open (model and store)
 
-Search is **hybrid**. Keyword search is always on. **Semantic search** (so that "sadness" also finds "sad" and "cry") uses a small multilingual embedding model that ships with the core and runs on the CPU. It loads on demand and unloads in idle mode. The model is chosen in Milestone 0 by testing English and Arabic, EmbeddingGemma 2's text-only mode first (Apache 2.0). The user can point it at their own embedding endpoint instead, and embeddings never go through a cloud endpoint unless the user allows it. Results from both are merged and shown progressively: a cheap list first, expanding only what the task needs. Memory sent per request is bounded. Every change is recorded in an append-only history. The store (SQLite is the candidate) is confirmed in Milestone 0.
+Search is **hybrid**. Keyword search is always on. **Semantic search** (so that "sadness" also finds "sad" and "cry") uses a small multilingual embedding model that ships with the core and runs on the CPU. It loads on demand and unloads in idle mode. The model is EmbeddingGemma 2 (Apache 2.0, 295 MB), chosen after the Milestone 0 English and Arabic test; the Arabic test set still needs a native reader. The user can point it at their own embedding endpoint instead, and embeddings never go through a cloud endpoint unless the user allows it. Results from both are merged and shown progressively: a cheap list first, expanding only what the task needs. Memory sent per request is bounded. Every change is recorded in an append-only history. The store is SQLite.
 
 ---
 
@@ -491,7 +491,7 @@ Onboarding sets these at first run with safe defaults. How it presents them is d
 
 ## 16. Open Decisions
 
-1. The embedding model and the store (Milestone 0 spike).
+1. ~~The embedding model and the store~~ decided: EmbeddingGemma 2 and SQLite.
 2. Onboarding presentation (decide last).
 3. The name is LastHarness ("the last harness you'll need"). Before release, check the domain, package names and trademark (Harness is also a DevOps company).
 4. Whether the spec should gain detailed sections (data formats, API schema) as the design firms up.

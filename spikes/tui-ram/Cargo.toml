@@ -1,0 +1,15 @@
+[package]
+name = "tui-ram"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = "0.3"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3

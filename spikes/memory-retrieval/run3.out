@@ -1,0 +1,2 @@
+corpus: 230 docs (20 gold, 60 written fillers, 150 real English chunks)
+multilingual-e5-small: server died, see /tmp/ls-multilingual-e5-small.log

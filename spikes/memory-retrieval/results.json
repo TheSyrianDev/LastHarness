@@ -1,0 +1,285 @@
+{
+ "results": {
+  "keyword (BM25)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    4,
+    10,
+    0.26880952380952383
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    4,
+    10,
+    0.32552308802308805
+   ],
+   "cross": [
+    2,
+    4,
+    0.4
+   ]
+  },
+  "embeddinggemma-2 (embedding only)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    9,
+    10,
+    0.6875
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    9,
+    10,
+    0.7277777777777776
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "embeddinggemma-2 (hybrid: BM25 + embedding)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    7,
+    10,
+    0.49916666666666665
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    8,
+    10,
+    0.5877777777777777
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "embeddinggemma-1 (embedding only)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    10,
+    10,
+    0.675
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    10,
+    10,
+    0.8833333333333334
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "embeddinggemma-1 (hybrid: BM25 + embedding)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    7,
+    10,
+    0.4769444444444444
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    8,
+    10,
+    0.7055555555555555
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "bge-m3 (embedding only)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    10,
+    10,
+    0.7833333333333333
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    9,
+    10,
+    0.7875
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "bge-m3 (hybrid: BM25 + embedding)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    7,
+    10,
+    0.5580952380952382
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    7,
+    10,
+    0.6097222222222223
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "multilingual-e5-small (embedding only)": {
+   "lexical-en": [
+    0,
+    6,
+    0.03601217642120024
+   ],
+   "paraphrase-en": [
+    1,
+    10,
+    0.13298647024531407
+   ],
+   "lexical-ar": [
+    0,
+    6,
+    0.044065479591795374
+   ],
+   "paraphrase-ar": [
+    0,
+    10,
+    0.0442099430257325
+   ],
+   "cross": [
+    0,
+    4,
+    0.04754884703397289
+   ]
+  },
+  "multilingual-e5-small (hybrid: BM25 + embedding)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    1,
+    10,
+    0.13074958392840988
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    2,
+    10,
+    0.1783994708994709
+   ],
+   "cross": [
+    0,
+    4,
+    0.04754884703397289
+   ]
+  }
+ },
+ "perf": {
+  "embeddinggemma-2": {
+   "file_mb": 295,
+   "dim": 768,
+   "load_s": 1.6,
+   "ram_mb_after_load": 767,
+   "ram_mb_after_embedding": 1180,
+   "docs_per_s": 27.1,
+   "query_ms": 20.5
+  },
+  "embeddinggemma-1": {
+   "file_mb": 318,
+   "dim": 768,
+   "load_s": 1.0,
+   "ram_mb_after_load": 731,
+   "ram_mb_after_embedding": 1030,
+   "docs_per_s": 36.7,
+   "query_ms": 18.4
+  },
+  "bge-m3": {
+   "file_mb": 605,
+   "dim": 1024,
+   "load_s": 1.4,
+   "ram_mb_after_load": 1110,
+   "ram_mb_after_embedding": 1277,
+   "docs_per_s": 19.4,
+   "query_ms": 21.9
+  },
+  "multilingual-e5-small": {
+   "file_mb": 125,
+   "dim": 384,
+   "load_s": 0.8,
+   "ram_mb_after_load": 523,
+   "ram_mb_after_embedding": 781,
+   "docs_per_s": 100.3,
+   "query_ms": 3.4
+  }
+ }
+}

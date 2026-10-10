@@ -151,3 +151,8 @@ A harness for tech-literate power users (Linux users, Office-suite power users, 
 - Rule (user): never commit as Claude. Commits carry the user's identity only, with no Co-Authored-By or Generated-with lines naming an agent.
 - Clarification (user): 'stealth' only means the code is not on GitHub or any public host yet. It does not forbid using model providers or other tools during development.
 - Rule (user): Claude Code only builds this repository. fable-foreman delegates to its Claude agents only, never to Codex, Grok or other agents.
+
+## Milestone 0 results
+- Spikes 1 to 5 ran. Tool calls work natively on all 7 llama-swap models; thinking arrives in reasoning_content; tool_choice none and forced tool choice are ignored. Terminal front end: 3.3 MB at start, 5.7 MB after 30 turns. Embeddings find 9 to 10 of 10 paraphrases in English and Arabic, keyword alone 4 of 10. SQLite handles 100,000 pages. Append-only prompts cut extraction cost 4x to 20x. Not done: Ollama or LM Studio run, cloud run.
+- Decision (user: 'do what you recommend'): the local store is SQLite and the embedding model is EmbeddingGemma 2. Open: a native Arabic reader should check the test set; hybrid fusion needs tuning.
+- Decision (user): Milestone 1 starts now.

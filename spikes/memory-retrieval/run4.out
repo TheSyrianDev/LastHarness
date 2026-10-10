@@ -1,0 +1,19 @@
+corpus: 230 docs (20 gold, 60 written fillers, 150 real English chunks)
+
+Top-5 hit rate (and MRR) per query group:
+method                                                lexical-en     paraphrase-en        lexical-ar     paraphrase-ar             cross
+keyword (BM25)                                      6/6 mrr=1.00     1/10 mrr=0.07      6/6 mrr=1.00     3/10 mrr=0.24      2/4 mrr=0.40
+embeddinggemma-2 (embedding only)                   6/6 mrr=1.00     9/10 mrr=0.69      6/6 mrr=1.00     9/10 mrr=0.73      4/4 mrr=1.00
+embeddinggemma-2 (hybrid: BM25 + embedding)         6/6 mrr=1.00     4/10 mrr=0.28      6/6 mrr=1.00     8/10 mrr=0.46      4/4 mrr=0.88
+embeddinggemma-1 (embedding only)                   6/6 mrr=1.00    10/10 mrr=0.68      6/6 mrr=1.00    10/10 mrr=0.88      4/4 mrr=1.00
+embeddinggemma-1 (hybrid: BM25 + embedding)         6/6 mrr=1.00     3/10 mrr=0.23      6/6 mrr=1.00    10/10 mrr=0.63      4/4 mrr=0.88
+bge-m3 (embedding only)                             6/6 mrr=1.00    10/10 mrr=0.78      6/6 mrr=1.00     9/10 mrr=0.79      4/4 mrr=1.00
+bge-m3 (hybrid: BM25 + embedding)                   6/6 mrr=1.00     4/10 mrr=0.31      6/6 mrr=1.00    10/10 mrr=0.65      4/4 mrr=0.88
+multilingual-e5-small (embedding only)              0/6 mrr=0.04     1/10 mrr=0.13      0/6 mrr=0.04     0/10 mrr=0.04      0/4 mrr=0.05
+multilingual-e5-small (hybrid: BM25 + embedding)      2/6 mrr=0.25     1/10 mrr=0.12      3/6 mrr=0.57     1/10 mrr=0.11      0/4 mrr=0.08
+
+Performance (CPU, 6 threads, Q8):
+embeddinggemma-2 {'file_mb': 295, 'dim': 768, 'load_s': 1.6, 'ram_mb_after_load': 769, 'ram_mb_after_embedding': 1180, 'docs_per_s': 27.7, 'query_ms': 21.1}
+embeddinggemma-1 {'file_mb': 318, 'dim': 768, 'load_s': 1.0, 'ram_mb_after_load': 731, 'ram_mb_after_embedding': 1030, 'docs_per_s': 36.0, 'query_ms': 16.9}
+bge-m3 {'file_mb': 605, 'dim': 1024, 'load_s': 1.4, 'ram_mb_after_load': 1110, 'ram_mb_after_embedding': 1277, 'docs_per_s': 20.2, 'query_ms': 20.8}
+multilingual-e5-small {'file_mb': 125, 'dim': 384, 'load_s': 0.8, 'ram_mb_after_load': 523, 'ram_mb_after_embedding': 781, 'docs_per_s': 100.7, 'query_ms': 3.1}

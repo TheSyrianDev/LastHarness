@@ -12,7 +12,7 @@ An AI harness, like Claude Code, Codex or Pi, but **department-led**, **local-fi
 - **Projects.** If you ask for a project, the assistant spawns a **project leader**, a clone of itself that cannot spawn another leader and is locked to one folder by default. Workers down the line can ask their caller for permission (for example `sudo` or something outside the folder), and each level accepts, rejects or passes it up. It acts like a CEO and calls the departments.
 - **Failures.** A stuck worker reports to whoever called it. The caller can retry, change the model, do it itself, spawn a subagent or hand it off. Small mistakes are fixed in place. Unresolved failures go up to you. Attempts per step are capped (default 3).
 - **Away mode.** When you are away the assistant asks no questions. It decides within your permission rules, never approves sensitive things, logs every decision and gives you a summary when you return.
-- **Memory.** Plain Markdown files you can read, edit and export, plus a short "about you" block, raw conversations in a database, and separate rules, style and skills. Changed facts are archived, never overwritten. Search combines keywords with a small built-in multilingual embedder. Incognito sessions store nothing.
+- **Memory.** Plain Markdown files you can read, edit and export, plus a short "about you" block, raw conversations in a database, and separate rules, style and skills. Changed facts are archived, never overwritten. Search combines keywords with a small built-in multilingual embedder (EmbeddingGemma 2), stored in SQLite. Incognito sessions store nothing.
 - **Learning.** Rules are proposed after a pattern repeats (default 3 times) and the model confirms it. Skills follow the Agent Skills format. Everything learned is confirmed by you and revertible.
 - **Endpoints.** Any OpenAI-compatible or Anthropic-style endpoint, llama-swap, Ollama, LM Studio, OpenRouter. Model types (frontier, mid-tier, fastest, plus your own) let roles ask for a kind of model, not a name.
 - **Permissions and privacy.** Reads are automatic. Writes in the project ask once per session. Outside the project, deleting, installing and network always ask. You can ask for everything, set allow rules, or bypass with a warning. `sudo` is off for agents unless you turn it on. Sensitive data never goes to cloud endpoints or messaging channels. One activity log records everything.
@@ -25,7 +25,7 @@ An AI harness, like Claude Code, Codex or Pi, but **department-led**, **local-fi
 
 ## Stack and timeline
 
-Rust core with a local API. Thin front ends: terminal first, then browser, then a native desktop GUI (no Electron), then phone apps. Development is Linux-only and private; the first public release ships on Linux, macOS, Windows, Android and iOS together.
+Rust core with a local API. Thin front ends: terminal first, then browser, then a native desktop GUI (no Electron), then phone apps. Development is Linux-only (through Milestone 9) and private, with macOS and Windows built in Milestone 10; the first public release ships on Linux, macOS, Windows, Android and iOS together.
 
 | Milestone | Weeks |
 |---|---|
@@ -47,11 +47,10 @@ About 40 weeks. This is a lower bound: search, the activity log, auto-compaction
 ## Still open
 
 - **Onboarding presentation:** decided last, on purpose.
-- **Embedding model and store:** settled by the Milestone 0 spike (English and Arabic test).
 - **Name check:** domain, packages and trademark before release (Harness is also a DevOps company).
 - **Themes:** the format, and how Omarchy theming is followed.
 - **Optional:** detailed spec sections (data formats, API schema).
 
 ## What happens next
 
-Milestone 0, five throwaway spikes under `spikes/`, each answered with numbers: (1) chat and tool calls against three servers (llama-swap, Ollama or LM Studio, one cloud API); (2) Rust terminal app RAM, idle and in a long session; (3) memory retrieval, keyword only versus keyword plus a small embedding model, in English and Arabic; (4) the local store decision, with SQLite as the default candidate; (5) the cost of end-of-session extraction on a local model. Nothing is coded yet. Git is local, with one backup folder on the Seagate drive.
+Milestone 0, five throwaway spikes under `spikes/`, each answered with numbers: (1) chat and tool calls against three servers (llama-swap, Ollama or LM Studio, one cloud API); (2) Rust terminal app RAM, idle and in a long session; (3) memory retrieval, keyword only versus keyword plus a small embedding model, in English and Arabic; (4) the local store decision, with SQLite as the default candidate; (5) the cost of end-of-session extraction on a local model. The spikes are done: SQLite and EmbeddingGemma 2 are chosen, and Milestone 1 has started. Git is local, with one backup folder on the Seagate drive.
