@@ -8,6 +8,7 @@
 //!                                                          usage, finish, done | step_limit | error
 //! POST   /v1/sessions/{id}/answers/{ask}    {answer: "yes"|"no"}
 //! POST   /v1/sessions/{id}/cancel
+//! GET    /v1/models                         -> {models: [name, ...]}
 //! GET    /v1/health
 //! ```
 //! Every request needs `Authorization: Bearer <token>` and a loopback `Host` header.
@@ -65,6 +66,7 @@ pub fn router<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: 
     let guard = Arc::new(auth::Guard { token, hosts: vec![format!("127.0.0.1:{port}"), format!("localhost:{port}"), format!("[::1]:{port}")] });
     Router::new()
         .route("/v1/health", get(|| async { Json(json!({"ok": true})) }))
+        .route("/v1/models", get(list_models::<M>))
         .route("/v1/sessions", post(create_session::<M>))
         .route("/v1/sessions/{id}", get(get_session::<M>).delete(delete_session::<M>))
         .route("/v1/sessions/{id}/turns", post(start_turn::<M>))
@@ -79,6 +81,11 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.0, Json(json!({"error": self.1}))).into_response()
     }
+}
+
+async fn list_models<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
+    let models = st.model.models().await.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, e.explain()))?;
+    Ok(Json(json!({"models": models})))
 }
 
 #[derive(Deserialize)]

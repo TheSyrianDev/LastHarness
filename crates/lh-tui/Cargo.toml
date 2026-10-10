@@ -1,0 +1,24 @@
+[package]
+name = "lh-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lh"
+path = "src/main.rs"
+
+[dependencies]
+lh-provider = { path = "../lh-provider" }
+tokio = { workspace = true, features = ["sync", "fs"] }
+reqwest.workspace = true
+futures-util.workspace = true
+serde_json.workspace = true
+ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+[dev-dependencies]
+lh-core = { path = "../lh-core" }
+lh-tools = { path = "../lh-tools" }
+tempfile = "3"
+axum = "0.8"

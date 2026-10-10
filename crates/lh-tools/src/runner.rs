@@ -6,11 +6,20 @@ use crate::{Answer, AskRequest, Asker, Decision, Permissions, ToolSet};
 /// Anything that can answer a chat request. `Provider` is the real one; tests use a script.
 pub trait Model: Send + Sync {
     fn complete(&self, req: &ChatRequest, on_event: &mut (dyn FnMut(Event) + Send)) -> impl std::future::Future<Output = Result<Response, Error>> + Send;
+
+    /// Model names this endpoint offers. Servers that cannot list them return an empty list.
+    fn models(&self) -> impl std::future::Future<Output = Result<Vec<String>, Error>> + Send {
+        async { Ok(Vec::new()) }
+    }
 }
 
 impl Model for Provider {
     async fn complete(&self, req: &ChatRequest, on_event: &mut (dyn FnMut(Event) + Send)) -> Result<Response, Error> {
         self.chat_stream(req, on_event).await
+    }
+
+    async fn models(&self) -> Result<Vec<String>, Error> {
+        Provider::models(self).await
     }
 }
 

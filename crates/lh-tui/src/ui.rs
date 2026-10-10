@@ -1,0 +1,136 @@
+use ratatui::prelude::*;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+
+use crate::app::{App, Entry};
+
+const MAX_TOOL_LINES: usize = 6;
+
+fn clip(s: &str, n: usize) -> String {
+    let one: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one.chars().count() > n {
+        format!("{}…", one.chars().take(n).collect::<String>())
+    } else {
+        one
+    }
+}
+
+fn lines(app: &App) -> Vec<Line<'static>> {
+    let dim = Style::new().add_modifier(Modifier::DIM);
+    let mut out: Vec<Line> = vec![];
+    for e in &app.entries {
+        match e {
+            Entry::User(t) => {
+                out.push(Line::from(Span::styled("you", Style::new().bold().fg(Color::Cyan))));
+                out.extend(t.lines().map(|l| Line::from(l.to_string())));
+            }
+            Entry::Assistant(t) => {
+                out.push(Line::from(Span::styled("assistant", Style::new().bold().fg(Color::Green))));
+                out.extend(t.lines().map(|l| Line::from(l.to_string())));
+            }
+            Entry::Thinking(t) if app.show_thinking => {
+                out.extend(t.lines().map(|l| Line::from(Span::styled(format!("│ {l}"), dim))));
+            }
+            Entry::Thinking(t) => out.push(Line::from(Span::styled(format!("· thinking ({} characters, Ctrl-T to show)", t.chars().count()), dim))),
+            Entry::Tool { name, arguments, result, .. } => {
+                out.push(Line::from(vec![Span::styled("⚙ ", Style::new().fg(Color::Yellow)), Span::raw(format!("{name} {}", clip(arguments, 100)))]));
+                if let Some(r) = result {
+                    for l in r.lines().take(MAX_TOOL_LINES) {
+                        out.push(Line::from(Span::styled(format!("  {}", clip(l, 120)), dim)));
+                    }
+                    if r.lines().count() > MAX_TOOL_LINES {
+                        out.push(Line::from(Span::styled(format!("  … {} more lines", r.lines().count() - MAX_TOOL_LINES), dim)));
+                    }
+                }
+            }
+            Entry::Notice(t) => out.push(Line::from(Span::styled(t.clone(), Style::new().fg(Color::Yellow)))),
+            Entry::Error(t) => out.push(Line::from(Span::styled(format!("error: {t}"), Style::new().fg(Color::Red).bold()))),
+        }
+        out.push(Line::raw(""));
+    }
+    out
+}
+
+pub fn draw(f: &mut Frame, app: &App) {
+    let rows = Layout::vertical([Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)]).split(f.area());
+    let body = lines(app);
+    let para = Paragraph::new(body).wrap(Wrap { trim: false });
+    let total = para.line_count(rows[0].width) as u16;
+    let max_scroll = total.saturating_sub(rows[0].height);
+    let from_top = max_scroll.saturating_sub(app.scroll.min(max_scroll));
+    f.render_widget(para.scroll((from_top, 0)), rows[0]);
+
+    let title = if app.busy { "you (working, Esc to cancel)" } else { "you (Enter to send)" };
+    f.render_widget(Paragraph::new(app.input.as_str()).block(Block::bordered().title(title)), rows[1]);
+
+    let usage = app.usage.map(|(p, c, k)| format!("  tokens: {p} in ({k} cached), {c} out")).unwrap_or_default();
+    let hint = "Ctrl-T thinking  PgUp/PgDn scroll  Ctrl-D quit";
+    f.render_widget(Paragraph::new(format!(" {}{usage}   {hint}", app.model)).style(Style::new().add_modifier(Modifier::DIM)), rows[2]);
+
+    if let Some(q) = &app.question {
+        let area = centered(f.area(), 70, 9);
+        f.render_widget(Clear, area);
+        let text = vec![
+            Line::from(Span::styled(format!("{} wants to use {}", q.worker, q.tool), Style::new().bold())),
+            Line::raw(""),
+            Line::raw(clip(&q.what, 200)),
+            Line::from(format!("Why it asks: {}", q.reason)),
+            Line::raw(""),
+            Line::from(Span::styled("y = allow    n = refuse", Style::new().fg(Color::Yellow).bold())),
+        ];
+        f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }).block(Block::default().borders(Borders::ALL).title("Permission needed")), area);
+    }
+}
+
+fn centered(area: Rect, width_pct: u16, height: u16) -> Rect {
+    let w = area.width * width_pct / 100;
+    Rect { x: area.x + (area.width - w) / 2, y: area.y + area.height.saturating_sub(height) / 2, width: w, height: height.min(area.height) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::ServerEvent;
+    use ratatui::backend::TestBackend;
+
+    fn screen(app: &App, w: u16, h: u16) -> String {
+        let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+        t.draw(|f| draw(f, app)).unwrap();
+        let buf = t.backend().buffer().clone();
+        (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>()).collect::<Vec<_>>().join("\n")
+    }
+
+    #[test]
+    fn shows_conversation_tools_and_the_status_line() {
+        let mut a = App::new("tiny-model");
+        a.start_turn("read it".into());
+        a.apply(ServerEvent::Reasoning("hmm".into()));
+        a.apply(ServerEvent::ToolStart { id: "1".into(), name: "read_file".into(), arguments: "{\"path\":\"a.txt\"}".into() });
+        a.apply(ServerEvent::ToolResult { id: "1".into(), text: "file text".into() });
+        a.apply(ServerEvent::Text("It says file text.".into()));
+        a.apply(ServerEvent::Usage { prompt_tokens: 10, completion_tokens: 5, cached_tokens: 2 });
+        let s = screen(&a, 80, 20);
+        for want in ["you", "read it", "thinking (3 characters", "read_file", "file text", "assistant", "It says file text.", "tiny-model", "10 in (2 cached)"] {
+            assert!(s.contains(want), "missing {want:?} in:\n{s}");
+        }
+    }
+
+    #[test]
+    fn a_question_is_drawn_over_the_chat() {
+        let mut a = App::new("m");
+        a.apply(ServerEvent::Ask { id: "a1".into(), tool: "write_file".into(), what: "Write(\"/p/x\")".into(), reason: "changes files in the project".into(), worker: "assistant".into() });
+        let s = screen(&a, 80, 20);
+        assert!(s.contains("Permission needed") && s.contains("assistant wants to use write_file") && s.contains("y = allow"), "{s}");
+    }
+
+    #[test]
+    fn long_chats_follow_the_bottom_and_can_scroll_up() {
+        let mut a = App::new("m");
+        for i in 0..60 {
+            a.apply(ServerEvent::Text(format!("line {i}\n")));
+        }
+        assert!(screen(&a, 60, 12).contains("line 59"));
+        a.scroll = 1000;
+        let s = screen(&a, 60, 12);
+        assert!(s.contains("line 0") && !s.contains("line 59"), "{s}");
+    }
+}

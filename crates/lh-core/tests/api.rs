@@ -19,6 +19,9 @@ impl Script {
     }
 }
 impl Model for Script {
+    async fn models(&self) -> Result<Vec<String>, Error> {
+        Ok(vec!["tiny".into(), "big".into()])
+    }
     async fn complete(&self, _r: &ChatRequest, on: &mut (dyn FnMut(Event) + Send)) -> Result<Response, Error> {
         let next = self.replies.lock().unwrap().pop().expect("model asked more often than scripted");
         let Some(r) = next else { return std::future::pending().await };
@@ -160,6 +163,8 @@ async fn bad_requests_get_clear_errors() {
     let s = start(vec![]).await;
     let r = s.post("/v1/sessions", json!({"model":"m","project_dir":"/definitely/not/here"})).send().await.unwrap();
     assert_eq!(r.status(), 400);
+    let m: Value = s.get("/v1/models").send().await.unwrap().json().await.unwrap();
+    assert_eq!(m["models"], json!(["tiny", "big"]));
     assert_eq!(s.get("/v1/sessions/nope").send().await.unwrap().status(), 404);
     let d = tempfile::tempdir().unwrap();
     let id = s.session(d.path()).await;
