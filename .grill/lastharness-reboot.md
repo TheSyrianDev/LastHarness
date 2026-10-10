@@ -149,3 +149,5 @@ A harness for tech-literate power users (Linux users, Office-suite power users, 
 - Decision: development is internal and in stealth. Git stays local only, with no GitHub or other remote, until the first public release.
 - Decision: a bare backup repository lives on the user's external 2 TB Seagate drive (exFAT, /run/media/omar/Seagate/LastHarness.git), added as the remote `backup`, pushed manually. No network remote until release.
 - Rule (user): never commit as Claude. Commits carry the user's identity only, with no Co-Authored-By or Generated-with lines naming an agent.
+- Clarification (user): 'stealth' only means the code is not on GitHub or any public host yet. It does not forbid using model providers or other tools during development.
+- Rule (user): Claude Code only builds this repository. fable-foreman delegates to its Claude agents only, never to Codex, Grok or other agents.

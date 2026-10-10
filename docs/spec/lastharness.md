@@ -470,7 +470,7 @@ Onboarding sets these at first run with safe defaults. How it presents them is d
 
 ## 14. Platforms, Release and Licence
 
-- **Development:** Linux only, private and in stealth, until the first public release. Git is local, with one backup remote that is a plain folder on the user's external drive. There is no GitHub or other network remote until release.
+- **Development:** Linux only, and private until the first public release: the code is not on GitHub or any public host yet. Git is local, with one backup remote that is a plain folder on the user's external drive.
 - **First public release:** Linux, macOS and Windows together, with the mobile app on Android and iOS.
 - **Open source** from the first release. The harness, plugin format and apps are **Apache-2.0**. The relay server is **AGPL-3.0**, in a separate repository, so a competitor cannot run a closed hosted fork; self-hosting stays free.
 - The roadmap, including the effort for each of these, is in [`../roadmap.md`](../roadmap.md).

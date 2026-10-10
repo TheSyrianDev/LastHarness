@@ -54,4 +54,4 @@ About 40 weeks. This is a lower bound: search, the activity log, auto-compaction
 
 ## What happens next
 
-If this matches what you meant: Milestone 0, the five spikes (embedding model, store, mobile keys/push/Arabic, GUI toolkit RAM and Arabic, tool-call compat table). Nothing is coded yet and there is no git repository.
+Milestone 0, five throwaway spikes under `spikes/`, each answered with numbers: (1) chat and tool calls against three servers (llama-swap, Ollama or LM Studio, one cloud API); (2) Rust terminal app RAM, idle and in a long session; (3) memory retrieval, keyword only versus keyword plus a small embedding model, in English and Arabic; (4) the local store decision, with SQLite as the default candidate; (5) the cost of end-of-session extraction on a local model. Nothing is coded yet. Git is local, with one backup folder on the Seagate drive.
