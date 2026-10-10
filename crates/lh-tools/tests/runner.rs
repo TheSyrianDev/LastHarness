@@ -13,6 +13,10 @@ impl Script {
     }
 }
 impl Model for Script {
+    async fn generate_images(&self, _m: &str, prompt: &str, _s: Option<&str>, _n: u32) -> Result<Vec<GeneratedImage>, Error> {
+        assert_eq!(prompt, "a red fox in snow");
+        Ok(vec![GeneratedImage { bytes: b"\x89PNG\r\n\x1a\nfake".to_vec(), ext: "png" }])
+    }
     async fn complete(&self, _req: &ChatRequest, _on: &mut (dyn FnMut(Event) + Send)) -> Result<Response, Error> {
         Ok(self.0.lock().unwrap().pop().expect("model asked more often than scripted"))
     }
@@ -55,7 +59,7 @@ async fn reads_then_answers() {
     let perms = Permissions::new(d.path()).unwrap();
     let model = Script::new(vec![tools_reply(vec![call("1", "read_file", r#"{"path":"a.txt"}"#)]), text_reply("it says hello")]);
     let (u, mut r) = (user(Answer::No), req());
-    let end = run_turn(&model, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    let end = run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
     assert!(matches!(end, TurnEnd::Done(ref x) if x.text == "it says hello"));
     assert_eq!(tool_results(&r), ["hello file"]);
     assert_eq!(u.asked.load(Ordering::SeqCst), 0, "reads in the project do not ask");
@@ -72,7 +76,7 @@ async fn write_asks_once_then_not_again() {
         text_reply("done"),
     ]);
     let (u, mut r) = (user(Answer::Yes), req());
-    run_turn(&model, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
     assert_eq!(std::fs::read_to_string(d.path().join("src/a.txt")).unwrap(), "one");
     assert_eq!(std::fs::read_to_string(d.path().join("b.txt")).unwrap(), "two");
     assert_eq!(u.asked.load(Ordering::SeqCst), 1);
@@ -84,7 +88,7 @@ async fn no_means_nothing_happens() {
     let perms = Permissions::new(d.path()).unwrap();
     let model = Script::new(vec![tools_reply(vec![call("1", "write_file", r#"{"path":"a.txt","content":"x"}"#)]), text_reply("ok, stopping")]);
     let (u, mut r) = (user(Answer::No), req());
-    run_turn(&model, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
     assert!(!d.path().join("a.txt").exists());
     assert!(tool_results(&r)[0].starts_with("The user said no"));
 }
@@ -103,7 +107,7 @@ async fn escapes_sudo_and_unknown_tools_are_stopped() {
         text_reply("ok"),
     ]);
     let (u, mut r) = (user(Answer::No), req());
-    run_turn(&model, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
     let res = tool_results(&r);
     assert!(res[0].starts_with("Denied: sudo is turned off"), "{res:?}");
     assert!(res[1].starts_with("The user said no"), "outside the project asks, and the answer was no");
@@ -120,7 +124,7 @@ async fn cut_off_calls_are_never_run() {
     cut.repaired = true;
     let model = Script::new(vec![tools_reply(vec![cut]), text_reply("ok")]);
     let (u, mut r) = (user(Answer::Yes), req());
-    run_turn(&model, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
     assert!(!d.path().join("should-not-exist").exists());
     assert!(tool_results(&r)[0].contains("cut off"));
 }
@@ -133,7 +137,7 @@ async fn a_worker_only_gets_its_tools_and_steps_are_capped() {
     let looping: Vec<_> = (0..5).map(|i| tools_reply(vec![call(&i.to_string(), "write_file", r#"{"path":"a","content":"x"}"#)])).collect();
     let model = Script::new(looping);
     let (u, mut r) = (user(Answer::Yes), req());
-    let end = run_turn(&model, &mut r, &read_only, &perms, &u, &TurnOptions { max_steps: 3, worker: "researcher".into() }, |_| {}).await.unwrap();
+    let end = run_turn(&model, &NoMeter, &mut r, &read_only, &perms, &u, &TurnOptions { max_steps: 3, worker: "researcher".into() }, |_| {}).await.unwrap();
     assert!(matches!(end, TurnEnd::StepLimit));
     assert!(!d.path().join("a").exists());
     assert!(tool_results(&r).iter().all(|t| t.contains("not available")));
@@ -154,9 +158,107 @@ async fn command_runs_in_project_with_exit_code_and_timeout() {
         text_reply("ok"),
     ]);
     let (u, mut r) = (user(Answer::No), req());
-    run_turn(&model, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
     let res = tool_results(&r);
     assert!(res[0].starts_with("exit code 0") && res[0].contains(&d.path().canonicalize().unwrap().display().to_string()), "{}", res[0]);
     assert!(res[1].starts_with("exit code 2") && res[1].contains("[stderr]"), "{}", res[1]);
     assert!(res[2].contains("ran longer than 1 s"), "{}", res[2]);
+}
+
+struct Capped {
+    verdict: MeterVerdict,
+    calls: AtomicUsize,
+    recorded: AtomicUsize,
+}
+impl Meter for Capped {
+    async fn before(&self, _: &ChatRequest) -> MeterVerdict {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.verdict.clone()
+    }
+    async fn after(&self, _: &ChatRequest, _: Option<Usage>) {
+        self.recorded.fetch_add(1, Ordering::SeqCst);
+    }
+    async fn before_media(&self, _: &str, _: u32) -> MeterVerdict {
+        self.verdict.clone()
+    }
+    async fn after_media(&self, _: &str, _: u32) {
+        self.recorded.fetch_add(1, Ordering::SeqCst);
+    }
+}
+fn meter(v: MeterVerdict) -> Capped {
+    Capped { verdict: v, calls: AtomicUsize::new(0), recorded: AtomicUsize::new(0) }
+}
+
+#[tokio::test]
+async fn spending_rules_can_refuse_ask_or_allow() {
+    let d = tempfile::tempdir().unwrap();
+    let perms = Permissions::new(d.path()).unwrap();
+    // refused: the model is never called
+    let m = meter(MeterVerdict::Refuse("daily cap reached".into()));
+    let (u, mut r) = (user(Answer::Yes), req());
+    let end = run_turn(&Script::new(vec![]), &m, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    assert!(matches!(end, TurnEnd::Refused(ref w) if w == "daily cap reached"));
+    assert_eq!(m.recorded.load(Ordering::SeqCst), 0);
+    // asked and declined: the model is never called
+    let m = meter(MeterVerdict::Ask("about $0.40".into()));
+    let (u, mut r) = (user(Answer::No), req());
+    let end = run_turn(&Script::new(vec![]), &m, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    assert!(matches!(end, TurnEnd::Refused(_)));
+    assert_eq!(u.asked.load(Ordering::SeqCst), 1);
+    // asked and accepted: runs, and the cost is recorded
+    let m = meter(MeterVerdict::Ask("about $0.40".into()));
+    let (u, mut r) = (user(Answer::Yes), req());
+    let end = run_turn(&Script::new(vec![text_reply("hi")]), &m, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    assert!(matches!(end, TurnEnd::Done(_)));
+    assert_eq!((m.calls.load(Ordering::SeqCst), m.recorded.load(Ordering::SeqCst)), (1, 1));
+}
+
+#[tokio::test]
+async fn images_are_saved_asked_about_undoable_and_off_unless_configured() {
+    let d = tempfile::tempdir().unwrap();
+    let perms = Permissions::new(d.path()).unwrap();
+    let args = r#"{"prompt":"a red fox in snow"}"#;
+    // on: asks to write, saves under generated/, never overwrites, hands back an undo
+    let tools = default_tools().with_images("img-model");
+    assert!(tools.defs().iter().any(|t| t.name == "generate_image"));
+    let model = Script::new(vec![tools_reply(vec![call("1", "generate_image", args)]), tools_reply(vec![call("2", "generate_image", args)]), text_reply("done")]);
+    let (u, mut r) = (user(Answer::Yes), req());
+    let mut undos = vec![];
+    run_turn(&model, &NoMeter, &mut r, &tools, &perms, &u, &TurnOptions::default(), |e| {
+        if let TurnEvent::ToolResult { undo: Some(x), .. } = e {
+            undos.push(x);
+        }
+    })
+    .await
+    .unwrap();
+    assert!(d.path().join("generated/a-red-fox-in-snow.png").exists());
+    assert!(d.path().join("generated/a-red-fox-in-snow-1.png").exists(), "the second image does not replace the first");
+    assert_eq!((u.asked.load(Ordering::SeqCst), undos.len()), (1, 2));
+    assert!(tool_results(&r)[0].contains("generated/a-red-fox-in-snow.png"));
+
+    // spending rules can refuse an image before the endpoint is called
+    struct NoImages;
+    impl Meter for NoImages {
+        async fn before(&self, _: &ChatRequest) -> MeterVerdict {
+            MeterVerdict::Allow
+        }
+        async fn after(&self, _: &ChatRequest, _: Option<Usage>) {}
+        async fn before_media(&self, _: &str, _: u32) -> MeterVerdict {
+            MeterVerdict::Refuse("daily cap reached".into())
+        }
+        async fn after_media(&self, _: &str, _: u32) {}
+    }
+    let m = NoImages;
+    let model = Script::new(vec![tools_reply(vec![call("1", "generate_image", args)]), text_reply("ok")]);
+    let (u, mut r) = (user(Answer::Yes), req());
+    run_turn(&model, &m, &mut r, &tools, &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    assert!(tool_results(&r)[0].starts_with("Denied: daily cap reached"));
+
+    // off: the tool does not exist for the model
+    let plain = default_tools();
+    assert!(!plain.defs().iter().any(|t| t.name == "generate_image"));
+    let model = Script::new(vec![tools_reply(vec![call("1", "generate_image", args)]), text_reply("ok")]);
+    let (u, mut r) = (user(Answer::Yes), req());
+    run_turn(&model, &NoMeter, &mut r, &plain, &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    assert!(tool_results(&r)[0].contains("not available"));
 }

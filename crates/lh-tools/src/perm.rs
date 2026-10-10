@@ -10,6 +10,8 @@ pub enum Action {
     Write(PathBuf),
     Delete(PathBuf),
     Run(String),
+    /// Fetches a web address, or sends a search query. Leaves the machine.
+    Fetch(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -130,6 +132,7 @@ impl Permissions {
             Action::Write(p) if self.inside(p) => write_once(self, "changes files in the project"),
             Action::Write(_) => ask("writes outside the project folder"),
             Action::Delete(_) => ask("deletes a file"),
+            Action::Fetch(_) => ask("uses the network"),
             Action::Run(cmd) => self.decide_command(cmd, &write_once),
         }
     }

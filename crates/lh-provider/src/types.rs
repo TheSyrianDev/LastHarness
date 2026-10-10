@@ -82,13 +82,27 @@ pub struct ToolDef {
     pub parameters: Value,
 }
 
+/// Sampling and template settings, set per role. Everything is optional: unset means the
+/// server's own default (the user's llama-swap config often sets these per model).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Sampling {
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub top_k: Option<u32>,
+    pub min_p: Option<f32>,
+    pub repeat_penalty: Option<f32>,
+    /// Extra top-level fields sent as they are, for template and reasoning controls that differ
+    /// between servers: `chat_template_kwargs`, `reasoning_effort`, `thinking_budget_tokens`, ...
+    pub extra: serde_json::Map<String, Value>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<Message>,
     pub tools: Vec<ToolDef>,
     pub max_tokens: Option<u32>,
-    pub temperature: Option<f32>,
+    pub sampling: Sampling,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

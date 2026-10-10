@@ -16,13 +16,15 @@ pub struct Session {
     pub perms: Permissions,
     pub tools: ToolSet,
     pub busy: AtomicBool,
+    /// Prompt plus reply size the server reported for the last model call; 0 if unknown.
+    pub known_tokens: AtomicU64,
     pending: Mutex<HashMap<String, oneshot::Sender<Answer>>>,
     next_ask: AtomicU64,
 }
 
 impl Session {
     pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet) -> Self {
-        Self { req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
+        Self { req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
     }
 
     pub fn try_start(&self) -> bool {

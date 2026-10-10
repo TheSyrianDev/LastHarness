@@ -27,7 +27,7 @@ async fn start(mut replies: Vec<Option<Response>>) -> Client {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let app = router(AppState::new(Script(Mutex::new(replies)), Settings { bypass: false, sudo_enabled: false, allow_rules: vec![] }), token.clone(), port);
+    let app = router(AppState::new(Script(Mutex::new(replies)), Settings { image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(COMPACT_AT), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![] }), token.clone(), port);
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     Client::new(format!("http://127.0.0.1:{port}"), token)
 }
@@ -90,3 +90,9 @@ async fn dropping_the_stream_frees_the_session() {
     }
     assert_eq!(got, "back");
 }
+
+fn free_meter() -> lh_spend::SpendMeter {
+    lh_spend::SpendMeter::new(std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), lh_spend::Config::default(), "test", true)
+}
+
+const COMPACT_AT: u64 = 0;

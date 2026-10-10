@@ -20,5 +20,7 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 [dev-dependencies]
 lh-core = { path = "../lh-core" }
 lh-tools = { path = "../lh-tools" }
+lh-spend = { path = "../lh-spend" }
+lh-store = { path = "../lh-store" }
 tempfile = "3"
 axum = "0.8"

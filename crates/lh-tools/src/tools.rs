@@ -16,6 +16,27 @@ pub enum ToolError {
     Failed(String),
 }
 
+/// How to put a file back the way it was. `previous` is `None` when the file did not exist.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Undo {
+    pub path: PathBuf,
+    pub previous: Option<Vec<u8>>,
+}
+
+pub struct ToolOutput {
+    pub text: String,
+    pub undo: Option<Undo>,
+}
+
+impl From<String> for ToolOutput {
+    fn from(text: String) -> Self {
+        Self { text, undo: None }
+    }
+}
+
+/// Files bigger than this are not kept for undo.
+const MAX_UNDO: u64 = 1024 * 1024;
+
 const MAX_READ: usize = 256 * 1024;
 const MAX_OUT: usize = 32 * 1024;
 
@@ -25,6 +46,9 @@ pub enum Tool {
     WriteFile,
     ListDir,
     RunCommand,
+    WebFetch,
+    WebSearch,
+    GenerateImage,
 }
 
 impl Tool {
@@ -34,6 +58,9 @@ impl Tool {
             Tool::WriteFile => "write_file",
             Tool::ListDir => "list_dir",
             Tool::RunCommand => "run_command",
+            Tool::WebFetch => "web_fetch",
+            Tool::WebSearch => "web_search",
+            Tool::GenerateImage => "generate_image",
         }
     }
 
@@ -49,6 +76,12 @@ impl Tool {
                 "Run a shell command in the project folder and return its output.",
                 json!({"type":"object","properties":{"command":{"type":"string"},"timeout_secs":{"type":"integer"}},"required":["command"]}),
             ),
+            Tool::WebFetch => ("Fetch a web page or text file and return its text.", json!({"type":"object","properties":{"url":{"type":"string"}},"required":["url"]})),
+            Tool::WebSearch => ("Search the web and return titles, addresses and snippets.", json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"]})),
+            Tool::GenerateImage => (
+                "Generate an image from a text description and save it in the project's `generated` folder.",
+                json!({"type":"object","properties":{"prompt":{"type":"string"},"size":{"type":"string","description":"for example 512x512"}},"required":["prompt"]}),
+            ),
         };
         ToolDef { name: self.name().into(), description: description.into(), parameters }
     }
@@ -62,12 +95,21 @@ impl Tool {
         Ok(match self {
             Tool::ReadFile | Tool::ListDir => Action::Read(path(args)?),
             Tool::WriteFile => Action::Write(path(args)?),
+            Tool::WebFetch => Action::Fetch(args["url"].as_str().ok_or_else(|| ToolError::Args("`url` must be a string".into()))?.to_string()),
+            Tool::WebSearch => Action::Fetch(format!("search: {}", args["query"].as_str().ok_or_else(|| ToolError::Args("`query` must be a string".into()))?)),
+            Tool::GenerateImage => {
+                let prompt = args["prompt"].as_str().ok_or_else(|| ToolError::Args("`prompt` must be a string".into()))?;
+                Action::Write(root.join("generated").join(format!("{}.png", image_stem(prompt))))
+            }
             Tool::RunCommand => Action::Run(args["command"].as_str().ok_or_else(|| ToolError::Args("`command` must be a string".into()))?.to_string()),
         })
     }
 
-    pub async fn run(self, args: &Value, root: &Path) -> Result<String, ToolError> {
+    pub async fn run(self, args: &Value, root: &Path, web: &crate::WebConfig) -> Result<ToolOutput, ToolError> {
         match self {
+            Tool::GenerateImage => Err(ToolError::Failed("image generation runs through the turn loop".into())),
+            Tool::WebFetch => crate::web::fetch(web, args["url"].as_str().unwrap_or("")).await.map(Into::into),
+            Tool::WebSearch => crate::web::search(web, args["query"].as_str().unwrap_or(""), 5).await.map(Into::into),
             Tool::ReadFile => {
                 let p = match self.action(args, root)? {
                     Action::Read(p) => p,
@@ -82,11 +124,16 @@ impl Tool {
                 if cut {
                     s.push_str("\n[file cut at 256 KB]");
                 }
-                Ok(s)
+                Ok(s.into())
             }
             Tool::WriteFile => {
                 let Action::Write(p) = self.action(args, root)? else { unreachable!() };
                 let content = args["content"].as_str().ok_or_else(|| ToolError::Args("`content` must be a string".into()))?;
+                let undo = match tokio::fs::metadata(&p).await {
+                    Ok(m) if m.len() > MAX_UNDO => None,
+                    Ok(_) => tokio::fs::read(&p).await.ok().map(|b| Undo { path: p.clone(), previous: Some(b) }),
+                    Err(_) => Some(Undo { path: p.clone(), previous: None }),
+                };
                 if let Some(dir) = p.parent() {
                     tokio::fs::create_dir_all(dir).await.map_err(|e| ToolError::Failed(e.to_string()))?;
                 }
@@ -94,7 +141,7 @@ impl Tool {
                 let tmp = p.with_extension("lh-tmp");
                 tokio::fs::write(&tmp, content).await.map_err(|e| ToolError::Failed(e.to_string()))?;
                 tokio::fs::rename(&tmp, &p).await.map_err(|e| ToolError::Failed(e.to_string()))?;
-                Ok(format!("wrote {} bytes to {}", content.len(), p.strip_prefix(root).unwrap_or(&p).display()))
+                Ok(ToolOutput { text: format!("wrote {} bytes to {}", content.len(), p.strip_prefix(root).unwrap_or(&p).display()), undo })
             }
             Tool::ListDir => {
                 let Action::Read(p) = self.action(args, root)? else { unreachable!() };
@@ -105,7 +152,7 @@ impl Tool {
                     names.push(format!("{}{}", e.file_name().to_string_lossy(), if dir { "/" } else { "" }));
                 }
                 names.sort();
-                Ok(names.join("\n"))
+                Ok(names.join("\n").into())
             }
             Tool::RunCommand => {
                 let Action::Run(cmd) = self.action(args, root)? else { unreachable!() };
@@ -127,7 +174,7 @@ impl Tool {
                             text.push_str("\n[stderr]\n");
                             text.push_str(&err);
                         }
-                        Ok(format!("exit code {}\n{}", o.status.code().map_or("none (killed by a signal)".into(), |c| c.to_string()), shorten(&text)))
+                        Ok(format!("exit code {}\n{}", o.status.code().map_or("none (killed by a signal)".into(), |c| c.to_string()), shorten(&text)).into())
                     }
                 }
             }
@@ -158,20 +205,64 @@ fn ceil(s: &str, mut i: usize) -> usize {
 
 /// The tools one worker may use. Anything not listed does not exist for it.
 #[derive(Clone, Debug, Default)]
-pub struct ToolSet(Vec<Tool>);
+pub struct ToolSet {
+    tools: Vec<Tool>,
+    web: crate::WebConfig,
+    image_model: Option<String>,
+}
 
 impl ToolSet {
     pub fn new(tools: impl IntoIterator<Item = Tool>) -> Self {
-        Self(tools.into_iter().collect())
+        Self { tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None }
+    }
+    pub fn with_web(mut self, web: crate::WebConfig) -> Self {
+        self.web = web;
+        self
+    }
+    /// Turn image generation on, with the model to use. Without this the tool does not exist.
+    pub fn with_images(mut self, model: impl Into<String>) -> Self {
+        self.image_model = Some(model.into());
+        if !self.tools.contains(&Tool::GenerateImage) {
+            self.tools.push(Tool::GenerateImage);
+        }
+        self
+    }
+    pub fn image_model(&self) -> Option<&str> {
+        self.image_model.as_deref()
+    }
+    pub fn web(&self) -> &crate::WebConfig {
+        &self.web
     }
     pub fn get(&self, name: &str) -> Option<Tool> {
-        self.0.iter().copied().find(|t| t.name() == name)
+        self.tools.iter().copied().find(|t| t.name() == name)
     }
     pub fn defs(&self) -> Vec<ToolDef> {
-        self.0.iter().map(|t| t.def()).collect()
+        self.tools.iter().map(|t| t.def()).collect()
     }
 }
 
 pub fn default_tools() -> ToolSet {
-    ToolSet::new([Tool::ReadFile, Tool::WriteFile, Tool::ListDir, Tool::RunCommand])
+    ToolSet::new([Tool::ReadFile, Tool::WriteFile, Tool::ListDir, Tool::RunCommand, Tool::WebFetch, Tool::WebSearch])
+}
+
+/// File name stem for a generated image: the first words of the prompt, lower case, letters and digits.
+pub(crate) fn image_stem(prompt: &str) -> String {
+    let s: String = prompt.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect();
+    let s = s.split('-').filter(|w| !w.is_empty()).collect::<Vec<_>>().join("-");
+    let s: String = s.chars().take(40).collect();
+    let s = s.trim_end_matches('-').to_string();
+    if s.is_empty() { "image".into() } else { s }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_names_are_safe() {
+        assert_eq!(image_stem("A red fox, in the snow!"), "a-red-fox-in-the-snow");
+        assert_eq!(image_stem("../../etc/passwd"), "etc-passwd");
+        assert_eq!(image_stem("مرحبا"), "image");
+        assert_eq!(image_stem(&"word ".repeat(30)).len(), 39);
+    }
 }

@@ -70,7 +70,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         let area = centered(f.area(), 70, 9);
         f.render_widget(Clear, area);
         let text = vec![
-            Line::from(Span::styled(format!("{} wants to use {}", q.worker, q.tool), Style::new().bold())),
+            Line::from(Span::styled(if q.tool == "model_call" { "Spending check".to_string() } else { format!("{} wants to use {}", q.worker, q.tool) }, Style::new().bold())),
             Line::raw(""),
             Line::raw(clip(&q.what, 200)),
             Line::from(format!("Why it asks: {}", q.reason)),

@@ -8,6 +8,7 @@ license.workspace = true
 lh-provider = { path = "../lh-provider" }
 tokio = { workspace = true, features = ["process", "fs", "io-util", "time"] }
 serde_json.workspace = true
+reqwest.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

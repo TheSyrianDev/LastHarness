@@ -12,6 +12,8 @@ path = "src/main.rs"
 lh-provider = { path = "../lh-provider" }
 lh-tools = { path = "../lh-tools" }
 lh-secrets = { path = "../lh-secrets" }
+lh-spend = { path = "../lh-spend" }
+lh-store = { path = "../lh-store" }
 tokio = { workspace = true, features = ["net", "sync", "signal", "fs"] }
 axum = "0.8"
 futures-util.workspace = true
@@ -20,5 +22,6 @@ serde_json.workspace = true
 getrandom = "0.3"
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 tempfile = "3"
 reqwest.workspace = true

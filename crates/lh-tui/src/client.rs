@@ -16,6 +16,11 @@ pub enum ServerEvent {
     Finish(String),
     Done { empty: bool },
     StepLimit,
+    /// The spending rules stopped the turn.
+    Refused(String),
+    /// Older turns were replaced by a summary.
+    Compacted { messages_summarized: u64 },
+    Notice(String),
     Error(String),
     /// Something this client does not know about; ignored.
     Other,
@@ -35,6 +40,9 @@ impl ServerEvent {
             "finish" => Self::Finish(s("reason")),
             "done" => Self::Done { empty: v["empty"].as_bool().unwrap_or(false) },
             "step_limit" => Self::StepLimit,
+            "refused" => Self::Refused(s("message")),
+            "compacted" => Self::Compacted { messages_summarized: n("messages_summarized") },
+            "notice" => Self::Notice(s("message")),
             "error" => Self::Error(s("message")),
             _ => Self::Other,
         }

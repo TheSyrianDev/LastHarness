@@ -3,13 +3,17 @@
 
 mod client;
 mod compat;
+mod images;
+mod probe;
 mod repair;
 mod sse;
 mod stream;
 mod types;
 
 pub use client::{Error, Provider, Retry};
-pub use compat::Compat;
+pub use compat::{is_local_url, Compat};
+pub use images::{sniff, GeneratedImage};
+pub use probe::Capabilities;
 pub use repair::repair_json;
 pub use sse::SseParser;
 pub use stream::{parse_response, Assembler};

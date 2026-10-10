@@ -79,6 +79,13 @@ impl App {
                 self.question = None;
                 self.entries.push(Entry::Notice("Stopped: the model kept asking for tools and hit the step limit.".into()));
             }
+            ServerEvent::Compacted { messages_summarized } => self.entries.push(Entry::Notice(format!("Earlier messages ({messages_summarized}) were replaced by a summary to make room."))),
+            ServerEvent::Notice(m) => self.entries.push(Entry::Notice(m)),
+            ServerEvent::Refused(m) => {
+                self.busy = false;
+                self.question = None;
+                self.entries.push(Entry::Notice(m));
+            }
             ServerEvent::Error(m) => {
                 self.busy = false;
                 self.question = None;
