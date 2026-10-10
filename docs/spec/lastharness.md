@@ -104,7 +104,7 @@ Idle CPU wake-ups and RAM are measured, not assumed.
 
 ### 4.3 Local API
 
-Every front end drives the core through one authenticated local API. The browser UI is served by the core on the machine's address. Nothing in the API is front-end-specific.
+Every front end drives the core through one authenticated local API. The browser UI is served by the core on the machine's address. Nothing in the API is front-end-specific. Transport: plain HTTP on localhost, with server-sent events (SSE) for streaming.
 
 ### 4.4 Context management — Decided
 

@@ -1,0 +1,14 @@
+[package]
+name = "lh-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lh-provider = { path = "../lh-provider" }
+tokio = { workspace = true, features = ["process", "fs", "io-util", "time"] }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
