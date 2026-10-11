@@ -198,3 +198,7 @@ Open: the user rejected web-view shells for the app itself, so how agent-opened 
 ## 2026-10-11: Web content in the app, Servo test
 
 Agent output is shown in our own native viewers first (markdown, code, images, tables, diagrams). The user asked for a non-Chromium web view and chose to test Servo (Rust engine, on crates.io as v0.1.0 since April 2026, not 1.0, breaking changes expected monthly, half-yearly LTS line). Gecko has no supported desktop embedding and Ladybird is pre-alpha, so neither is an option now. Whether Servo ships, and as an optional add-on, waits for the test.
+
+## 2026-10-11: Resume a chat with a different model
+
+A chat can be resumed with a different model than it started with. A warning appears first. For a local model it says the first reply will take a long time because the whole chat must be read again, and shows how much context the chat holds. For a cloud model it says this will spend credits, because the whole chat is sent again. Open: whether the cloud warning shows an estimated cost.
