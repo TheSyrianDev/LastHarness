@@ -1,6 +1,6 @@
 # LastHarness (agent instructions)
 
-A department-led, local-first, endpoint-agnostic AI harness with a memory that lasts. Rust core with a local API, thin front ends. Nothing is coded yet: the project is at the start of Milestone 0 (spikes).
+A department-led, local-first, endpoint-agnostic AI harness with a memory that lasts. Rust core with a local API, thin front ends. The core and terminal client are built through Milestone 2.
 
 ## Read first, in this order
 
@@ -27,7 +27,7 @@ Linux (Omarchy, Arch), Dell G15 with 24 GB RAM and an RTX 3050 with 4 GB. Rust c
 
 ## Next step
 
-Milestone 0, spike 1 (tool-call compatibility on llama-swap, port 9292) comes first. It uses curl and jq only, in `spikes/toolcall-compat/`, with raw captures and a written `RESULT.md`. Run it on one model per family, smallest first: LFM2.5-2.6B-fast, MiniCPM5-2B-max, Spark-X2.5-4B-fast, Ornith-1.5-35B-A3B-NanoPlus-fast, Qwen3.6-35B-A3B-NanoPlus-fast, Tiel-Coder-35B-fast, SignOfFour-fast. Run other variants only if something looks odd. The Ollama or LM Studio run and the cloud API run are separate; ask before the cloud run.
+Milestone 0 (spikes) is done, and Milestones 1 and 2 are built and committed (see `docs/milestone-1-report.md` and `docs/milestone-2-report.md`). Milestone 3 (learning) is in progress. Check `git log` and `.grill/parked.md` for the current state. Decided so far: SQLite store, EmbeddingGemma 2, local API over HTTP on localhost with SSE, the terminal app starts as `lastharness` or `lh`. While the user is away, ask nothing and park questions in `.grill/parked.md`. Do not invent GUI visuals or branding; the user designs those with the planning session. Not yet done: the cloud API run (ask first), and Ollama and LM Studio probing.
 
 ## Local test model
 
