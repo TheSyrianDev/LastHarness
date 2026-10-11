@@ -1,0 +1,29 @@
+# Throwaway spike theme. Values are test data, not a design.
+name = "Matte dark"
+mode = "dark"
+
+[colors]
+panel = "#322f29"
+text = "#ece8e1"
+accent = "#c0a07e"
+button = "#3d3a33"
+button_hover = "#4a463e"
+
+[background]
+kind = "solid"
+from = "#26241f"
+to = "#26241f"
+angle = 0
+# image = "bg.png"
+image_opacity = 0.6
+
+[surface]
+match_window = true
+roundness = 12
+blur = false
+shadow_blur = 10
+shadow_y = 3
+shadow_color = "#00000066"
+
+[animation]
+duration_ms = 160

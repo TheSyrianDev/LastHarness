@@ -1,0 +1,29 @@
+# Throwaway spike theme. Values are test data, not a design.
+name = "Glass dark"
+mode = "dark"
+
+[colors]
+panel = "#ffffff1a"
+text = "#f2f6ff"
+accent = "#6aa6ff"
+button = "#ffffff2a"
+button_hover = "#ffffff48"
+
+[background]
+kind = "gradient"
+from = "#18223666"
+to = "#0c101c88"
+angle = 135
+# image = "bg.png"
+image_opacity = 0.6
+
+[surface]
+match_window = true
+roundness = 18
+blur = true
+shadow_blur = 28
+shadow_y = 10
+shadow_color = "#00000070"
+
+[animation]
+duration_ms = 220

@@ -1,0 +1,17 @@
+{
+ "main_pss_mb": 114.0,
+ "helper_pss_mb": [
+  119.7
+ ],
+ "app_alive_after_kill": true,
+ "helper_restarted": true,
+ "main_pss_after_mb": 141.0,
+ "popout": {
+  "class": "",
+  "size": [
+   1502,
+   810
+  ],
+  "pss_mb": 120.2
+ }
+}

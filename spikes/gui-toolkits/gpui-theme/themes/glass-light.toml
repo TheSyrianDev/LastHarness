@@ -1,0 +1,29 @@
+# Throwaway spike theme. Values are test data, not a design.
+name = "Glass light"
+mode = "light"
+
+[colors]
+panel = "#ffffff55"
+text = "#10202e"
+accent = "#2a7fff"
+button = "#ffffff66"
+button_hover = "#ffffff99"
+
+[background]
+kind = "gradient"
+from = "#ffffff66"
+to = "#cfe3ff55"
+angle = 135
+# image = "bg.png"
+image_opacity = 0.6
+
+[surface]
+match_window = true
+roundness = 18
+blur = true
+shadow_blur = 28
+shadow_y = 10
+shadow_color = "#1a2a4040"
+
+[animation]
+duration_ms = 220

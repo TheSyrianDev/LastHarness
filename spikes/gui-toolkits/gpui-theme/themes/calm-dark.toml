@@ -1,0 +1,29 @@
+# Throwaway spike theme. Values are test data, not a design.
+name = "Calm dark"
+mode = "dark"
+
+[colors]
+panel = "#2a2a2a"
+text = "#e8e8e8"
+accent = "#5b9bff"
+button = "#3a3a3a"
+button_hover = "#4a4a4a"
+
+[background]
+kind = "solid"
+from = "#1e1e1e"
+to = "#1e1e1e"
+angle = 0
+# image = "bg.png"
+image_opacity = 0.6
+
+[surface]
+match_window = true
+roundness = 6
+blur = false
+shadow_blur = 0
+shadow_y = 0
+shadow_color = "#00000000"
+
+[animation]
+duration_ms = 120

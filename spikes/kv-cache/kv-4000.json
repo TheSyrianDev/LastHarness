@@ -1,0 +1,40 @@
+{
+ "target_tokens": 4000,
+ "model": "Qwen3.6-35B-A3B-NanoPlus-balanced",
+ "slot_dir": "/home/omar/AI/cache/slots/42880bbefe07fe6d",
+ "cold_read": {
+  "secs": 40.98,
+  "prompt_n": 3947,
+  "cache_n": 0,
+  "prompt_ms": 40963,
+  "answer": " \""
+ },
+ "save_secs": 0.05,
+ "save_reply": {
+  "n_saved": 3947,
+  "n_written": 108918580,
+  "timings": {
+   "save_ms": 49.078
+  }
+ },
+ "file_mib": 103.9,
+ "cold_next_turn": {
+  "secs": 40.63,
+  "prompt_n": 3966,
+  "cache_n": 0,
+  "prompt_ms": 40609,
+  "answer": "\n\n"
+ },
+ "restore_secs": 0.04,
+ "restore_reply": {
+  "n_restored": 3947,
+  "n_read": 108918580
+ },
+ "next_turn_after_restore": {
+  "secs": 0.69,
+  "prompt_n": 19,
+  "cache_n": 3947,
+  "prompt_ms": 689,
+  "answer": "\n\n"
+ }
+}

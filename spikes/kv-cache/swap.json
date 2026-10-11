@@ -1,0 +1,21 @@
+{
+ "prefill_tokens": 1588,
+ "saved_tokens": 1588,
+ "slot_before_swap": {
+  "n_prompt_tokens": 1588,
+  "n_ctx": 65536
+ },
+ "swap_to_small_s": 4.69,
+ "running_after_swap": [
+  "LFM2.5-2.6B-balanced"
+ ],
+ "swap_back_s": 17.54,
+ "slot_after_swap_back": {
+  "n_prompt_tokens": 170
+ },
+ "file_survived": true,
+ "restore_after_swap": {
+  "n_restored": 1588,
+  "secs": 0.06
+ }
+}

@@ -1,0 +1,29 @@
+# Throwaway spike theme. Values are test data, not a design.
+name = "Frutiger Aero dark"
+mode = "dark"
+
+[colors]
+panel = "#ffffff22"
+text = "#eaf8ff"
+accent = "#4fc3ff"
+button = "#1d6fa0"
+button_hover = "#2a8fc8"
+
+[background]
+kind = "gradient"
+from = "#0b3a5c"
+to = "#10573a"
+angle = 160
+# image = "bg.png"
+image_opacity = 0.6
+
+[surface]
+match_window = true
+roundness = 14
+blur = false
+shadow_blur = 18
+shadow_y = 6
+shadow_color = "#00000066"
+
+[animation]
+duration_ms = 240

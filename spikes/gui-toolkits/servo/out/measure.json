@@ -1,0 +1,53 @@
+{
+ "article": {
+  "first_png_s": 1.6,
+  "pss_peak_mb": 133.3,
+  "cpu_seconds_loading": 0.2,
+  "idle": {
+   "cpu_pct": 0.6,
+   "pss_mb": 133.2
+  },
+  "processes": [
+   "servo-helper"
+  ],
+  "stderr_tail": [
+   "loaded in 28.146171ms",
+   "frames painted: 2",
+   "ready"
+  ]
+ },
+ "js": {
+  "first_png_s": 2.1,
+  "pss_peak_mb": 155.8,
+  "cpu_seconds_loading": 0.4,
+  "idle": {
+   "cpu_pct": 3.1,
+   "pss_mb": 149.6
+  },
+  "processes": [
+   "servo-helper"
+  ],
+  "stderr_tail": [
+   "loaded in 41.150121ms",
+   "frames painted: 140",
+   "ready"
+  ]
+ },
+ "arabic": {
+  "first_png_s": 1.6,
+  "pss_peak_mb": 139.8,
+  "cpu_seconds_loading": 0.2,
+  "idle": {
+   "cpu_pct": 0.5,
+   "pss_mb": 137.6
+  },
+  "processes": [
+   "servo-helper"
+  ],
+  "stderr_tail": [
+   "loaded in 27.021256ms",
+   "frames painted: 2",
+   "ready"
+  ]
+ }
+}

@@ -1,0 +1,20 @@
+[package]
+name = "gt-gpui-theme"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+gpui = { package = "gpui-pre", version = "=0.3.8" }
+gpui-component = "0.7.1"
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+ksni = { version = "0.3", features = ["blocking"] }
+
+[profile.release]
+opt-level = 3
+
+[patch.crates-io]
+xattr = { path = "vendor-xattr" }
+
+[workspace]
