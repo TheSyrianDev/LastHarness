@@ -28,3 +28,7 @@ Linux (Omarchy, Arch), Dell G15 with 24 GB RAM and an RTX 3050 with 4 GB. Rust c
 ## Next step
 
 Milestone 0, spike 1 (tool-call compatibility on llama-swap, port 9292) comes first. It uses curl and jq only, in `spikes/toolcall-compat/`, with raw captures and a written `RESULT.md`. Run it on one model per family, smallest first: LFM2.5-2.6B-fast, MiniCPM5-2B-max, Spark-X2.5-4B-fast, Ornith-1.5-35B-A3B-NanoPlus-fast, Qwen3.6-35B-A3B-NanoPlus-fast, Tiel-Coder-35B-fast, SignOfFour-fast. Run other variants only if something looks odd. The Ollama or LM Studio run and the cloud API run are separate; ask before the cloud run.
+
+## Local test model
+
+For real-model runs of non-coding work (privacy judge, learning proposals, summaries, extraction, general chat), use `Qwen3.6-35B-A3B-NanoPlus-fast` on llama-swap. The user chose it for its wider range; Tiel-Coder and Ornith are for coding tasks only. Qwen thinks a lot (it used the whole 1024-token budget on trivial prompts in spike 1), so give it a larger token limit.
