@@ -158,3 +158,4 @@ A harness for tech-literate power users (Linux users, Office-suite power users, 
 - Decision (user): Milestone 1 starts now.
 - Decision (user: 'do what you recommend'): the local API uses plain HTTP on localhost with server-sent events for streaming. Checkpoints are committed as the user and pushed to backup without asking each time.
 - Decision (user, leaving): the agents keep building without waiting; the user will design the GUI and branding together with the planning session on return. Until then no visual design or branding is invented. Questions that need the user go to .grill/parked.md.
+- Correction (user): "no code extensions" meant "not yet", not "never". Spec §9.2 and the roadmap now say code extensions are later, not planned-never; Pi's package catalog (pi.dev/packages) is the model to study then. The first release is unchanged.

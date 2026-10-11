@@ -333,7 +333,7 @@ Big goals work as: the harness proposes a breakdown, the user approves or edits 
 - **Bypass:** `--dangerously-skip-permissions`. What it covers is a setting with three levels: everything off; tool permissions only; tool permissions plus hard locks (the sensitive-data rule, silent key registration). The default is the third. Using the bypass shows a clear warning that the user accepts the risk and the project is not responsible for the outcome.
 - No sandbox is planned.
 
-### 9.2 Plugins and MCP — Decided (MCP client, data plugins; no code extensions)
+### 9.2 Plugins and MCP — Decided (MCP client, data plugins; code extensions later)
 
 **MCP is client-only.** The harness uses MCP servers as tools; it is not an MCP server. The model case is a hosted MCP server such as Higgsfield's, which gives an agent image and video generation through one endpoint. Adding an MCP server needs approval, as with a provider. Its tools go through the permission tiers, and the sensitive-data rule applies to whatever the agent sends it. Agents send prompts and arguments, never a memory dump.
 
@@ -347,7 +347,7 @@ Big goals work as: the harness proposes a breakdown, the user approves or edits 
 
 **What an MCP server is.** An MCP server is a program that gives an AI app context and actions over the Model Context Protocol (JSON-RPC). It can offer three kinds of thing: **tools** (functions the model can call), **resources** (data such as files or database records) and **prompts** (reusable templates). A server can run in two ways: **locally**, where the app starts it as a process on the user's machine (stdio), or **remotely**, where it runs elsewhere and the app connects over HTTPS (Streamable HTTP, with OAuth or API keys). A local server is a program running on the user's machine, so adding one is closer to installing software than to adding a link. A server may also ask the user for input (elicitation). Sampling, where a server asks the app's model for completions, is deprecated in the 2026-07-28 revision. Which of these LastHarness supports is still to be decided.
 
-**Code extensions** in the manner of Pi packages (TypeScript modules that hook into the harness, installed from npm or git, running with the user's permissions) are **not planned**: no extensions of any kind yet. For now the only way to extend the app with running code is an MCP server, under the permission rules.
+**Code extensions** in the manner of Pi packages (TypeScript modules that hook into the harness, installed from npm or git, running with the user's permissions) are **not in the first release**, by your choice of "not yet". They may come later, and Pi's package catalog (extensions, skills, prompt templates and themes installed from npm) is the model to study then. For now the only way to extend the app with running code is an MCP server, under the permission rules.
 
 Editor integration stays out of scope.
 
