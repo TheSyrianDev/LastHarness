@@ -28,7 +28,7 @@ Linux (Omarchy, Arch), Dell G15 with 24 GB RAM and an RTX 3050 with 4 GB. Rust c
 
 ## Next step
 
-Milestone 0 (spikes) is done. Milestones 1 to 6 are built (see `docs/milestone-N-report.md`; 4 is roles and departments, 5 is onboarding and settings, 6 is the browser UI). Milestone 7 (messaging channels) is next. Check `git log` and `.grill/parked.md` for the current state. Decided so far: SQLite store, EmbeddingGemma 2, local API over HTTP on localhost with SSE, the terminal app starts as `lastharness` or `lh`. While the user is away, ask nothing and park questions in `.grill/parked.md`. Do not invent GUI visuals or branding; the user designs those with the planning session. Not yet done: the cloud API run (ask first), and Ollama and LM Studio probing.
+Milestone 0 (spikes) is done. Milestones 1 to 7 are built (see `docs/milestone-N-report.md`; 4 is roles and departments, 5 is onboarding and settings, 6 is the browser UI, 7 is messaging channels). Milestone 8 (native GUI) needs the user's design decisions and the GUI toolkit tests, so wait for the planning session. Check `git log` and `.grill/parked.md` for the current state. Decided so far: SQLite store, EmbeddingGemma 2, local API over HTTP on localhost with SSE, the terminal app starts as `lastharness` or `lh`. While the user is away, ask nothing and park questions in `.grill/parked.md`. Do not invent GUI visuals or branding; the user designs those with the planning session. Not yet done: the cloud API run (ask first), and Ollama and LM Studio probing.
 
 ## Local test model
 

@@ -24,6 +24,7 @@
 
 pub mod auth;
 pub mod idle;
+pub mod channels;
 mod export_api;
 mod learn_api;
 mod mcp_api;
@@ -162,6 +163,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(mcp_api::routes::<M>())
         .merge(settings_api::routes::<M>())
         .merge(export_api::routes::<M>())
+        .merge(channels::routes::<M>())
 }
 
 /// Only a request that passed its guard counts as activity: this layer sits outside the guard, so it
@@ -232,6 +234,9 @@ struct NewSession {
     /// A temporary session: no memory is read or written, no conversation is stored.
     #[serde(default)]
     incognito: bool,
+    /// The session is for a messaging channel: the lowest trust level, so nothing sensitive is used.
+    #[serde(default)]
+    channel: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -275,7 +280,10 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     let (mut dest, mut conv) = (None, None);
     let mut about = String::new();
     if let (Some(rt), false) = (&st.settings.memory, b.incognito) {
-        let d = rt.destination(project.clone());
+        let mut d = rt.destination(project.clone());
+        if b.channel {
+            d.trust = lh_memory::Trust::AnyCloud; // a chat service can read everything sent through it
+        }
         let _ = rt.memory.scan(); // pick up pages edited by hand
         let (text, refs) = rt.memory.about_you(&d, &rt.cfg).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if !text.is_empty() {
@@ -298,7 +306,8 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     // done, not memory of the user, so they apply in incognito sessions too (they are only never learned there).
     let mut learned_block = String::new();
     if let Some(lr) = &st.settings.learn {
-        let ctx = lh_learn::RuleContext { project: project.clone(), role: None, trust: lr.trust };
+        let learn_trust = if b.channel { lh_memory::Trust::AnyCloud } else { lr.trust };
+        let ctx = lh_learn::RuleContext { project: project.clone(), role: None, trust: learn_trust };
         let rules = lr.learn.applicable_rules(&ctx).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         let style = lr.learn.style().ok().flatten().map(|s| s.text);
         let skills: Vec<(String, String)> = if tools_on { lr.learn.list_skills().unwrap_or_default().into_iter().filter(|e| e.error.is_none()).map(|e| (e.name, e.description)).collect() } else { vec![] };
@@ -306,7 +315,7 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
             tools = tools.with_skills(lr.learn.clone());
         }
         let used = json!({"rules": rules.iter().map(|r| r.id.clone()).collect::<Vec<_>>(), "style": style.is_some(), "skills": skills.iter().map(|s| s.0.clone()).collect::<Vec<_>>()});
-        learned_block = lh_learn::render_learned(&lh_learn::Learned { rules, style, skills }, lr.trust);
+        learned_block = lh_learn::render_learned(&lh_learn::Learned { rules, style, skills }, learn_trust);
         if !learned_block.is_empty() {
             let _ = st.settings.store.log("learned_applied", &id, "assistant", &used);
         }

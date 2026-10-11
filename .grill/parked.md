@@ -105,3 +105,19 @@ Things that need the user. Agents add to this list instead of asking while the u
 - **Real-browser check is manual.** `crates/lh-core/tests/ui_smoke.mjs` needs a Chromium-based browser (it used Brave here). Not in `cargo test`.
 - **Sessions live in memory.** Restarting the core signs every browser out; the stored key signs it in again at once, so you will not notice.
 - **Revoked rows stay.** Removing a device keeps its row (marked removed) so the activity log still makes sense; the list shows removed devices only in the API.
+
+## Milestone 7 (added by the build session)
+
+- **No channel was tried against a real service.** Telegram, Matrix, Signal and Slack all need an account, a token or a linked phone number, so each client is tested against a mock of the service's published API (Telegram Bot API long polling, Matrix client-server sync, signal-cli's daemon, Slack Socket Mode). Real accounts will find differences. The first real try of each should be a short manual check: add, enable, send "hello" from an allow-listed account, send one from another account (nothing should happen).
+- **Secrets are `env:NAME` only.** A channel token must be the name of an environment variable; a pasted token is refused. The `secret:NAME` form (the system secret store) is described in the help text but not wired for channels yet, because the core's service has no unattended way to prompt for the store. Say if channel tokens should use the secret store, and how it should be unlocked at start.
+- **Allow-list by the service's own id.** Telegram: numeric user id (not the username). Matrix: the full id (@you:server). Slack: the member id (Uxxxx). Signal: the phone number. Names would be easy to impersonate.
+- **A stranger's message is dropped silently.** No reply, no wake-up, no stored text. A count of how many were ignored is shown in `lh channels` so you can notice an attempt.
+- **Lowest trust level.** A channel conversation never uses sensitive notes or rules (as for any cloud model), and a reply that looks sensitive is held back with a notice. The check ignores words with a slash (paths and links). It is a pattern check, so it can miss things and can hold back harmless text. Memory writes from a channel conversation are allowed (as in any session); say if channel chats should be incognito.
+- **Modes.** A channel starts in `chat` (no tools). `assistant` mode allows tools; every permission question is sent to the chat as yes or no. A reply of yes or no answers the oldest open question. This means anyone who controls an allow-listed account controls what the assistant may do, under the same permission rules as at the terminal. Bypass is not offered here. Say if `assistant` mode should be refused for Slack.
+- **Departments from the phone.** `/run <department> <goal>` works, with plan approval and questions by yes or no. Check-ins arrive as yes/no too. It follows the autonomy setting.
+- **Matrix: unencrypted rooms only.** An end-to-end encrypted room cannot be read (that needs a full Matrix crypto library). Old messages before the first start are ignored. The assistant joins invitations only from allow-listed people.
+- **Slack: direct messages only,** not channels or mentions, to avoid answering a whole workspace. It uses Socket Mode, so no public address is needed and each user makes their own Slack app.
+- **Signal needs signal-cli running in daemon mode,** already linked to a number. LastHarness does not handle Signal's keys or registration.
+- **WhatsApp:** out for good, as decided; nothing was written for it.
+- **Channel settings live in the store, not the settings file,** because they hold a list of people. The browser cannot reach them (terminal only). They are not part of export.
+- **Sending is logged by size only** (`channel_in`, `channel_out`: kind, number of characters, whether held back). Message text is not written to the activity log.

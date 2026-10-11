@@ -4,6 +4,7 @@
 //! lh memory <command>     (see `lh memory help`)
 //! lh learn <command>      (see `lh learn help`)
 //! lh team <command>       (see `lh team help`)
+//! lh channels [add|enable|...]  messaging channels (see `lh channels help`)
 //! lh devices [accept PIN|remove ID]
 //! lh export <folder>; lh import <folder> [--apply]
 //! lh setup                first-run questions; lh settings [group|set|reset]
@@ -52,6 +53,7 @@ pub async fn run() {
     let mut do_setup = false;
     let mut data_cmd: Option<(bool, Vec<String>)> = None;
     let mut devices_cmd: Option<Vec<String>> = None;
+    let mut channels_cmd: Option<Vec<String>> = None;
     while let Some(arg) = a.next() {
         let mut val = || a.next().unwrap_or_else(|| fail(format!("{arg} needs a value")));
         match arg.as_str() {
@@ -62,6 +64,10 @@ pub async fn run() {
             "--incognito" => incognito = true,
             "learn" => {
                 learn_cmd = Some(a.by_ref().collect());
+                break;
+            }
+            "channels" => {
+                channels_cmd = Some(a.by_ref().collect());
                 break;
             }
             "devices" => {
@@ -112,6 +118,24 @@ pub async fn run() {
     let client = Arc::new(Client::from_token_file(&url, &token_file).unwrap_or_else(|e| fail(e)));
     if let Some(cmd) = learn_cmd {
         match crate::learn_cli::run(&client, &cmd).await {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    if let Some(cmd) = channels_cmd {
+        let r = {
+            let mut ask = |q: &str| {
+                use std::io::Write;
+                print!("{q} ");
+                let _ = std::io::stdout().flush();
+                let mut l = String::new();
+                let _ = std::io::stdin().read_line(&mut l);
+                l.trim().to_lowercase().starts_with('y')
+            };
+            crate::channels_cli::run(&client, &cmd, &mut ask).await
+        };
+        match r {
             Ok(text) => println!("{text}"),
             Err(e) => fail(e),
         }

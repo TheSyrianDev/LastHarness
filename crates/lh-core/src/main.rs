@@ -212,6 +212,7 @@ async fn main() {
     }
     let mcp = (!no_team).then(|| lh_core::McpRuntime::open(default_store_path().parent().map(|p| p.join("mcp.json")).unwrap_or_else(|| std::path::PathBuf::from("mcp.json"))));
     let web_store = store.clone();
+    let channel_store = store.clone();
     let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2, team, mcp, ask_all, config: Some(config_path) };
 
     let token = auth::new_token();
@@ -237,6 +238,8 @@ async fn main() {
             Some(w)
         }
     };
+    // messaging channels: the runner talks to this core through its own local API, like any other client
+    lh_core::channels::spawn_runner(channel_store, format!("http://127.0.0.1:{port}"), token.clone());
     let app = lh_core::router_with_web(state, token, port, web);
     eprintln!("lhd: listening on http://127.0.0.1:{port}, token in {}", path.display());
     axum::serve(listener, app).with_graceful_shutdown(async { let _ = tokio::signal::ctrl_c().await; }).await.unwrap();

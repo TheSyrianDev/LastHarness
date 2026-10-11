@@ -1,6 +1,7 @@
 //! Terminal front end. It is a thin client: everything real happens in the core (`lhd`).
 
 pub mod app;
+pub mod channels_cli;
 pub mod client;
 pub mod data_cli;
 pub mod devices_cli;

@@ -347,7 +347,7 @@ pub fn public_routes(web: Arc<Web>) -> Router {
 /// What a paired browser may reach. Everything that can run programs, move files out of the machine or
 /// change who is trusted stays on the machine's own terminal.
 pub fn device_may(method: &Method, path: &str) -> bool {
-    const DENIED: &[&str] = &["/v1/mcp", "/v1/export", "/v1/import", "/v1/trust", "/v1/team/plugins", "/v1/memory/export", "/v1/memory/import", "/v1/devices/pending", "/v1/devices/accept", "/v1/devices/fingerprint"];
+    const DENIED: &[&str] = &["/v1/mcp", "/v1/channels", "/v1/export", "/v1/import", "/v1/trust", "/v1/team/plugins", "/v1/memory/export", "/v1/memory/import", "/v1/devices/pending", "/v1/devices/accept", "/v1/devices/fingerprint"];
     if DENIED.iter().any(|d| path == *d || path.starts_with(&format!("{d}/"))) {
         return false;
     }
