@@ -57,3 +57,5 @@ Things that need the user. Agents add to this list instead of asking while the u
 - **Habit threshold.** 3 sessions by default (`--learn-threshold`); the model confirms that a repeated wish is real before anything is suggested.
 - **Embedding server and the GPU.** Found and fixed: the embedding server (a CUDA build) crashed when the chat model filled the 4 GB GPU. It now runs with the GPU hidden. Worth knowing if you ever see it fail on another machine.
 - **AGENTS.md reading order** still says "Milestone 0 is next" in the list under "Read first". The "Next step" section is current.
+
+- **Seagate drive was not cleanly unmounted** (kernel: "exFAT-fs (sda1): Volume was not properly unmounted. Some data may be corrupt. Please run fsck."). This damaged the backup repository twice. Both times the local repository was intact and the backup was rebuilt from it. Two damaged copies are left on the drive (`LastHarness.git.corrupt-*`). Suggested fix, run by the user: unmount the drive, run `sudo fsck.exfat /dev/sda1`, then delete the damaged copies. Always unmount before unplugging. exFAT has no journal, so a second copy elsewhere would also be safer.
