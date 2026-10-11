@@ -36,6 +36,10 @@ async fn core() -> (tempfile::TempDir, Arc<Learn>, Client) {
         bypass: false,
         sudo_enabled: false,
         allow_rules: vec![],
+        team: None,
+        mcp: None,
+        ask_all: false,
+        config: None,
     };
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();

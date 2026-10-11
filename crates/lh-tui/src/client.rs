@@ -120,6 +120,11 @@ impl Client {
         Ok(r.json().await.unwrap_or(Value::Null))
     }
 
+    /// A stream of JSON events from any SSE endpoint (a department run).
+    pub async fn events(&self, path: &str) -> Result<JsonStream> {
+        Ok(JsonStream { resp: self.send(self.req(reqwest::Method::GET, path)).await?, parser: SseParser::new(), queue: VecDeque::new() })
+    }
+
     pub async fn answer(&self, session: &str, ask: &str, yes: bool) -> Result<()> {
         let body = json!({"answer": if yes { "yes" } else { "no" }});
         self.send(self.req(reqwest::Method::POST, &format!("/v1/sessions/{session}/answers/{ask}")).json(&body)).await.map(|_| ())
@@ -148,6 +153,26 @@ impl TurnStream {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+pub struct JsonStream {
+    resp: reqwest::Response,
+    parser: SseParser,
+    queue: VecDeque<Value>,
+}
+
+impl JsonStream {
+    pub async fn next(&mut self) -> Result<Option<Value>> {
+        loop {
+            if let Some(e) = self.queue.pop_front() {
+                return Ok(Some(e));
+            }
+            match self.resp.chunk().await.map_err(|e| format!("the connection to the core broke: {e}"))? {
+                None => return Ok(None),
+                Some(bytes) => self.queue.extend(self.parser.push(&bytes).iter().filter_map(|d| serde_json::from_str::<Value>(d).ok())),
             }
         }
     }

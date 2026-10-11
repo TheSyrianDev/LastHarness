@@ -258,6 +258,17 @@ const MIGRATIONS: &[&str] = &[r#"
       value text not null,
       updated integer not null default 0
     );
+"#, r#"
+    -- Paired devices (browsers, later phones). A device is known by its public key; the private key
+    -- never leaves the device. Revoking keeps the row so the activity log still makes sense.
+    create table devices(
+      id text primary key,
+      name text not null,
+      public_key text not null,
+      created integer not null,
+      last_seen integer not null default 0,
+      revoked integer not null default 0
+    );
 "#];
 
 pub struct Store {

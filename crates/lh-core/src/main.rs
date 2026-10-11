@@ -1,6 +1,7 @@
 //! `lhd`: the LastHarness core. Listens on loopback only.
 //!
-//! lhd --provider http://localhost:9292/v1 [--key secret:NAME] [--listen 127.0.0.1:7842]
+//! lhd [--provider http://localhost:9292/v1] [--config PATH] [--key secret:NAME] [--listen 127.0.0.1:7842]
+//!     Settings come from the settings file (`lh setup` writes it); a flag beats the file.
 //!     [--token-file PATH] [--store PATH] [--spend-config PATH] [--compact-at TOKENS] [--idle-after SECONDS] [--searxng URL] [--image-model NAME]
 //!     [--provider-name NAME] [--no-memory] [--maintain-when-idle]
 //!     [--learn propose|silent|off] [--learn-threshold N] [--skills-dir PATH] [--skill-min-calls N] [--memory-dir PATH] [--trust local|own|any]
@@ -11,7 +12,7 @@ use std::net::SocketAddr;
 
 use std::sync::Arc;
 
-use lh_core::{auth, router, AppState, Settings};
+use lh_core::{auth, AppState, Settings};
 use lh_provider::Provider;
 use lh_secrets::{resolve, OsStore};
 
@@ -24,11 +25,14 @@ fn fail(msg: impl std::fmt::Display) -> ! {
 async fn main() {
     let mut a = std::env::args().skip(1);
     let (mut listen, mut provider, mut key, mut token_file) = ("127.0.0.1:7842".to_string(), None, None, None);
-    let (mut store_path, mut spend_path, mut compact_at, mut idle_after) = (None, None, None::<u64>, 600u64);
+    let (mut store_path, mut spend_path, mut compact_at, mut idle_after) = (None, None, None::<u64>, None::<u64>);
     let (mut searxng, mut image_model) = (None, None);
     let mut maintain_idle = false;
+    let mut web_listen = None::<String>;
+    let mut config_path = None::<std::path::PathBuf>;
     let mut provider_name = None::<String>;
-    let (mut learn_mode, mut learn_threshold, mut skills_dir, mut skill_calls) = ("propose".to_string(), 3usize, None::<std::path::PathBuf>, 6usize);
+    let (mut no_team, mut team_dir, mut team_tokens) = (false, None::<std::path::PathBuf>, 4000u32);
+    let (mut learn_mode, mut learn_threshold, mut skills_dir, mut skill_calls) = (None::<String>, None::<usize>, None::<std::path::PathBuf>, 6usize);
     let (mut no_memory, mut memory_dir, mut trust) = (false, None::<std::path::PathBuf>, None::<String>);
     let (mut embed_server, mut embed_model, mut embed_libs, mut embed_name, mut embed_url, mut embed_cloud) = (None::<String>, None::<String>, None::<String>, None::<String>, None::<String>, false);
     let mut flags = (false, false, Vec::<String>::new()); // bypass, sudo, allow rules
@@ -42,13 +46,18 @@ async fn main() {
             "--store" => store_path = Some(std::path::PathBuf::from(val())),
             "--spend-config" => spend_path = Some(std::path::PathBuf::from(val())),
             "--compact-at" => compact_at = Some(val().parse().unwrap_or_else(|_| fail("--compact-at needs a number of tokens (0 turns it off)"))),
-            "--idle-after" => idle_after = val().parse().unwrap_or_else(|_| fail("--idle-after needs a number of seconds (0 means never)")),
+            "--idle-after" => idle_after = val().parse().map(Some).unwrap_or_else(|_| fail("--idle-after needs a number of seconds (0 means never)")),
             "--provider-name" => provider_name = Some(val()),
-            "--learn" => learn_mode = val(),
-            "--learn-threshold" => learn_threshold = val().parse().unwrap_or_else(|_| fail("--learn-threshold needs a number")),
+            "--learn" => learn_mode = Some(val()),
+            "--learn-threshold" => learn_threshold = Some(val().parse().unwrap_or_else(|_| fail("--learn-threshold needs a number"))),
             "--skills-dir" => skills_dir = Some(std::path::PathBuf::from(val())),
             "--skill-min-calls" => skill_calls = val().parse().unwrap_or_else(|_| fail("--skill-min-calls needs a number")),
             "--no-memory" => no_memory = true,
+            "--web-listen" => web_listen = Some(val()),
+            "--config" => config_path = Some(std::path::PathBuf::from(val())),
+            "--no-team" => no_team = true,
+            "--team-dir" => team_dir = Some(std::path::PathBuf::from(val())),
+            "--team-max-tokens" => team_tokens = val().parse().unwrap_or_else(|_| fail("--team-max-tokens needs a number")),
             "--maintain-when-idle" => maintain_idle = true,
             "--memory-dir" => memory_dir = Some(std::path::PathBuf::from(val())),
             "--trust" => trust = Some(val()),
@@ -69,7 +78,36 @@ async fn main() {
             other => fail(format!("unknown option {other}")),
         }
     }
-    let provider = provider.unwrap_or_else(|| fail("--provider URL is required"));
+    let config_path = config_path.unwrap_or_else(lh_config::ConfigFile::default_path);
+    let cfg = lh_config::ConfigFile::load(&config_path).unwrap_or_else(|e| fail(e));
+    // a flag beats the settings file, and the file beats the default
+    let provider = provider.or_else(|| cfg.get_opt("provider.url")).unwrap_or_else(|| fail(format!("no provider: give --provider URL, or run `lh setup` (settings are read from {})", config_path.display())));
+    // A crash report is only prepared, never sent, and only when the user has not switched them off.
+    // It holds the version, the system and the place in the code: no message text, paths or names.
+    if cfg.get("reports.crash") != "off" {
+        let file = config_path.parent().map(|p| p.join("crash-pending.json"));
+        std::panic::set_hook(Box::new(move |info| {
+            let at = info.location().map(|l| format!("{}:{}", l.file().rsplit('/').next().unwrap_or(""), l.line())).unwrap_or_default();
+            let report = serde_json::json!({"version": env!("CARGO_PKG_VERSION"), "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "where": at});
+            if let Some(f) = &file {
+                let _ = std::fs::write(f, report.to_string());
+            }
+            eprintln!("lhd stopped unexpectedly at {at}. A report was prepared; `lh settings reports` says what it holds.");
+        }));
+    }
+    let key = key.or_else(|| cfg.get_opt("provider.key"));
+    let provider_name = provider_name.or_else(|| cfg.get_opt("provider.name"));
+    let compact_at = compact_at.or_else(|| match cfg.get("core.compact_at").as_str() { "auto" => None, n => n.parse().ok() });
+    let idle_after = idle_after.or_else(|| cfg.get_num("core.idle_after")).unwrap_or(600);
+    let searxng = searxng.or_else(|| cfg.get_opt("web.searxng"));
+    let image_model = image_model.or_else(|| cfg.get_opt("media.image_model"));
+    let no_memory = no_memory || !cfg.get_bool("memory.enabled");
+    let trust = trust.or_else(|| Some(cfg.get("memory.trust")).filter(|t| t != "auto"));
+    let learn_mode = learn_mode.unwrap_or_else(|| cfg.get("learning.mode"));
+    let learn_threshold = learn_threshold.or_else(|| cfg.get_num("learning.threshold")).unwrap_or(3);
+    flags.0 = flags.0 || cfg.get_bool("permissions.bypass");
+    flags.1 = flags.1 || cfg.get_bool("permissions.sudo");
+    let ask_all = cfg.get("permissions.mode") == "ask-all";
     let addr: SocketAddr = listen.parse().unwrap_or_else(|e| fail(format!("--listen: {e}")));
     if !addr.ip().is_loopback() {
         fail("the local API only listens on loopback until device pairing exists");
@@ -85,6 +123,21 @@ async fn main() {
     let spend_cfg = match spend_path.or_else(|| Some(config_dir().join("spend.toml")).filter(|p| p.exists())) {
         Some(p) => lh_spend::Config::from_toml(&std::fs::read_to_string(&p).unwrap_or_else(|e| fail(format!("{}: {e}", p.display())))).unwrap_or_else(|e| fail(format!("{e}"))),
         None => lh_spend::Config::default(),
+    };
+    let spend_cfg = {
+        let mut c = spend_cfg;
+        if cfg.is_set("spending.mode") {
+            c.mode = match cfg.get("spending.mode").as_str() { "none" => lh_spend::Mode::None, "caps" => lh_spend::Mode::Caps, _ => lh_spend::Mode::Estimate };
+        }
+        if cfg.is_set("spending.approve_over_usd") {
+            c.approve_over_usd = cfg.get_num("spending.approve_over_usd").unwrap_or(c.approve_over_usd);
+        }
+        for (key, slot) in [("spending.per_request_cap_usd", &mut c.per_request_cap_usd), ("spending.daily_cap_usd", &mut c.daily_cap_usd), ("spending.monthly_cap_usd", &mut c.monthly_cap_usd)] {
+            if cfg.is_set(key) {
+                *slot = cfg.get_num(key);
+            }
+        }
+        c
     };
     let spend = lh_spend::SpendMeter::new(store.clone(), spend_cfg, provider.clone(), lh_provider::is_local_url(&provider));
     let _ = store.log("startup", "-", "lhd", &serde_json::json!({"provider": provider, "local": lh_provider::is_local_url(&provider), "bypass": flags.0, "sudo_enabled": flags.1, "allow_rules": flags.2, "memory": !no_memory, "learn": learn_mode}));
@@ -126,14 +179,65 @@ async fn main() {
         };
         Some(lh_core::MemoryRuntime { memory, embedder: Arc::new(embedder), trust: provider_trust, cfg: lh_memory::RecallConfig::default() })
     };
-    let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2 };
+    let team = if no_team {
+        None
+    } else {
+        let dir = team_dir.unwrap_or_else(default_team_dir);
+        match lh_core::TeamRuntime::open(&dir, std::sync::Arc::new(lh_learn::Learn::new(store.clone())), team_tokens) {
+            Ok(t) => Some(t),
+            Err(e) => fail(format!("cannot open the roles and departments in {}: {e}", dir.display())),
+        }
+    };
+    if team.is_some() {
+        use lh_team::{Autonomy, TeamSettings, UnavailablePolicy};
+        let t = TeamSettings::new(&store);
+        let apply: lh_team::Result<()> = (|| {
+            if cfg.is_set("team.autonomy") {
+                t.set_autonomy(Autonomy::parse(&cfg.get("team.autonomy")).unwrap_or(Autonomy::PlanFirst))?;
+            }
+            if let (true, Some(n)) = (cfg.is_set("team.parallel"), cfg.get_num("team.parallel")) {
+                t.set_parallel(n)?;
+            }
+            if let (true, Some(n)) = (cfg.is_set("team.attempts"), cfg.get_num("team.attempts")) {
+                t.set_attempts(n)?;
+            }
+            if cfg.is_set("team.unavailable") {
+                t.set_unavailable(if cfg.get("team.unavailable") == "fallback" { UnavailablePolicy::Fallback } else { UnavailablePolicy::Stop })?;
+            }
+            Ok(())
+        })();
+        if let Err(e) = apply {
+            fail(format!("the team settings in {} are not usable: {e}", config_path.display()));
+        }
+    }
+    let mcp = (!no_team).then(|| lh_core::McpRuntime::open(default_store_path().parent().map(|p| p.join("mcp.json")).unwrap_or_else(|| std::path::PathBuf::from("mcp.json"))));
+    let web_store = store.clone();
+    let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2, team, mcp, ask_all, config: Some(config_path) };
 
     let token = auth::new_token();
     let path = token_file.unwrap_or_else(auth::default_token_path);
     auth::write_token(&path, &token).unwrap_or_else(|e| fail(format!("cannot write the token file {}: {e}", path.display())));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| fail(format!("cannot listen on {addr}: {e}")));
     let port = listener.local_addr().unwrap().port();
-    let app = router(AppState::new(Provider::new(provider, api_key), settings), token, port);
+    let state = AppState::new(Provider::new(provider, api_key), settings);
+    // the browser's door: off unless an address is given
+    let web_listen = web_listen.or_else(|| cfg.get_opt("web.listen"));
+    let web = match web_listen {
+        None => None,
+        Some(w) => {
+            let waddr: SocketAddr = w.parse().unwrap_or_else(|e| fail(format!("web.listen {w}: {e}")));
+            let extra: Vec<String> = if waddr.ip().is_unspecified() || waddr.ip().is_loopback() { vec![] } else { vec![waddr.ip().to_string()] };
+            let dir = default_store_path().parent().map(|p| p.join("web")).unwrap_or_else(|| std::path::PathBuf::from("web"));
+            let tls = lh_core::web::load_or_create_tls(&dir, &extra).unwrap_or_else(|e| fail(e));
+            let wl = tokio::net::TcpListener::bind(waddr).await.unwrap_or_else(|e| fail(format!("cannot listen on {waddr}: {e}")));
+            let w = lh_core::web::Web::new(web_store, tls.fingerprint.clone());
+            eprintln!("lhd: browser UI at https://{}  (certificate fingerprint {})", wl.local_addr().unwrap(), tls.fingerprint);
+            eprintln!("lhd: a new browser pairs with a PIN: `lh devices`");
+            tokio::spawn(lh_core::web::serve_tls(wl, lh_core::web_router(state.clone(), w.clone()), tls.acceptor));
+            Some(w)
+        }
+    };
+    let app = lh_core::router_with_web(state, token, port, web);
     eprintln!("lhd: listening on http://127.0.0.1:{port}, token in {}", path.display());
     axum::serve(listener, app).with_graceful_shutdown(async { let _ = tokio::signal::ctrl_c().await; }).await.unwrap();
 }
@@ -149,6 +253,9 @@ fn default_store_path() -> std::path::PathBuf {
 }
 fn default_memory_dir() -> std::path::PathBuf {
     default_store_path().parent().map(|p| p.join("memory")).unwrap_or_else(|| std::path::PathBuf::from("memory"))
+}
+fn default_team_dir() -> std::path::PathBuf {
+    default_store_path().parent().map(|p| p.join("team")).unwrap_or_else(|| std::path::PathBuf::from("team"))
 }
 fn default_skills_dir() -> std::path::PathBuf {
     default_store_path().parent().map(|p| p.join("skills")).unwrap_or_else(|| std::path::PathBuf::from("skills"))

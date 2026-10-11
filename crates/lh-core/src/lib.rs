@@ -24,12 +24,19 @@
 
 pub mod auth;
 pub mod idle;
+mod export_api;
 mod learn_api;
+mod mcp_api;
 mod memory_api;
 mod session;
+pub mod web;
+mod settings_api;
+mod team_api;
 
 pub use learn_api::{LearnMode, LearnRuntime};
+pub use mcp_api::McpRuntime;
 pub use memory_api::MemoryRuntime;
+pub use team_api::{Run, TeamRuntime};
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -53,6 +60,14 @@ use tokio::sync::mpsc;
 use session::{ApiAsker, Session};
 
 pub struct Settings {
+    /// Ask for everything unless the client says otherwise (the permission mode setting).
+    pub ask_all: bool,
+    /// The settings file, so the settings screens can change it.
+    pub config: Option<PathBuf>,
+    /// MCP servers and folder trust. `None` switches them off.
+    pub mcp: Option<McpRuntime>,
+    /// Roles, departments and runs. `None` switches departments off.
+    pub team: Option<TeamRuntime>,
     /// Name of the service behind the endpoint for the first line of the prompt. When unset, what the
     /// server reports is used, and if it reports nothing the part is left out.
     pub provider_name: Option<String>,
@@ -126,10 +141,8 @@ impl<M: Model + 'static> AppState<M> {
     }
 }
 
-/// `port` is the port the listener is bound to; it decides which `Host` headers are accepted.
-pub fn router<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: u16) -> Router {
-    let idle = state.idle.clone();
-    let guard = Arc::new(auth::Guard { token, hosts: vec![format!("127.0.0.1:{port}"), format!("localhost:{port}"), format!("[::1]:{port}")] });
+/// Every API route, with no guard on it. The doors below each add their own.
+fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
     Router::new()
         .route("/v1/health", get(|| async { Json(json!({"ok": true})) }))
         .route("/v1/models", get(list_models::<M>))
@@ -145,20 +158,45 @@ pub fn router<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: 
         .route("/v1/status", get(status::<M>))
         .merge(memory_api::routes::<M>())
         .merge(learn_api::routes::<M>())
-        .layer(axum::middleware::from_fn_with_state(guard, auth::require))
-        .layer(axum::middleware::from_fn(move |req: axum::extract::Request, next: axum::middleware::Next| {
-            let idle = idle.clone();
-            async move {
-                // Only a request that passed the token check counts as activity: this layer sits outside
-                // the auth layer, so it must not wake the core for strangers. See `auth::require`.
-                let r = next.run(req).await;
-                if r.status() != StatusCode::UNAUTHORIZED && r.status() != StatusCode::FORBIDDEN {
-                    idle.touch();
-                }
-                r
-            }
-        }))
-        .with_state(state)
+        .merge(team_api::routes::<M>())
+        .merge(mcp_api::routes::<M>())
+        .merge(settings_api::routes::<M>())
+        .merge(export_api::routes::<M>())
+}
+
+/// Only a request that passed its guard counts as activity: this layer sits outside the guard, so it
+/// must not wake the core for strangers. See `auth::require`.
+async fn touch_idle(idle: Arc<idle::Idle>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let r = next.run(req).await;
+    if r.status() != StatusCode::UNAUTHORIZED && r.status() != StatusCode::FORBIDDEN {
+        idle.touch();
+    }
+    r
+}
+
+/// The machine's own door: loopback, with the token from the token file. `port` is the port the listener
+/// is bound to; it decides which `Host` headers are accepted.
+pub fn router<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: u16) -> Router {
+    router_with_web(state, token, port, None)
+}
+
+/// The same, plus the commands for pairing and listing browsers when the web door is switched on.
+pub fn router_with_web<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: u16, web: Option<Arc<web::Web>>) -> Router {
+    let idle = state.idle.clone();
+    let guard = Arc::new(auth::Guard { token, hosts: vec![format!("127.0.0.1:{port}"), format!("localhost:{port}"), format!("[::1]:{port}")] });
+    let mut r = api_routes::<M>().with_state(state);
+    if let Some(w) = web {
+        r = r.merge(web::local_routes(w));
+    }
+    r.layer(axum::middleware::from_fn_with_state(guard, auth::require)).layer(axum::middleware::from_fn(move |req, next| touch_idle(idle.clone(), req, next)))
+}
+
+/// The browser's door (served over HTTPS): the pages, pairing and sign-in, and the API for paired
+/// devices only, restricted to what the browser screens need.
+pub fn web_router<M: Model + 'static>(state: Arc<AppState<M>>, web: Arc<web::Web>) -> Router {
+    let idle = state.idle.clone();
+    let api = api_routes::<M>().with_state(state).merge(web::device_routes(web.clone())).layer(axum::middleware::from_fn_with_state(web.clone(), web::require_device));
+    web::public_routes(web).merge(api).layer(axum::middleware::from_fn(move |req, next| touch_idle(idle.clone(), req, next))).layer(axum::middleware::from_fn(web::headers))
 }
 
 pub(crate) struct ApiError(pub(crate) StatusCode, pub(crate) String);
@@ -219,7 +257,7 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     perms.allow_rules = st.settings.allow_rules.clone();
     perms.mode = if st.settings.bypass {
         Mode::Bypass
-    } else if b.ask_all {
+    } else if b.ask_all || st.settings.ask_all {
         Mode::AskAll
     } else {
         Mode::Tiered
@@ -248,7 +286,7 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
         let _ = rt.memory.start_conversation(&id, project.as_deref());
         conv = Some(id.clone());
         if tools_on {
-            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: rt.cfg.clone() }));
+            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: rt.cfg.clone(), layers: None }));
         }
         dest = Some(d);
         let (m, e) = (rt.memory.clone(), rt.embedder.clone());
@@ -288,11 +326,27 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
         (None, true) => lh_tools::SessionKind::Assistant,
         (None, false) => lh_tools::SessionKind::Chat,
     };
+    let mut pending_trust = None;
+    if let (Some(m), true) = (&st.settings.mcp, tools_on) {
+        for t in m.tools_for(project.as_deref()).await {
+            tools = tools.with_extra(t);
+        }
+        pending_trust = project.as_deref().and_then(|p| m.pending_trust(p));
+    }
+    let slot = (tools_on && st.settings.team.is_some()).then(|| {
+        let slot = Arc::new(std::sync::OnceLock::new());
+        tools = std::mem::take(&mut tools).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(&st), session: slot.clone(), project: false })).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(&st), session: slot.clone(), project: true }));
+        slot
+    });
     let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), permissions: perms.mode, sudo_enabled: perms.sudo_enabled, guidelines: tools.guidelines(), client_block, learned_block, about };
     let mut session = Session::new(req, perms, tools, parts);
     (session.incognito, session.dest, session.conv, session.project) = (b.incognito, dest, conv, project);
-    st.sessions.lock().unwrap().insert(id.clone(), Arc::new(session));
-    Ok(Json(json!({"id": id, "incognito": b.incognito})))
+    let session = Arc::new(session);
+    if let Some(slot) = slot {
+        let _ = slot.set(Arc::downgrade(&session));
+    }
+    st.sessions.lock().unwrap().insert(id.clone(), session);
+    Ok(Json(json!({"id": id, "incognito": b.incognito, "needs_trust": pending_trust})))
 }
 
 /// Build (or rebuild) the system message for the model this session uses. Names the model and the
@@ -540,6 +594,7 @@ async fn start_turn<M: Model + 'static>(
                     let _ = tx.send(("notice".into(), json!({"type":"notice","message": format!("The conversation could not be shortened: {e}")})));
                 }
             }
+            *s.turn_events.lock().unwrap() = Some(tx.downgrade());
             let asker = ApiAsker { session: s.clone(), events: tx.clone() };
             let opts = TurnOptions::default();
             let events = tx.clone();
@@ -573,6 +628,7 @@ async fn start_turn<M: Model + 'static>(
                     ("done".to_string(), json!({"type":"done","empty":empty}))
                 }
                 Ok(TurnEnd::Refused(why)) => ("refused".into(), json!({"type":"refused","message":why})),
+                Ok(TurnEnd::Stopped) => ("error".into(), json!({"type":"error","message":"stopped","detail":"stopped","retryable":false})),
                 Ok(TurnEnd::StepLimit) => {
                     *s.req.lock().await = work;
                     if stale {

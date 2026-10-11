@@ -2,7 +2,13 @@
 
 pub mod app;
 pub mod client;
+pub mod data_cli;
+pub mod devices_cli;
 pub mod learn_cli;
+pub mod mcp_cli;
 pub mod memory_cli;
+pub mod team_cli;
+pub mod settings_cli;
+pub mod setup;
 pub mod terminal;
 pub mod ui;

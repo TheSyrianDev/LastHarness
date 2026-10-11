@@ -1,0 +1,301 @@
+//! The one list of settings. Every behaviour choice has a key, a kind of value, a default and a plain
+//! description here, and the settings screens, the first-run questions and the core all read this list.
+//! Values live in `config.toml`; a key that is not there has its default.
+//!
+//! Some settings take effect at once (`live`), the rest when the core next starts.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("{0}")]
+    Invalid(String),
+    #[error("cannot read or write {0}: {1}")]
+    Io(String, String),
+    #[error("{0} is not valid TOML: {1}")]
+    Parse(String, String),
+}
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Kind {
+    Bool,
+    Int { min: i64, max: i64 },
+    /// A number of zero or more. An empty value means "no limit".
+    OptFloat,
+    /// `auto` or a whole number of zero or more.
+    AutoInt,
+    Choice(&'static [&'static str]),
+    Text,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Def {
+    pub key: &'static str,
+    pub kind: Kind,
+    pub default: &'static str,
+    /// Takes effect without restarting the core.
+    pub live: bool,
+    pub help: &'static str,
+}
+
+impl Def {
+    pub fn group(&self) -> &'static str {
+        self.key.split('.').next().unwrap_or("")
+    }
+}
+
+const fn d(key: &'static str, kind: Kind, default: &'static str, live: bool, help: &'static str) -> Def {
+    Def { key, kind, default, live, help }
+}
+
+pub const SCHEMA: &[Def] = &[
+    d("provider.url", Kind::Text, "", false, "Where the models are served, for example http://localhost:9292/v1"),
+    d("provider.name", Kind::Text, "", false, "Name of the service for the first line of the prompt. Leave empty to use what the server reports"),
+    d("provider.key", Kind::Text, "", false, "Reference to the stored secret that holds the API key, like secret:NAME (the key itself is never written here)"),
+    d("memory.enabled", Kind::Bool, "true", false, "Remember things between sessions"),
+    d("memory.trust", Kind::Choice(&["auto", "local", "own", "any"]), "auto", false, "How far the model endpoint is trusted with memory. auto: local if the endpoint is on this machine, otherwise any cloud"),
+    d("learning.mode", Kind::Choice(&["propose", "silent", "off"]), "propose", false, "propose: suggestions wait for you. silent: applied at once and logged. off: no learning"),
+    d("learning.threshold", Kind::Int { min: 2, max: 20 }, "3", false, "Sessions a wish must repeat in before it counts as a habit"),
+    d("team.autonomy", Kind::Choice(&["plan-first", "check-ins", "fire-and-forget"]), "plan-first", true, "How much you are asked on a big goal"),
+    d("team.parallel", Kind::Int { min: 1, max: 16 }, "1", true, "Workers running at once"),
+    d("team.attempts", Kind::Int { min: 1, max: 10 }, "3", true, "Attempts per step before a failure goes up"),
+    d("team.unavailable", Kind::Choice(&["stop", "fallback"]), "stop", true, "When a model is missing: stop and tell you, or try the type's fallback list"),
+    d("media.image_model", Kind::Text, "", false, "Model for making images. Empty switches image making off"),
+    d("web.listen", Kind::Text, "", false, "Address for the browser UI over HTTPS, for example 127.0.0.1:7843. Empty switches it off. Use this machine's network address to reach it from a phone; every device must be paired first"),
+    d("web.searxng", Kind::Text, "", false, "Address of a SearXNG server for web search. Empty switches search off"),
+    d("spending.mode", Kind::Choice(&["none", "caps", "estimate"]), "estimate", false, "none: only record. caps: refuse past a limit. estimate: ask before an expensive call"),
+    d("spending.approve_over_usd", Kind::OptFloat, "0.25", false, "In estimate mode, ask when one call is expected to cost more than this (US dollars)"),
+    d("spending.per_request_cap_usd", Kind::OptFloat, "", false, "Refuse any single call past this (US dollars). Empty for no limit"),
+    d("spending.daily_cap_usd", Kind::OptFloat, "", false, "Refuse past this per day (US dollars). Empty for no limit"),
+    d("spending.monthly_cap_usd", Kind::OptFloat, "", false, "Refuse past this per month (US dollars). Empty for no limit"),
+    d("permissions.mode", Kind::Choice(&["tiered", "ask-all"]), "tiered", false, "tiered: reads are free, writes ask once, risky things always ask. ask-all: ask for everything"),
+    d("permissions.bypass", Kind::Bool, "false", false, "Skip every permission question. You accept the risk; the project is not responsible for the outcome"),
+    d("permissions.sudo", Kind::Bool, "false", false, "Let agents use sudo (it still asks like any other command)"),
+    d("core.idle_after", Kind::Int { min: 0, max: 86_400 }, "600", false, "Seconds without activity before the core goes idle. 0 means never"),
+    d("core.compact_at", Kind::AutoInt, "auto", false, "Shorten a conversation at about this many tokens. auto: three quarters of the model's context. 0: never"),
+    d("reports.crash", Kind::Choice(&["off", "ask", "auto"]), "off", true, "Anonymous crash reports. off: never. ask: show exactly what would be sent and ask. auto: send"),
+    d("updates.enabled", Kind::Bool, "true", true, "Check for signed updates"),
+];
+
+pub fn def(key: &str) -> Option<&'static Def> {
+    SCHEMA.iter().find(|d| d.key == key)
+}
+
+/// Check a value for a key and return it in its stored form. Errors say what is allowed.
+pub fn normalize(key: &str, raw: &str) -> Result<String> {
+    let d = def(key).ok_or_else(|| Error::Invalid(format!("there is no setting called {key}. Run `lh settings` to see them")))?;
+    let raw = raw.trim();
+    let bad = |what: &str| Error::Invalid(format!("{key} {what}"));
+    Ok(match d.kind {
+        Kind::Bool => match raw.to_lowercase().as_str() {
+            "true" | "on" | "yes" | "1" => "true".into(),
+            "false" | "off" | "no" | "0" => "false".into(),
+            _ => return Err(bad("must be on or off")),
+        },
+        Kind::Int { min, max } => {
+            let n: i64 = raw.parse().map_err(|_| bad(&format!("must be a whole number from {min} to {max}")))?;
+            if !(min..=max).contains(&n) {
+                return Err(bad(&format!("must be a whole number from {min} to {max}")));
+            }
+            n.to_string()
+        }
+        Kind::OptFloat => {
+            if raw.is_empty() || raw == "none" {
+                String::new()
+            } else {
+                let f: f64 = raw.parse().map_err(|_| bad("must be a number of zero or more, or empty for no limit"))?;
+                if !f.is_finite() || f < 0.0 {
+                    return Err(bad("must be a number of zero or more, or empty for no limit"));
+                }
+                raw.to_string()
+            }
+        }
+        Kind::AutoInt => {
+            if raw.eq_ignore_ascii_case("auto") {
+                "auto".into()
+            } else {
+                raw.parse::<u64>().map_err(|_| bad("must be auto or a whole number of tokens (0 means never)"))?.to_string()
+            }
+        }
+        Kind::Choice(opts) => {
+            let r = raw.to_lowercase();
+            if !opts.contains(&r.as_str()) {
+                return Err(bad(&format!("must be one of: {}", opts.join(", "))));
+            }
+            r
+        }
+        Kind::Text => raw.to_string(),
+    })
+}
+
+/// The settings file. Unknown keys in it are kept as they are and ignored.
+#[derive(Clone, Debug)]
+pub struct ConfigFile {
+    path: PathBuf,
+    values: BTreeMap<String, String>,
+}
+
+impl ConfigFile {
+    pub fn default_path() -> PathBuf {
+        let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
+        base.join("lastharness").join("config.toml")
+    }
+
+    /// Read the file. A file that does not exist is an empty one (every setting at its default).
+    pub fn load(path: impl Into<PathBuf>) -> Result<Self> {
+        let path = path.into();
+        let mut values = BTreeMap::new();
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                let t: toml::Table = text.parse().map_err(|e: toml::de::Error| Error::Parse(path.display().to_string(), e.to_string()))?;
+                for (group, v) in t {
+                    if let toml::Value::Table(inner) = v {
+                        for (k, v) in inner {
+                            let s = match v {
+                                toml::Value::String(s) => s,
+                                toml::Value::Boolean(b) => b.to_string(),
+                                toml::Value::Integer(i) => i.to_string(),
+                                toml::Value::Float(f) => f.to_string(),
+                                _ => continue,
+                            };
+                            values.insert(format!("{group}.{k}"), s);
+                        }
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(Error::Io(path.display().to_string(), e.to_string())),
+        }
+        Ok(Self { path, values })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn exists(&self) -> bool {
+        self.path.exists()
+    }
+
+    /// The value in the file, or the default.
+    pub fn get(&self, key: &str) -> String {
+        self.values.get(key).cloned().or_else(|| def(key).map(|d| d.default.to_string())).unwrap_or_default()
+    }
+
+    pub fn is_set(&self, key: &str) -> bool {
+        self.values.contains_key(key)
+    }
+
+    pub fn get_bool(&self, key: &str) -> bool {
+        self.get(key) == "true"
+    }
+
+    /// `None` when empty.
+    pub fn get_opt(&self, key: &str) -> Option<String> {
+        Some(self.get(key)).filter(|v| !v.is_empty())
+    }
+
+    pub fn get_num<T: std::str::FromStr>(&self, key: &str) -> Option<T> {
+        self.get(key).parse().ok()
+    }
+
+    pub fn set(&mut self, key: &str, raw: &str) -> Result<String> {
+        let v = normalize(key, raw)?;
+        self.values.insert(key.to_string(), v.clone());
+        Ok(v)
+    }
+
+    pub fn unset(&mut self, key: &str) {
+        self.values.remove(key);
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let mut root = toml::Table::new();
+        for (k, v) in &self.values {
+            let Some((group, name)) = k.split_once('.') else { continue };
+            // typed in the file so it reads naturally: true/false and numbers are not quoted
+            let typed = match def(k).map(|d| d.kind) {
+                Some(Kind::Bool) => toml::Value::Boolean(v == "true"),
+                Some(Kind::Int { .. }) => v.parse().map(toml::Value::Integer).unwrap_or_else(|_| toml::Value::String(v.clone())),
+                Some(Kind::OptFloat) => v.parse().map(toml::Value::Float).unwrap_or_else(|_| toml::Value::String(v.clone())),
+                _ => toml::Value::String(v.clone()),
+            };
+            if let toml::Value::Table(t) = root.entry(group).or_insert_with(|| toml::Value::Table(toml::Table::new())) {
+                t.insert(name.to_string(), typed);
+            }
+        }
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| Error::Io(dir.display().to_string(), e.to_string()))?;
+        }
+        let tmp = self.path.with_extension("toml.tmp");
+        std::fs::write(&tmp, toml::to_string_pretty(&root).unwrap_or_default()).and_then(|_| std::fs::rename(&tmp, &self.path)).map_err(|e| Error::Io(self.path.display().to_string(), e.to_string()))
+    }
+
+    /// Every setting with its current value, in the order of the list.
+    pub fn all(&self) -> Vec<(&'static Def, String, bool)> {
+        SCHEMA.iter().map(|d| (d, self.get(d.key), self.is_set(d.key))).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn values_are_checked_and_stored_in_a_readable_file() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("lh/config.toml");
+        let mut c = ConfigFile::load(&p).unwrap();
+        assert!(!c.exists());
+        assert_eq!((c.get("team.parallel"), c.get("memory.enabled"), c.get("learning.mode")), ("1".into(), "true".into(), "propose".into()));
+        assert_eq!(c.set("memory.enabled", "off").unwrap(), "false");
+        assert_eq!(c.set("team.autonomy", "Check-Ins").unwrap(), "check-ins");
+        assert_eq!(c.set("spending.daily_cap_usd", "5.5").unwrap(), "5.5");
+        assert_eq!(c.set("spending.daily_cap_usd", "none").unwrap(), "");
+        c.set("provider.url", " http://localhost:9292/v1 ").unwrap();
+        c.set("core.compact_at", "AUTO").unwrap();
+        c.save().unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains("[memory]") && text.contains("enabled = false") && text.contains("url = \"http://localhost:9292/v1\""), "{text}");
+        let again = ConfigFile::load(&p).unwrap();
+        assert_eq!((again.get("memory.enabled"), again.get("team.autonomy"), again.get_opt("spending.daily_cap_usd")), ("false".into(), "check-ins".into(), None));
+        assert!(again.is_set("provider.url") && !again.is_set("learning.mode"));
+    }
+
+    #[test]
+    fn wrong_values_say_what_is_allowed() {
+        for (k, v, expect) in [
+            ("team.parallel", "99", "from 1 to 16"),
+            ("team.parallel", "many", "whole number"),
+            ("learning.mode", "loud", "one of: propose, silent, off"),
+            ("memory.enabled", "maybe", "on or off"),
+            ("spending.mode", "", "one of"),
+            ("core.compact_at", "-5", "auto or a whole number"),
+            ("spending.daily_cap_usd", "-1", "zero or more"),
+            ("nothing.here", "x", "no setting called nothing.here"),
+        ] {
+            let e = normalize(k, v).unwrap_err().to_string();
+            assert!(e.contains(expect), "{k}={v}: {e}");
+        }
+    }
+
+    #[test]
+    fn every_default_is_itself_valid_and_every_key_is_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for d in SCHEMA {
+            assert!(seen.insert(d.key), "{} twice", d.key);
+            assert_eq!(normalize(d.key, d.default).unwrap(), d.default, "{}", d.key);
+            assert!(!d.help.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_broken_file_is_reported_not_replaced() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config.toml");
+        std::fs::write(&p, "this is = = not toml").unwrap();
+        assert!(ConfigFile::load(&p).unwrap_err().to_string().contains("not valid TOML"));
+    }
+}

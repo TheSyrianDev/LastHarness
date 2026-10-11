@@ -184,3 +184,64 @@ fn settings_have_safe_defaults_limits_and_survive_a_reopen() {
     assert!(s.set_parallel(0).is_err() && s.set_parallel(99).is_err() && s.set_attempts(0).is_err());
     assert_eq!(f.store.recent(50, Some("setting_changed")).unwrap().len(), 6, "every change is logged");
 }
+
+#[test]
+fn a_plugin_folder_is_previewed_then_installed_without_replacing_what_the_user_has() {
+    use lh_team::plugin;
+    let d = tempfile::tempdir().unwrap();
+    let store = std::sync::Arc::new(lh_store::Store::open_memory().unwrap());
+    let learn = std::sync::Arc::new(lh_learn::Learn::new(store));
+    let roles = RoleBook::open(d.path().join("roles"), learn.clone()).unwrap();
+    roles.install_starters().unwrap();
+    let depts = DeptBook::open(d.path().join("departments"), learn).unwrap();
+    let p = d.path().join("legal-kit");
+    for sub in ["roles", "departments", "themes"] {
+        std::fs::create_dir_all(p.join(sub)).unwrap();
+    }
+    std::fs::write(p.join("plugin.json"), r#"{"name": "legal-kit", "description": "Contract help."}"#).unwrap();
+    std::fs::write(p.join("roles/clause-checker.md"), "---\nname: clause-checker\ndescription: Checks clauses.\ntype: mid-tier\ntools: read_file\n---\nCheck clauses.\n").unwrap();
+    std::fs::write(p.join("roles/writer.md"), "---\nname: writer\ndescription: My own writer.\ntype: mid-tier\ntools: read_file\n---\nReplaced writer.\n").unwrap();
+    std::fs::write(p.join("roles/broken.md"), "no header").unwrap();
+    std::fs::write(p.join("departments/contracts.md"), "---\nname: contracts\nlead: planner\nmembers: clause-checker\n---\n").unwrap();
+    std::fs::write(p.join("departments/needs-ghost.md"), "---\nname: needs-ghost\nlead: planner\nmembers: ghost\n---\n").unwrap();
+    std::fs::write(p.join("themes/dusk.json"), "{}").unwrap();
+
+    let pv = plugin::preview(&p, &roles, &depts).unwrap();
+    assert_eq!((pv.name.as_str(), pv.description.as_str()), ("legal-kit", "Contract help."));
+    assert_eq!(pv.roles.iter().map(|r| (r.name.as_str(), r.exists)).collect::<Vec<_>>(), [("clause-checker", false), ("writer", true)]);
+    assert_eq!(pv.departments.len(), 2);
+    assert_eq!(pv.themes, ["dusk.json"]);
+    assert!(pv.problems.len() == 1 && pv.problems[0].starts_with("roles/broken.md"), "{:?}", pv.problems);
+    assert!(roles.get("clause-checker").is_err(), "a preview installs nothing");
+
+    let before = roles.get("writer").unwrap().instructions;
+    let rep = plugin::install(&p, &roles, &depts, &d.path().join("themes"), &[], "plugin").unwrap();
+    assert!(rep.installed.contains(&"role clause-checker".to_string()) && rep.installed.contains(&"department contracts".to_string()) && rep.installed.contains(&"theme dusk.json".to_string()), "{rep:?}");
+    assert!(rep.skipped.iter().any(|s| s.starts_with("role writer")) && rep.skipped.iter().any(|s| s.starts_with("department needs-ghost")), "{rep:?}");
+    assert_eq!(roles.get("writer").unwrap().instructions, before, "the user's own writer stays");
+    assert!(d.path().join("themes/legal-kit/dusk.json").is_file());
+
+    // replacing is explicit, and it is a version that can be rolled back
+    plugin::install(&p, &roles, &depts, &d.path().join("themes"), &["writer".to_string()], "plugin").unwrap();
+    assert_eq!(roles.get("writer").unwrap().instructions, "Replaced writer.");
+    roles.rollback("writer", 1, "user").unwrap();
+    assert_eq!(roles.get("writer").unwrap().instructions, before);
+    assert!(plugin::preview(&d.path().join("nope"), &roles, &depts).is_err());
+}
+
+#[test]
+fn the_leads_prompts_stay_small() {
+    use lh_team::{check_prompt, failure_prompt, final_prompt, plan_prompt, PlanStep};
+    let est = |s: &str| lh_tools::estimate_text_tokens(s);
+    let dept = Department { name: "web".into(), description: "Builds websites.".into(), lead: "planner".into(), members: vec![], parallel: None, attempts: None, instructions: "Work together and keep it simple.".into() };
+    let members: Vec<(String, String)> = ["researcher", "writer", "coder", "designer", "dept:design"].iter().map(|n| (n.to_string(), "Finds, writes, builds or designs one thing at a time.".to_string())).collect();
+    let plan = plan_prompt("Make a landing page for a bakery with a menu and opening hours.", &dept, &members, "");
+    let step = PlanStep { id: "1".into(), title: "Write the copy".into(), assignee: "writer".into(), brief: "Write the headline and three short paragraphs.".into(), depends_on: vec![], milestone: None };
+    let check = check_prompt("Make a landing page for a bakery.", &step, "Wrote the copy.", &"x".repeat(2500));
+    let fail = failure_prompt(&step, "writer", "the build fails", 1, 3, &["researcher".to_string(), "writer".to_string(), "coder".to_string()]);
+    let fin = final_prompt("Make a landing page.", &[("Write the copy".to_string(), "x".repeat(800)), ("Build the page".to_string(), "x".repeat(800))], &[]);
+    eprintln!("prompt sizes (tokens, chars/3.5): plan {} check {} failure {} final {}", est(&plan), est(&check), est(&fail), est(&fin));
+    assert!(est(&plan) < 400, "plan {}", est(&plan));
+    assert!(est(&fail) < 300, "failure {}", est(&fail));
+    assert!(est(&check) < 1100 && est(&fin) < 1100, "check {} final {}", est(&check), est(&fin));
+}

@@ -36,7 +36,7 @@ fn json_in(reply: &str, open: char, close: char) -> Option<Value> {
 
 pub fn plan_prompt(goal: &str, dept: &Department, members: &[(String, String)], context: &str) -> String {
     let mut s = format!(
-        "[PLAN] You lead the \"{}\" department. {}\nSplit the goal into small steps and give each step to the best member. Independent steps can run at the same time; say which steps must wait for others with depends_on.\n\nGoal: {goal}\n",
+        "[PLAN] You lead the \"{}\" department. {}\nSplit the goal into small steps and give each step to the best member. Independent steps can run at the same time. A step sees only its own brief and the results of the steps listed in its depends_on, nothing else, so list every step whose result it needs and write each brief so it makes sense alone.\n\nGoal: {goal}\n",
         dept.name, dept.instructions
     );
     if !context.trim().is_empty() {
@@ -121,9 +121,9 @@ pub enum Check {
     Fail(String),
 }
 
-pub fn check_prompt(step: &PlanStep, summary: &str, result: &str) -> String {
+pub fn check_prompt(goal: &str, step: &PlanStep, summary: &str, result: &str) -> String {
     format!(
-        "[CHECK] Check a worker's result against the step it was given.\n\nStep: {}\nBrief: {}\n\nThe worker's summary: {summary}\n\nStart of the result:\n{}\n\nAnswer with ONE line: OK if it meets the step; SMALL: <one sentence on what to fix> if only small mistakes remain; FAIL: <what is wrong> if it misses the step in a larger way.",
+        "[CHECK] Check a worker's result against the step it was given and the overall goal.\n\nGoal: {goal}\nStep: {}\nBrief: {}\n\nThe worker's summary: {summary}\n\nStart of the result:\n{}\n\nAnswer with ONE line: OK if it meets the step and fits the goal; SMALL: <one sentence on what to fix> if only small mistakes remain; FAIL: <what is wrong> if it misses the step or goes off the goal in a larger way.",
         step.title,
         step.brief,
         excerpt(result, 2500)
@@ -181,7 +181,7 @@ pub fn parse_remedy(reply: &str, members: &[String], types: &[String]) -> Remedy
 }
 
 pub fn final_prompt(goal: &str, steps: &[(String, String)], parked: &[String]) -> String {
-    let mut s = format!("[FINAL] All steps are finished. Write the department's answer to the goal: what was done, where the results are, and anything the user must know. Be brief and plain.\n\nGoal: {goal}\n\nSteps and their summaries:\n");
+    let mut s = format!("[FINAL] All steps are finished. Write the department's answer to the goal: what was done, where the results are, and anything the user must know. Be brief and plain. State only what the summaries show: do not say a file was saved or a command was run unless a summary says so, and say plainly what was refused or left undone.\n\nGoal: {goal}\n\nWhat each step handed back:\n");
     for (t, sum) in steps {
         s.push_str(&format!("- {t}: {sum}\n"));
     }

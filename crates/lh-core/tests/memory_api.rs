@@ -97,6 +97,10 @@ fn start_at(dir: &std::path::Path, replies: Vec<Response>, trust: Trust, project
         bypass: false,
         sudo_enabled: false,
         allow_rules: vec![],
+        team: None,
+        mcp: None,
+        ask_all: false,
+        config: None,
     };
     let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     l.set_nonblocking(true).unwrap();

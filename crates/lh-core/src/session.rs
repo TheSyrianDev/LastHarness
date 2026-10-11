@@ -51,11 +51,13 @@ pub struct Session {
     pub injected: crate::memory_api::Injected,
     pending: Mutex<HashMap<String, oneshot::Sender<Answer>>>,
     next_ask: AtomicU64,
+    /// Where the running turn sends its events; department tools use it to ask the user.
+    pub turn_events: Mutex<Option<mpsc::WeakUnboundedSender<(String, Value)>>>,
 }
 
 impl Session {
     pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet, parts: SystemParts) -> Self {
-        Self { parts, identity_stale: AtomicBool::new(true), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
+        Self { parts, identity_stale: AtomicBool::new(true), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None) }
     }
 
     pub fn try_start(&self) -> bool {
@@ -64,6 +66,7 @@ impl Session {
 
     /// Called when a turn ends or is cancelled: unanswered questions fall through as "no".
     pub fn finish_turn(&self) {
+        *self.turn_events.lock().unwrap() = None;
         self.pending.lock().unwrap().clear();
         self.busy.store(false, Ordering::SeqCst);
     }
@@ -72,6 +75,17 @@ impl Session {
         match self.pending.lock().unwrap().remove(ask_id) {
             Some(tx) => tx.send(a).is_ok(),
             None => false,
+        }
+    }
+}
+
+impl Session {
+    /// Ask the user through the running turn. `No` when no turn is running.
+    pub async fn ask_user(self: &Arc<Self>, tool: &str, what: String, reason: String, worker: &str) -> Answer {
+        let events = self.turn_events.lock().unwrap().as_ref().and_then(|w| w.upgrade());
+        match events {
+            Some(events) => ApiAsker { session: self.clone(), events }.ask(&AskRequest { tool, what, reason, worker }).await,
+            None => Answer::No,
         }
     }
 }

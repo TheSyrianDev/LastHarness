@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use lh_provider::{Capabilities, ChatRequest, Error, Event, FinishReason, GeneratedImage, Message, Provider, Response, Usage};
 use serde_json::Value;
 
-use crate::tools::Undo;
+use crate::tools::{BoxFut, Undo};
 use crate::{Action, Answer, AskRequest, Asker, Decision, Permissions, Tool, ToolSet};
 
 /// Anything that can answer a chat request. `Provider` is the real one; tests use a script.
@@ -114,16 +116,20 @@ pub enum TurnEvent {
     ToolResult { id: String, text: String, undo: Option<Undo> },
 }
 
+/// Called before every model call. Returns `false` to stop the turn. A worker's pause waits inside it.
+pub type Gate = Arc<dyn Fn() -> BoxFut<'static, bool> + Send + Sync>;
+
 pub struct TurnOptions {
     /// Most model calls in one turn, so a confused model cannot loop forever. Default 20.
     pub max_steps: u32,
     /// Name shown in permission prompts.
     pub worker: String,
+    pub gate: Option<Gate>,
 }
 
 impl Default for TurnOptions {
     fn default() -> Self {
-        Self { max_steps: 20, worker: "assistant".into() }
+        Self { max_steps: 20, worker: "assistant".into(), gate: None }
     }
 }
 
@@ -135,6 +141,8 @@ pub enum TurnEnd {
     StepLimit,
     /// The spending rules stopped the turn (a cap was reached, or the user declined the cost).
     Refused(String),
+    /// The gate said stop (the user stopped the worker).
+    Stopped,
 }
 
 /// Run one user turn: call the model, run the tools it asks for under the permission rules, give the
@@ -154,6 +162,11 @@ pub async fn run_turn<M: Model, A: Asker, T: Meter>(
 ) -> Result<TurnEnd, Error> {
     req.tools = tools.defs();
     for _ in 0..opts.max_steps.max(1) {
+        if let Some(g) = &opts.gate {
+            if !g().await {
+                return Ok(TurnEnd::Stopped);
+            }
+        }
         match meter.before(req).await {
             MeterVerdict::Allow => {}
             MeterVerdict::Refuse(why) => return Ok(TurnEnd::Refused(why)),

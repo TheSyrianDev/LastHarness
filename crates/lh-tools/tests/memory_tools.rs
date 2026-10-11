@@ -42,7 +42,7 @@ struct Setup {
 fn setup(trust: Trust) -> Setup {
     let d = tempfile::tempdir().unwrap();
     let mem = Arc::new(Memory::open(Arc::new(Store::open_memory().unwrap()), d.path().join("m")).unwrap());
-    let h = Arc::new(MemoryHandle { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), dest: Destination { trust, project: None }, cfg: RecallConfig::default() });
+    let h = Arc::new(MemoryHandle { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), dest: Destination { trust, project: None }, cfg: RecallConfig::default(), layers: None });
     let proj = d.path().join("proj");
     std::fs::create_dir(&proj).unwrap();
     Setup { tools: default_tools().with_memory(h), perms: Permissions::new(&proj).unwrap(), mem, _d: d }

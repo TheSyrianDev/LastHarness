@@ -17,6 +17,8 @@ pub struct MemoryHandle {
     /// Where this worker's model is: decides what it may see.
     pub dest: Destination,
     pub cfg: RecallConfig,
+    /// A role's memory slice: only these layers are visible. `None` means all of them.
+    pub layers: Option<Vec<lh_memory::Layer>>,
 }
 
 impl std::fmt::Debug for MemoryHandle {
@@ -34,7 +36,8 @@ pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<St
         Tool::Recall => {
             let q = args["query"].as_str().unwrap_or("");
             let semantic = if h.embedder.is_on() { h.memory.semantic_search(&*h.embedder, q, 10).await.unwrap_or_default() } else { vec![] };
-            let r = h.memory.recall(q, &h.dest, &h.cfg, &semantic, &HashSet::new()).map_err(|e| fail(e.to_string()))?;
+            let mut r = h.memory.recall(q, &h.dest, &h.cfg, &semantic, &HashSet::new()).map_err(|e| fail(e.to_string()))?;
+            r.notes.retain(|n| h.layers.as_ref().is_none_or(|l| l.contains(&n.layer)));
             if r.notes.is_empty() {
                 return Ok("Nothing in memory matches.".into());
             }
@@ -45,7 +48,7 @@ pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<St
         }
         Tool::OpenNote => {
             let id = args["id"].as_str().unwrap_or("");
-            let page = h.memory.get(id).ok().filter(|p| lh_memory::visible(p, &h.dest)).ok_or_else(|| fail(format!("there is no note with id {id}")))?;
+            let page = h.memory.get(id).ok().filter(|p| lh_memory::visible(p, &h.dest) && h.layers.as_ref().is_none_or(|l| l.contains(&p.layer))).ok_or_else(|| fail(format!("there is no note with id {id}")))?;
             Ok(format!("{} ({}, version {})\n\n{}", page.title, page.layer.as_str(), page.version, page.body))
         }
         Tool::Remember => {
@@ -54,6 +57,9 @@ pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<St
                 return Err(ToolError::Args("`text` must not be empty".into()));
             }
             let layer = args["layer"].as_str().and_then(Layer::parse).unwrap_or(Layer::Facts);
+            if h.layers.as_ref().is_some_and(|l| !l.contains(&layer)) {
+                return Err(fail("this role may not save to that part of memory"));
+            }
             let title = args["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).unwrap_or_else(|| excerpt(text, 50));
             let class = detect(&format!("{title} {text}"));
             let mut n = NewPage::new(layer, title.clone(), text);
@@ -71,7 +77,7 @@ pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<St
             let id = args["id"].as_str().unwrap_or("");
             let page = h.memory.get(id).map_err(|_| fail(format!("there is no note with id {id}")))?;
             // a model may only remove what it is allowed to see
-            if !lh_memory::visible(&page, &h.dest) {
+            if !lh_memory::visible(&page, &h.dest) || h.layers.as_ref().is_some_and(|l| !l.contains(&page.layer)) {
                 return Err(fail(format!("there is no note with id {id}")));
             }
             h.memory.delete(id, By::Assistant).map_err(|e| fail(e.to_string()))?;

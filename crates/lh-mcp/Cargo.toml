@@ -1,0 +1,19 @@
+[package]
+name = "lh-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lh-provider = { path = "../lh-provider" }
+lh-memory = { path = "../lh-memory" }
+lh-tools = { path = "../lh-tools" }
+tokio = { workspace = true, features = ["process", "io-util", "sync", "time"] }
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+axum = "0.8"
+tempfile = "3"

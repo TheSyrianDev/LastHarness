@@ -3,6 +3,11 @@
 //! lh [--url http://127.0.0.1:7842] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]
 //! lh memory <command>     (see `lh memory help`)
 //! lh learn <command>      (see `lh learn help`)
+//! lh team <command>       (see `lh team help`)
+//! lh devices [accept PIN|remove ID]
+//! lh export <folder>; lh import <folder> [--apply]
+//! lh setup                first-run questions; lh settings [group|set|reset]
+//! lh mcp <command>        (see `lh mcp help`); lh trust <folder>
 
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -41,6 +46,12 @@ pub async fn run() {
     let (mut url, mut token_file, mut model, mut ask_all, mut incognito) = ("http://127.0.0.1:7842".to_string(), default_token_path(), None, false, false);
     let mut memory_cmd: Option<Vec<String>> = None;
     let mut learn_cmd: Option<Vec<String>> = None;
+    let mut team_cmd: Option<Vec<String>> = None;
+    let mut mcp_cmd: Option<(bool, Vec<String>)> = None;
+    let mut settings_cmd: Option<Vec<String>> = None;
+    let mut do_setup = false;
+    let mut data_cmd: Option<(bool, Vec<String>)> = None;
+    let mut devices_cmd: Option<Vec<String>> = None;
     while let Some(arg) = a.next() {
         let mut val = || a.next().unwrap_or_else(|| fail(format!("{arg} needs a value")));
         match arg.as_str() {
@@ -53,6 +64,30 @@ pub async fn run() {
                 learn_cmd = Some(a.by_ref().collect());
                 break;
             }
+            "devices" => {
+                devices_cmd = Some(a.by_ref().collect());
+                break;
+            }
+            "export" | "import" => {
+                data_cmd = Some((arg == "export", a.by_ref().collect()));
+                break;
+            }
+            "setup" => {
+                do_setup = true;
+                break;
+            }
+            "settings" => {
+                settings_cmd = Some(a.by_ref().collect());
+                break;
+            }
+            "mcp" | "trust" => {
+                mcp_cmd = Some((arg == "trust", a.by_ref().collect()));
+                break;
+            }
+            "team" => {
+                team_cmd = Some(a.by_ref().collect());
+                break;
+            }
             "memory" => {
                 memory_cmd = Some(a.by_ref().collect());
                 break;
@@ -60,9 +95,60 @@ pub async fn run() {
             other => fail(format!("unknown option {other}")),
         }
     }
+    if do_setup {
+        // the questions read the keyboard and probe the network with blocking calls, so they get their own thread
+        let r = tokio::task::spawn_blocking(|| {
+            let mut cfg = lh_config::ConfigFile::load(lh_config::ConfigFile::default_path()).map_err(|e| e.to_string())?;
+            crate::setup::run(&mut crate::setup::Terminal, &mut cfg, &crate::setup::probe_http, &crate::setup::save_secret_os)
+        })
+        .await;
+        match r {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => fail(e),
+            Err(e) => fail(e),
+        }
+        return;
+    }
     let client = Arc::new(Client::from_token_file(&url, &token_file).unwrap_or_else(|e| fail(e)));
     if let Some(cmd) = learn_cmd {
         match crate::learn_cli::run(&client, &cmd).await {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    if let Some(cmd) = devices_cmd {
+        match crate::devices_cli::run(&client, &cmd).await {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    if let Some((is_export, cmd)) = data_cmd {
+        let r = if is_export { crate::data_cli::export(&client, &cmd).await } else { crate::data_cli::import(&client, &cmd).await };
+        match r {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    if let Some(cmd) = settings_cmd {
+        match crate::settings_cli::run(&client, &cmd, &lh_config::ConfigFile::default_path()).await {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    if let Some((is_trust, cmd)) = mcp_cmd {
+        let r = if is_trust { crate::mcp_cli::trust(&client, &cmd).await } else { crate::mcp_cli::run(&client, &cmd).await };
+        match r {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    if let Some(cmd) = team_cmd {
+        match crate::team_cli::run(&client, &cmd).await {
             Ok(text) => println!("{text}"),
             Err(e) => fail(e),
         }

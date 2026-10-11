@@ -68,7 +68,7 @@ async fn start_with(replies: Vec<Option<Response>>, spend: lh_spend::SpendMeter,
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let app = router(AppState::new(Script::new(replies), Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(compact_at), store: store.clone(), spend, bypass: false, sudo_enabled: false, allow_rules: vec![] }), token.clone(), port);
+    let app = router(AppState::new(Script::new(replies), Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(compact_at), store: store.clone(), spend, bypass: false, sudo_enabled: false, allow_rules: vec![], team: None, mcp: None, ask_all: false, config: None }), token.clone(), port);
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     Server { base: format!("http://127.0.0.1:{port}"), token, http: reqwest::Client::new() }
 }
@@ -273,7 +273,7 @@ async fn sampling_and_limits_from_the_session_reach_the_model() {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![] };
+    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![], team: None, mcp: None, ask_all: false, config: None };
     let app = router(AppState::new(script, settings), token.clone(), port);
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     let s = Server { base: format!("http://127.0.0.1:{port}"), token, http: reqwest::Client::new() };
@@ -298,7 +298,7 @@ async fn folderless_sessions_chat_without_tools_or_work_from_home() {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![] };
+    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![], team: None, mcp: None, ask_all: false, config: None };
     let app = router(AppState::new(script, settings), token.clone(), port);
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     let s = Server { base: format!("http://127.0.0.1:{port}"), token, http: reqwest::Client::new() };
@@ -323,7 +323,7 @@ async fn the_base_prompt_comes_first_and_is_the_same_on_every_turn() {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![] };
+    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: std::sync::Arc::new(lh_store::Store::open_memory().unwrap()), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![], team: None, mcp: None, ask_all: false, config: None };
     let app = router(AppState::new(script, settings), token.clone(), port);
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     let s = Server { base: format!("http://127.0.0.1:{port}"), token, http: reqwest::Client::new() };
@@ -358,7 +358,7 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: store.clone(), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![] };
+    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: store.clone(), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![], team: None, mcp: None, ask_all: false, config: None };
     let app = router(AppState::new(script, settings), token.clone(), port);
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     let s = Server { base: format!("http://127.0.0.1:{port}"), token, http: reqwest::Client::new() };

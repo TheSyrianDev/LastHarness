@@ -137,7 +137,7 @@ async fn a_worker_only_gets_its_tools_and_steps_are_capped() {
     let looping: Vec<_> = (0..5).map(|i| tools_reply(vec![call(&i.to_string(), "write_file", r#"{"path":"a","content":"x"}"#)])).collect();
     let model = Script::new(looping);
     let (u, mut r) = (user(Answer::Yes), req());
-    let end = run_turn(&model, &NoMeter, &mut r, &read_only, &perms, &u, &TurnOptions { max_steps: 3, worker: "researcher".into() }, |_| {}).await.unwrap();
+    let end = run_turn(&model, &NoMeter, &mut r, &read_only, &perms, &u, &TurnOptions { max_steps: 3, worker: "researcher".into(), ..Default::default() }, |_| {}).await.unwrap();
     assert!(matches!(end, TurnEnd::StepLimit));
     assert!(!d.path().join("a").exists());
     assert!(tool_results(&r).iter().all(|t| t.contains("not available")));

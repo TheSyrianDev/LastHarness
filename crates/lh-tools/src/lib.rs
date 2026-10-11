@@ -16,6 +16,6 @@ pub use command::{classify, Class};
 pub use memory_tools::MemoryHandle;
 pub use compact::{compact_if_needed, SUMMARY_MARKER, estimate_tokens, CompactError, CompactOptions, Compacted};
 pub use perm::{Action, Answer, AskRequest, Asker, Decision, Mode, Permissions};
-pub use runner::{run_turn, Meter, MeterVerdict, Model, NoMeter, Outcome, TurnEnd, TurnEvent, TurnOptions};
+pub use runner::{run_turn, Gate, Meter, MeterVerdict, Model, NoMeter, Outcome, TurnEnd, TurnEvent, TurnOptions};
 pub use web::{html_to_text, is_public, WebConfig};
 pub use tools::{default_tools, BoxFut, ExtraTool, Risk, Tool, ToolError, ToolOutput, ToolSet, Undo};

@@ -92,7 +92,7 @@ impl Role {
             None => vec![],
             Some(_) => return Err("tools must be a list of names".into()),
         };
-        if let Some(bad) = tools.iter().find(|t| !KNOWN_TOOLS.contains(&t.as_str())) {
+        if let Some(bad) = tools.iter().find(|t| !KNOWN_TOOLS.contains(&t.as_str()) && !t.starts_with("mcp__")) {
             return Err(format!("unknown tool \"{bad}\". Known tools: {}", KNOWN_TOOLS.join(", ")));
         }
         let memory = match s("memory")?.as_deref() {

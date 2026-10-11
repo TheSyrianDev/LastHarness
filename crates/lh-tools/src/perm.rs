@@ -60,6 +60,9 @@ pub struct Permissions {
     pub sudo_enabled: bool,
     /// Command prefixes the user approved for good, such as `omarchy-pkg-add` or `git status`.
     pub allow_rules: Vec<String>,
+    /// A project worker is locked to its folder: allow rules no longer cover commands that reach outside
+    /// it, so those requests go up the chain instead of being waved through.
+    pub locked: bool,
     root: PathBuf,
     session_writes: AtomicBool,
 }
@@ -70,6 +73,7 @@ impl Permissions {
             mode: Mode::Tiered,
             sudo_enabled: false,
             allow_rules: vec![],
+            locked: false,
             root: project_root.canonicalize()?,
             session_writes: AtomicBool::new(false),
         })
@@ -115,7 +119,7 @@ impl Permissions {
             return Decision::Allow;
         }
         if let Action::Run(cmd) = action {
-            if self.allowed_by_rule(cmd) {
+            if self.allowed_by_rule(cmd) && !(self.locked && self.command_leaves(cmd)) {
                 return Decision::Allow;
             }
         }
@@ -153,10 +157,7 @@ impl Permissions {
             worst = worst.max(classify_segment(&s));
         }
         // paths in the command that point out of the project turn a read into an ask
-        let leaves = cmd.split_whitespace().any(|w| {
-            let w = w.trim_matches(|c| c == '"' || c == '\'');
-            (w.starts_with('/') || w.starts_with("~/") || w == "~" || w.starts_with("../") || w == "..") && !self.inside(Path::new(&w.replacen('~', "/home-dir-placeholder", 1)))
-        });
+        let leaves = self.command_leaves(cmd);
         match worst {
             Class::Sudo => ask("runs a command as root"),
             Class::Delete => ask("deletes files"),
@@ -167,6 +168,14 @@ impl Permissions {
             Class::Write => write_once(self, "changes files in the project"),
             Class::ReadOnly => Decision::Allow,
         }
+    }
+
+    /// Does the command name a path outside the project folder?
+    fn command_leaves(&self, cmd: &str) -> bool {
+        cmd.split_whitespace().any(|w| {
+            let w = w.trim_matches(|c| c == '"' || c == '\'');
+            (w.starts_with('/') || w.starts_with("~/") || w == "~" || w.starts_with("../") || w == "..") && !self.inside(Path::new(&w.replacen('~', "/home-dir-placeholder", 1)))
+        })
     }
 
     fn allowed_by_rule(&self, cmd: &str) -> bool {
@@ -248,6 +257,18 @@ mod tests {
         assert_eq!(run(&p, "sudo ls"), Decision::Allow);
         p.mode = Mode::Tiered;
         assert!(is_ask(&run(&p, "sudo ls")));
+    }
+
+    #[test]
+    fn a_locked_worker_is_not_waved_through_by_an_allow_rule_when_it_reaches_outside() {
+        let (_d, mut p) = perms();
+        p.allow_rules = vec!["cat".into()];
+        assert_eq!(run(&p, "cat src/a.txt"), Decision::Allow);
+        assert_eq!(run(&p, "cat /etc/hostname"), Decision::Allow, "an unlocked worker may use the rule anywhere");
+        p.locked = true;
+        assert_eq!(run(&p, "cat src/a.txt"), Decision::Allow, "inside the folder the rule still counts");
+        assert!(is_ask(&run(&p, "cat /etc/hostname")), "outside it, the request goes up");
+        assert!(is_ask(&run(&p, "cat ../secret")));
     }
 
     #[test]
