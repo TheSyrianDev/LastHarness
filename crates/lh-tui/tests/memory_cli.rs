@@ -23,6 +23,7 @@ async fn core() -> (tempfile::TempDir, Client) {
     let store = Arc::new(Store::open(&d.path().join("lh.db")).unwrap());
     let memory = Arc::new(Memory::open(store.clone(), d.path().join("memory")).unwrap());
     let settings = Settings {
+        learn: None,
         maintain_when_idle: false,
         memory: Some(MemoryRuntime { memory, embedder: Arc::new(AnyEmbedder::Off), trust: Trust::Local, cfg: RecallConfig::default() }),
         image_model: None,

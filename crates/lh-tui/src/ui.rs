@@ -72,18 +72,26 @@ pub fn draw(f: &mut Frame, app: &App) {
         let what = match sg.kind.as_str() {
             "update" => "Change a note",
             "archive" => "Archive a note",
+            "learn_rule" => "Learn this rule",
+            "learn_rule_update" => "Change a rule",
+            "learn_style" => "Add to your style profile",
+            "learn_skill_new" => "Save as a skill",
+            "learn_skill_update" => "Change a skill",
             _ => "Remember this",
         };
         let mut text = vec![
             Line::from(Span::styled(format!("{what} ({} left)", app.review.len()), Style::new().bold())),
             Line::raw(""),
-            Line::from(Span::styled(format!("{}: {}", sg.layer, sg.title), Style::new().bold())),
+            Line::from(Span::styled(if sg.learn { format!("({}) {}", sg.layer, sg.title) } else { format!("{}: {}", sg.layer, sg.title) }, Style::new().bold())),
             Line::raw(clip(&sg.text, 400)),
         ];
         if !sg.evidence.is_empty() {
             text.push(Line::from(Span::styled(format!("you said: \"{}\"", clip(&sg.evidence, 150)), Style::new().add_modifier(Modifier::DIM))));
         }
         text.push(Line::from(if sg.sensitive { format!("Sensitive ({}): stays on this machine", sg.reason) } else { "Not sensitive: may be shared with cloud models".to_string() }));
+        if sg.learn {
+            text.push(Line::from(Span::styled("It applies to every future session until you turn it off or roll it back.", Style::new().add_modifier(Modifier::DIM))));
+        }
         text.push(Line::raw(""));
         text.push(Line::from(Span::styled("y = remember   n = drop   s = later   p = flip sensitive   Esc = close", Style::new().fg(Color::Yellow).bold())));
         f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }).block(Block::default().borders(Borders::ALL).title("Memory review")), area);
@@ -148,8 +156,8 @@ mod tests {
     fn the_review_screen_shows_a_suggestion_and_how_to_decide() {
         let mut a = App::new("m");
         a.review = vec![
-            crate::app::Suggestion { id: 7, kind: "new".into(), layer: "facts".into(), title: "Home city".into(), text: "Lives in Berlin.".into(), evidence: "I live in Berlin".into(), sensitive: false, reason: String::new() },
-            crate::app::Suggestion { id: 8, kind: "update".into(), layer: "facts".into(), title: "Wifi".into(), text: "Password hunter2".into(), evidence: String::new(), sensitive: true, reason: "credentials".into() },
+            crate::app::Suggestion { id: 7, kind: "new".into(), layer: "facts".into(), title: "Home city".into(), text: "Lives in Berlin.".into(), evidence: "I live in Berlin".into(), sensitive: false, reason: String::new(), learn: false },
+            crate::app::Suggestion { id: 8, kind: "update".into(), layer: "facts".into(), title: "Wifi".into(), text: "Password hunter2".into(), evidence: String::new(), sensitive: true, reason: "credentials".into(), learn: false },
         ];
         let s = screen(&a, 100, 24);
         for want in ["Memory review", "Remember this (2 left)", "facts: Home city", "Lives in Berlin.", "you said: \"I live in Berlin\"", "Not sensitive", "y = remember", "p = flip sensitive"] {
@@ -160,6 +168,21 @@ mod tests {
         assert!(s.contains("Change a note (1 left)") && s.contains("Sensitive (credentials): stays on this machine"), "{s}");
         a.incognito = true;
         assert!(screen(&a, 100, 24).contains("incognito: nothing is remembered"));
+    }
+
+    #[test]
+    fn the_learn_screen_shows_what_would_change_and_why() {
+        let mut a = App::new("m");
+        let rule = serde_json::json!({"id": 4, "kind": "rule", "source": "repeat", "payload": {"topic": "bullets", "text": "Do not use bullet points.", "privacy": "normal"}, "evidence": ["never use bullet points"]});
+        let upd = serde_json::json!({"id": 5, "kind": "skill_update", "source": "skill", "payload": {"name": "release-notes", "note": "use the last tag", "body": "1. Run git log since the last tag."}, "evidence": []});
+        a.review = vec![crate::app::Suggestion::from_learn_json(&rule), crate::app::Suggestion::from_learn_json(&upd)];
+        let s = screen(&a, 100, 24);
+        for want in ["Learn this rule (2 left)", "(repeat) bullets", "Do not use bullet points.", "you said: \"never use bullet points\"", "every future session", "y = remember"] {
+            assert!(s.contains(want), "missing {want:?} in:\n{s}");
+        }
+        a.review.remove(0);
+        let s = screen(&a, 100, 24);
+        assert!(s.contains("Change a skill (1 left)") && s.contains("release-notes") && s.contains("use the last tag"), "{s}");
     }
 
     #[test]

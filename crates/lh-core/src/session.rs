@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -25,6 +25,12 @@ pub struct Session {
     pub dest: Option<Destination>,
     /// The id of the stored conversation, if one is being kept.
     pub conv: Option<String>,
+    /// The project folder, if the session has one.
+    pub project: Option<String>,
+    /// Tool calls made so far; a long task may be worth a skill.
+    pub tool_calls: AtomicUsize,
+    /// Skills the assistant has read in this session, which may then be improved.
+    pub skills_used: Mutex<std::collections::HashSet<String>>,
     /// Page versions already in this conversation's history, so notes are not added twice.
     pub injected: crate::memory_api::Injected,
     pending: Mutex<HashMap<String, oneshot::Sender<Answer>>>,
@@ -33,7 +39,7 @@ pub struct Session {
 
 impl Session {
     pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet) -> Self {
-        Self { req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
+        Self { req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
     }
 
     pub fn try_start(&self) -> bool {

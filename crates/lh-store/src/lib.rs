@@ -163,6 +163,83 @@ const MIGRATIONS: &[&str] = &[r#"
       owner text not null default 'me',
       scope text not null default 'personal'
     );
+"#, r#"
+    -- Learning. Rules say how the user wants things done; the style profile says how to talk to them;
+    -- signals are the raw material (corrections, stated rules, thumbs) that suggestions come from.
+    create table rules(
+      id text primary key,
+      topic text not null default '',      -- rules about the same topic compete; the most specific one wins
+      text text not null,
+      project text,                        -- null = everywhere
+      role text,                           -- null = every role
+      privacy text not null default 'normal' check (privacy in ('normal','sensitive')),
+      status text not null default 'active' check (status in ('active','disabled')),
+      evidence text not null default '[]', -- JSON list of short quotes
+      source text not null default 'user', -- proposal | stated | user
+      version integer not null default 1,
+      created integer not null,
+      updated integer not null,
+      owner text not null default 'me',
+      scope text not null default 'personal'
+    );
+    create table style_profile(
+      id text primary key,
+      text text not null,
+      version integer not null,
+      updated integer not null,
+      owner text not null default 'me',
+      scope text not null default 'personal'
+    );
+    -- Every version of every rule, style profile and skill, as it was. Rollback adds a new version
+    -- that copies an old one; nothing here is edited or removed. The one allowed change blanks the
+    -- content of something the user deleted for good.
+    create table learn_history(
+      seq integer primary key,
+      kind text not null,                  -- rule | style | skill
+      item text not null,
+      version integer not null,
+      op text not null,                    -- create | edit | disable | enable | rollback | accept | delete
+      by text not null,
+      at integer not null,
+      content text not null,               -- JSON snapshot
+      note text not null default ''
+    );
+    create index learn_history_item on learn_history(kind, item, seq);
+    create trigger learn_history_no_delete before delete on learn_history begin select raise(abort, 'learning history is append-only'); end;
+    create trigger learn_history_only_scrub before update on learn_history
+      when not (new.content = '{}' and new.seq = old.seq and new.kind = old.kind and new.item = old.item and new.version = old.version and new.op = old.op)
+      begin select raise(abort, 'learning history is append-only'); end;
+
+    create table signals(
+      id integer primary key,
+      at integer not null,
+      session text not null,
+      kind text not null,                  -- stated | correction | thumbs_up | thumbs_down
+      text text not null,
+      norm text not null,                  -- words used to compare signals with each other
+      project text,
+      privacy text not null default 'normal',
+      owner text not null default 'me',
+      scope text not null default 'personal'
+    );
+    create index signals_session on signals(session);
+
+    create table learn_proposals(
+      id integer primary key,
+      kind text not null,                  -- rule | rule_update | style | skill_new | skill_update
+      payload text not null,               -- JSON; shape depends on kind
+      evidence text not null default '[]',
+      source text not null,                -- stated | repeat | correction | skill
+      status text not null default 'pending' check (status in ('pending','accepted','rejected')),
+      session text,
+      created integer not null,
+      decided integer,
+      owner text not null default 'me',
+      scope text not null default 'personal'
+    );
+"#, r#"
+    -- remembers that a group of similar signals was already put to the model, so it is not asked again
+    alter table signals add column asked integer not null default 0;
 "#];
 
 pub struct Store {

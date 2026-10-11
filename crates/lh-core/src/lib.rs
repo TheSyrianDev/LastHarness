@@ -12,6 +12,9 @@
 //! GET    /v1/activity?limit=&kind=          -> {entries: [...]}  newest first
 //! POST   /v1/activity/{seq}/undo            -> {result: restored|removed|refused, message}
 //! GET    /v1/capabilities?model=NAME        -> {context_tokens, tools, vision, reasoning_effort, source}
+//! GET/POST /v1/learn/...                    rules, style, skills, suggestions, signals, habits
+//! POST   /v1/sessions/{id}/learn            -> {proposals, applied}  end-of-session learn pass
+//! POST   /v1/sessions/{id}/feedback         {kind: up|down, note?}
 //! GET    /v1/models                         -> {models: [name, ...]}
 //! GET    /v1/status                         -> {idle_before_request, sessions}
 //! GET    /v1/health
@@ -20,9 +23,11 @@
 
 pub mod auth;
 pub mod idle;
+mod learn_api;
 mod memory_api;
 mod session;
 
+pub use learn_api::{LearnMode, LearnRuntime};
 pub use memory_api::MemoryRuntime;
 
 use std::collections::HashMap;
@@ -47,6 +52,8 @@ use tokio::sync::mpsc;
 use session::{ApiAsker, Session};
 
 pub struct Settings {
+    /// Learning: rules, style, skills. `None` switches it off.
+    pub learn: Option<LearnRuntime>,
     /// Run the memory maintenance pass (it only makes suggestions) when the core goes idle.
     pub maintain_when_idle: bool,
     /// Memory. `None` switches it off entirely.
@@ -132,6 +139,7 @@ pub fn router<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: 
         .route("/v1/sessions/{id}/cancel", post(cancel::<M>))
         .route("/v1/status", get(status::<M>))
         .merge(memory_api::routes::<M>())
+        .merge(learn_api::routes::<M>())
         .layer(axum::middleware::from_fn_with_state(guard, auth::require))
         .layer(axum::middleware::from_fn(move |req: axum::extract::Request, next: axum::middleware::Next| {
             let idle = idle.clone();
@@ -222,18 +230,16 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     let project = b.project_dir.as_ref().and_then(|d| std::fs::canonicalize(d).ok()).map(|d| d.to_string_lossy().to_string());
     let mut tools = session_tools(&st.settings, tools_on);
     let (mut dest, mut conv) = (None, None);
+    let mut about = String::new();
     if let (Some(rt), false) = (&st.settings.memory, b.incognito) {
         let d = rt.destination(project.clone());
         let _ = rt.memory.scan(); // pick up pages edited by hand
-        let (about, refs) = rt.memory.about_you(&d, &rt.cfg).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        if !about.is_empty() {
-            match req.messages.first_mut().filter(|m| m.role == lh_provider::Role::System) {
-                Some(sys) => sys.content = Some(format!("{}\n\n{about}", sys.content.as_deref().unwrap_or(""))),
-                None => req.messages.insert(0, Message::system(about)),
-            }
+        let (text, refs) = rt.memory.about_you(&d, &rt.cfg).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if !text.is_empty() {
             let pages: Vec<Value> = refs.iter().map(|r| json!({"page": r.id, "version": r.version})).collect();
             let _ = st.settings.store.log("memory_sent", &id, "assistant", &json!({"with": "about_you", "trust": format!("{:?}", rt.trust), "pages": pages}));
         }
+        about = text;
         let _ = rt.memory.start_conversation(&id, project.as_deref());
         conv = Some(id.clone());
         if tools_on {
@@ -245,8 +251,37 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
             let _ = m.index_pending(&*e).await;
         });
     }
+    // What the user has taught: rules, the style profile and skills. They are how the user wants things
+    // done, not memory of the user, so they apply in incognito sessions too (they are only never learned there).
+    let mut learned_block = String::new();
+    if let Some(lr) = &st.settings.learn {
+        let ctx = lh_learn::RuleContext { project: project.clone(), role: None, trust: lr.trust };
+        let rules = lr.learn.applicable_rules(&ctx).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let style = lr.learn.style().ok().flatten().map(|s| s.text);
+        let skills: Vec<(String, String)> = if tools_on { lr.learn.list_skills().unwrap_or_default().into_iter().filter(|e| e.error.is_none()).map(|e| (e.name, e.description)).collect() } else { vec![] };
+        if !skills.is_empty() {
+            tools = tools.with_skills(lr.learn.clone());
+        }
+        let used = json!({"rules": rules.iter().map(|r| r.id.clone()).collect::<Vec<_>>(), "style": style.is_some(), "skills": skills.iter().map(|s| s.0.clone()).collect::<Vec<_>>()});
+        learned_block = lh_learn::render_learned(&lh_learn::Learned { rules, style, skills }, lr.trust);
+        if !learned_block.is_empty() {
+            let _ = st.settings.store.log("learned_applied", &id, "assistant", &used);
+        }
+    }
+    // The system message: the user's own text first and untouched, then what was learned, then memory.
+    let base = match req.messages.first() {
+        Some(m) if m.role == lh_provider::Role::System => {
+            let t = m.content.clone();
+            req.messages.remove(0);
+            t
+        }
+        _ => None,
+    };
+    if let Some(sys) = lh_learn::compose_system(base.as_deref(), &[&learned_block, &about]) {
+        req.messages.insert(0, Message::system(sys));
+    }
     let mut session = Session::new(req, perms, tools);
-    (session.incognito, session.dest, session.conv) = (b.incognito, dest, conv);
+    (session.incognito, session.dest, session.conv, session.project) = (b.incognito, dest, conv, project);
     st.sessions.lock().unwrap().insert(id.clone(), Arc::new(session));
     Ok(Json(json!({"id": id, "incognito": b.incognito})))
 }
@@ -339,12 +374,19 @@ struct Recorder {
     calls: HashMap<String, (String, String)>, // id -> (tool, arguments)
     /// Incognito sessions still leave a security record, but without any text from the conversation.
     incognito: bool,
+    sess: Arc<Session>,
 }
 
 impl Recorder {
     fn record(&mut self, ev: &TurnEvent) {
         let r = match ev {
             TurnEvent::ToolStart { id, name, arguments } => {
+                self.sess.tool_calls.fetch_add(1, Ordering::SeqCst);
+                if name == "use_skill" {
+                    if let Some(n) = serde_json::from_str::<Value>(arguments).ok().and_then(|v| v["name"].as_str().map(str::to_string)) {
+                        self.sess.skills_used.lock().unwrap().insert(n);
+                    }
+                }
                 self.calls.insert(id.clone(), (name.clone(), arguments.clone()));
                 Ok(())
             }
@@ -434,7 +476,7 @@ async fn start_turn<M: Model + 'static>(
             let asker = ApiAsker { session: s.clone(), events: tx.clone() };
             let opts = TurnOptions::default();
             let events = tx.clone();
-            let mut rec = Recorder { store: store.clone(), session: id.clone(), calls: HashMap::new(), incognito: s.incognito };
+            let mut rec = Recorder { store: store.clone(), session: id.clone(), calls: HashMap::new(), incognito: s.incognito, sess: s.clone() };
             let end = run_turn(&*model, &meter, &mut work, &s.tools, &s.perms, &asker, &opts, move |e| {
                 rec.record(&e);
                 if let Some(msg) = describe(&e) {
@@ -449,6 +491,9 @@ async fn start_turn<M: Model + 'static>(
                         s.known_tokens.store(u.prompt_tokens + u.completion_tokens, Ordering::SeqCst);
                     }
                     *s.req.lock().await = work;
+                    if let (Some(lr), false) = (&st2.settings.learn, s.incognito) {
+                        let _ = lr.learn.scan_messages(&id, s.project.as_deref(), std::slice::from_ref(&b.text));
+                    }
                     if let (Some(rt), Some(conv)) = (&st2.settings.memory, &s.conv) {
                         let _ = rt.memory.append_message(conv, "user", &b.text);
                         if !r.text.is_empty() {

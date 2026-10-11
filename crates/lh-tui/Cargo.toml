@@ -8,6 +8,11 @@ license.workspace = true
 name = "lh"
 path = "src/main.rs"
 
+# the same program under its long name
+[[bin]]
+name = "lastharness"
+path = "src/bin/lastharness.rs"
+
 [dependencies]
 lh-provider = { path = "../lh-provider" }
 tokio = { workspace = true, features = ["sync", "fs"] }
@@ -22,6 +27,7 @@ lh-core = { path = "../lh-core" }
 lh-tools = { path = "../lh-tools" }
 lh-spend = { path = "../lh-spend" }
 lh-memory = { path = "../lh-memory" }
+lh-learn = { path = "../lh-learn" }
 lh-store = { path = "../lh-store" }
 tempfile = "3"
 axum = "0.8"

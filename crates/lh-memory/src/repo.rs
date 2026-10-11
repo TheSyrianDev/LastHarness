@@ -408,7 +408,7 @@ impl Memory {
                 Layer::Projects => "Projects and decisions",
             });
             for p in self.list(Some(l), State::Live)? {
-                s.push_str(&format!("- [[{}]] {}{}\n", p.slug, p.title, if p.gist.is_empty() { String::new() } else { format!(" — {}", p.gist) }));
+                s.push_str(&format!("- [[{}]] {}{}\n", p.slug, p.title, if p.gist.is_empty() { String::new() } else { format!(" - {}", p.gist) }));
             }
             write_atomic(&self.dir(l).join("index.md"), &s)?;
         }

@@ -14,6 +14,7 @@ lh-tools = { path = "../lh-tools" }
 lh-secrets = { path = "../lh-secrets" }
 lh-spend = { path = "../lh-spend" }
 lh-memory = { path = "../lh-memory" }
+lh-learn = { path = "../lh-learn" }
 lh-store = { path = "../lh-store" }
 tokio = { workspace = true, features = ["net", "sync", "signal", "fs"] }
 axum = "0.8"

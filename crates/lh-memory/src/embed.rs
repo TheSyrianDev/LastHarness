@@ -164,6 +164,9 @@ impl ManagedEmbedder {
         if let Some(l) = &self.cfg.library_path {
             cmd.env("LD_LIBRARY_PATH", l);
         }
+        // The embedder is meant to run on the CPU. A CUDA build would still open a GPU context, which
+        // fails (or steals memory) when a chat model fills the GPU, so the GPU is hidden from it.
+        cmd.env("CUDA_VISIBLE_DEVICES", "");
         let mut child = cmd.spawn().map_err(|e| EmbedError::Start(format!("{}: {e}", self.cfg.server.display())))?;
         let health = format!("http://127.0.0.1:{port}/health");
         let client = reqwest::Client::new();

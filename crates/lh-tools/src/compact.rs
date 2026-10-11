@@ -78,7 +78,7 @@ pub async fn compact_if_needed<M: Model, T: Meter>(
 
     let mut ask = req.clone();
     ask.messages.push(Message::user(ASK));
-    ask.max_tokens = Some(1024);
+    ask.max_tokens = Some(3000); // room for a thinking model to think and still write the summary
     match meter.before(&ask).await {
         MeterVerdict::Allow => {}
         MeterVerdict::Ask(m) | MeterVerdict::Refuse(m) => return Err(CompactError::Skipped(m)),

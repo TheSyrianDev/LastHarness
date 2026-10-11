@@ -5,7 +5,7 @@ A department-led, local-first, endpoint-agnostic AI harness with a memory that l
 ## Read first, in this order
 
 1. `docs/digest.md`: the whole plan on one page.
-2. `docs/roadmap.md`: what gets built and when. Milestone 0 is next.
+2. `docs/roadmap.md`: what gets built and when. Check the current milestone in the Next step section below.
 3. `docs/spec/lastharness.md`: what the product is. The spec wins over anything you remember.
 4. `.grill/lastharness-reboot.md`: every decision, in order, with the user's corrections. Read it before proposing anything that might already be decided.
 

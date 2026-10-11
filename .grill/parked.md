@@ -40,3 +40,20 @@ Things that need the user. Agents add to this list instead of asking while the u
 - **Maintenance on idle.** `--maintain-when-idle` runs the deterministic checks only (duplicates, broken links, stale pages). The contradiction check needs a local model and is on demand.
 
 - **Question for the user: "clippy".** The user told the coding session they had given "clippy as a reference model to embedding models". Nobody knows what this refers to (clippy is only the Rust linter the agents run). Ask the user what they meant.
+
+## Milestone 3 (added by the build session)
+
+- **Near-duplicate suggestions.** Two suggestions that say the same thing in different words can both appear, because they are compared by shared words, not by meaning. In the real run three sessions left two suggestions waiting. Matching by meaning (the embedding model) would merge them; it is not wired in yet.
+- **Style note or rule.** The model decides whether "no bullet points" is a style note or a rule. On both Tiel-Coder and Qwen it chose a style note. Both kinds work and can be rolled back; nothing needs deciding unless you want formatting wishes to always be rules.
+- **Qwen versus Tiel.** On Qwen3.6-35B (the model AGENTS.md now names) the learning suggestions and the memory review parsed fine, with a 3000 to 4096 token limit. The one difference: for "Lives in Berlin" Qwen's privacy judge said normal where Tiel's said sensitive. Both parsed cleanly. No switching back was needed.
+- **Rules and the style profile live in the database, not as Markdown files.** They can be listed, edited and rolled back with `lh learn ...` and the API, and every version is kept. A Markdown mirror that you could edit by hand (like memory pages) is not built.
+- **Whole-state snapshots.** Rollback is per item (each rule, the style profile, each skill has its own versions). Restoring everything learned to one earlier moment is not built.
+- **Skills cannot be switched off.** They can be rolled back or deleted. A skill only reaches a model if it is valid; broken ones are listed with the reason.
+- **When learned things take effect.** Rules, the style profile and the skill list are put into a session's first message, so a change applies from the next session. This keeps the start of every prompt identical for the server's cache.
+- **Incognito.** Rules, style and skills still apply (they are how you want things done), but nothing is noted, suggested or learned.
+- **Roles.** A rule can name a role, but roles arrive in Milestone 4, so none is set yet.
+- **Skill suggestions only from a local model.** The record of a long task includes tool arguments, so skills are suggested (and improved) only when the model runs on this machine, and only after a task of at least 6 tool calls (`--skill-min-calls`).
+- **Other skill folders.** Skills in `~/.claude/skills` or inside a project folder are not loaded. The format is compatible (the parser reads the real Omarchy skills), but loading project skills needs the folder-trust step that comes with Milestone 4.
+- **Habit threshold.** 3 sessions by default (`--learn-threshold`); the model confirms that a repeated wish is real before anything is suggested.
+- **Embedding server and the GPU.** Found and fixed: the embedding server (a CUDA build) crashed when the chat model filled the 4 GB GPU. It now runs with the GPU hidden. Worth knowing if you ever see it fail on another machine.
+- **AGENTS.md reading order** still says "Milestone 0 is next" in the list under "Read first". The "Next step" section is current.

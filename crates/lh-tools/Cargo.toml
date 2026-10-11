@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 lh-provider = { path = "../lh-provider" }
 lh-memory = { path = "../lh-memory" }
+lh-learn = { path = "../lh-learn" }
 tokio = { workspace = true, features = ["process", "fs", "io-util", "time"] }
 serde_json.workspace = true
 reqwest.workspace = true

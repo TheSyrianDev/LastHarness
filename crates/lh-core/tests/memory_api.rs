@@ -84,6 +84,7 @@ fn start_at(dir: &std::path::Path, replies: Vec<Response>, trust: Trust, project
     let model = Script { replies: Mutex::new(r), seen: seen.clone() };
     let spend = lh_spend::SpendMeter::new(store.clone(), lh_spend::Config::default(), "test", true);
     let settings = Settings {
+        learn: None,
         maintain_when_idle: false,
         memory: Some(MemoryRuntime { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), trust, cfg: RecallConfig::default() }),
         image_model: None,

@@ -300,7 +300,7 @@ async fn maintenance<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, bod
         }
         let meter = st.settings.spend.for_session("maintenance");
         for (a, b) in r.memory.contradiction_candidates(5).map_err(err)? {
-            let req = ChatRequest { model: model.clone(), messages: vec![Message::user(contradiction_prompt(&a, &b))], max_tokens: Some(200), ..Default::default() };
+            let req = ChatRequest { model: model.clone(), messages: vec![Message::user(contradiction_prompt(&a, &b))], max_tokens: Some(1000), ..Default::default() };
             if meter.before(&req).await != MeterVerdict::Allow {
                 break;
             }
@@ -370,7 +370,7 @@ async fn review_inner<M: Model + 'static>(st: &Arc<AppState<M>>, r: &MemoryRunti
         prompt.push_str(&format!("- [{}] {}: {}\n", p.id, p.title, if p.gist.is_empty() { excerpt(&p.body, 100) } else { p.gist.clone() }));
     }
     req.messages.push(Message::user(prompt));
-    req.max_tokens = Some(req.max_tokens.unwrap_or(2048).max(2048));
+    req.max_tokens = Some(req.max_tokens.unwrap_or(4096).max(4096)); // a thinking model may use much of it before it answers
     let meter = st.settings.spend.for_session(id);
     match meter.before(&req).await {
         MeterVerdict::Allow => {}
@@ -399,7 +399,7 @@ async fn review_inner<M: Model + 'static>(st: &Arc<AppState<M>>, r: &MemoryRunti
         }
         // Patterns passed it. On a local model, ask that model too; unsure or unreachable counts as sensitive.
         if class.privacy == Privacy::Normal && r.trust == Trust::Local {
-            let mut jreq = ChatRequest { model: req.model.clone(), messages: vec![Message::user(format!("{JUDGE_PROMPT}{}\n{}", p.title, p.text))], max_tokens: Some(400), ..Default::default() };
+            let mut jreq = ChatRequest { model: req.model.clone(), messages: vec![Message::user(format!("{JUDGE_PROMPT}{}\n{}", p.title, p.text))], max_tokens: Some(1500), ..Default::default() };
             jreq.sampling.extra.insert("chat_template_kwargs".into(), json!({"enable_thinking": false}));
             class = match meter.before(&jreq).await {
                 MeterVerdict::Allow => match st.model.complete(&jreq, &mut |_| {}).await {

@@ -31,12 +31,39 @@ pub struct Suggestion {
     pub evidence: String,
     pub sensitive: bool,
     pub reason: String,
+    /// From the learning side (rules, style, skills) rather than memory.
+    pub learn: bool,
 }
 
 impl Suggestion {
     pub fn from_json(v: &serde_json::Value) -> Self {
         let s = |k: &str| v[k].as_str().unwrap_or("").to_string();
-        Self { id: v["id"].as_i64().unwrap_or(0), kind: s("kind"), layer: s("layer"), title: s("title"), text: s("text"), evidence: s("evidence"), sensitive: v["privacy"] == "sensitive", reason: s("privacy_reason") }
+        Self { id: v["id"].as_i64().unwrap_or(0), kind: s("kind"), layer: s("layer"), title: s("title"), text: s("text"), evidence: s("evidence"), sensitive: v["privacy"] == "sensitive", reason: s("privacy_reason"), learn: false }
+    }
+
+    /// A suggestion from the learn pass.
+    pub fn from_learn_json(v: &serde_json::Value) -> Self {
+        let pl = &v["payload"];
+        let p = |k: &str| pl[k].as_str().unwrap_or("").to_string();
+        let kind = v["kind"].as_str().unwrap_or("");
+        let (title, text) = match kind {
+            "rule" => (p("topic"), p("text")),
+            "rule_update" => (p("topic"), format!("{}\n(was: {})", p("text"), p("was"))),
+            "style" => ("style profile".to_string(), p("added")),
+            "skill_new" => (p("name"), format!("{}\n\n{}", p("description"), p("body"))),
+            _ => (p("name"), format!("{}\n\n{}", p("note"), p("body"))),
+        };
+        Self {
+            id: v["id"].as_i64().unwrap_or(0),
+            kind: format!("learn_{kind}"),
+            layer: v["source"].as_str().unwrap_or("").to_string(),
+            title,
+            text,
+            evidence: v["evidence"].as_array().and_then(|e| e.first()).and_then(|e| e.as_str()).unwrap_or("").to_string(),
+            sensitive: pl["privacy"] == "sensitive",
+            reason: String::new(),
+            learn: true,
+        }
     }
 }
 

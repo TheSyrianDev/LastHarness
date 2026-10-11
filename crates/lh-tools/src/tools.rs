@@ -49,6 +49,8 @@ pub enum Tool {
     WebFetch,
     WebSearch,
     GenerateImage,
+    UseSkill,
+    ReadSkillFile,
     Recall,
     OpenNote,
     Remember,
@@ -65,6 +67,8 @@ impl Tool {
             Tool::WebFetch => "web_fetch",
             Tool::WebSearch => "web_search",
             Tool::GenerateImage => "generate_image",
+            Tool::UseSkill => "use_skill",
+            Tool::ReadSkillFile => "read_skill_file",
             Tool::Recall => "recall",
             Tool::OpenNote => "open_note",
             Tool::Remember => "remember",
@@ -91,6 +95,8 @@ impl Tool {
                 json!({"type":"object","properties":{"prompt":{"type":"string"},"size":{"type":"string","description":"for example 512x512"}},"required":["prompt"]}),
             ),
             Tool::Recall => ("Search the user's memory for notes about a topic. Returns note ids, titles and text.", json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"]})),
+            Tool::UseSkill => ("Read the instructions of one of your skills before doing a task it covers. Returns the steps and the list of its other files.", json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})),
+            Tool::ReadSkillFile => ("Read one of a skill's other files (a reference document or a script), by the path use_skill listed.", json!({"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]})),
             Tool::OpenNote => ("Read one whole note from the user's memory, by the id that recall gave.", json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]})),
             Tool::Remember => (
                 "Save something about the user to their memory, when they ask you to remember it. The user is asked to confirm.",
@@ -116,6 +122,7 @@ impl Tool {
                 let prompt = args["prompt"].as_str().ok_or_else(|| ToolError::Args("`prompt` must be a string".into()))?;
                 Action::Write(root.join("generated").join(format!("{}.png", image_stem(prompt))))
             }
+            Tool::UseSkill | Tool::ReadSkillFile => Action::Memory { write: false, what: format!("read skill {}", args["name"].as_str().unwrap_or("")) },
             Tool::Recall => Action::Memory { write: false, what: format!("recall: {}", args["query"].as_str().unwrap_or("")) },
             Tool::OpenNote => Action::Memory { write: false, what: format!("open note {}", args["id"].as_str().unwrap_or("")) },
             Tool::Remember => Action::Memory { write: true, what: format!("remember: {}", lh_memory::excerpt(args["text"].as_str().ok_or_else(|| ToolError::Args("`text` must be a string".into()))?, 300)) },
@@ -127,6 +134,10 @@ impl Tool {
     pub async fn run(self, args: &Value, root: &Path, set: &ToolSet) -> Result<ToolOutput, ToolError> {
         let web = set.web();
         match self {
+            Tool::UseSkill | Tool::ReadSkillFile => {
+                let l = set.skills().ok_or_else(|| ToolError::Failed("skills are not available in this session".into()))?;
+                crate::memory_tools::run_skill(self, args, l).map(Into::into)
+            }
             Tool::Recall | Tool::OpenNote | Tool::Remember | Tool::Forget => crate::memory_tools::run(self, args, set.memory().ok_or_else(|| ToolError::Failed("memory is not available in this session".into()))?).await.map(Into::into),
             Tool::GenerateImage => Err(ToolError::Failed("image generation runs through the turn loop".into())),
             Tool::WebFetch => crate::web::fetch(web, args["url"].as_str().unwrap_or("")).await.map(Into::into),
@@ -231,11 +242,12 @@ pub struct ToolSet {
     web: crate::WebConfig,
     image_model: Option<String>,
     memory: Option<std::sync::Arc<crate::MemoryHandle>>,
+    skills: Option<std::sync::Arc<lh_learn::Learn>>,
 }
 
 impl ToolSet {
     pub fn new(tools: impl IntoIterator<Item = Tool>) -> Self {
-        Self { tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None }
+        Self { tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None }
     }
     pub fn with_web(mut self, web: crate::WebConfig) -> Self {
         self.web = web;
@@ -259,6 +271,19 @@ impl ToolSet {
             }
         }
         self
+    }
+    /// Let the worker read the user's skills (`use_skill`, `read_skill_file`).
+    pub fn with_skills(mut self, l: std::sync::Arc<lh_learn::Learn>) -> Self {
+        self.skills = Some(l);
+        for t in [Tool::UseSkill, Tool::ReadSkillFile] {
+            if !self.tools.contains(&t) {
+                self.tools.push(t);
+            }
+        }
+        self
+    }
+    pub fn skills(&self) -> Option<&lh_learn::Learn> {
+        self.skills.as_deref()
     }
     pub fn memory(&self) -> Option<&crate::MemoryHandle> {
         self.memory.as_deref()

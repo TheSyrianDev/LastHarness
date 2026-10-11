@@ -80,3 +80,17 @@ pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<St
         _ => Err(fail("not a memory tool")),
     }
 }
+
+/// The assistant reads a skill: first the instructions, then other files only if it needs them.
+pub(crate) fn run_skill(tool: Tool, args: &Value, learn: &lh_learn::Learn) -> Result<String, ToolError> {
+    let name = args["name"].as_str().unwrap_or("");
+    match tool {
+        Tool::UseSkill => {
+            let s = learn.load_skill(name).map_err(|_| fail(format!("there is no skill called {name}")))?;
+            let files = if s.files.is_empty() { "none".to_string() } else { s.files.join(", ") };
+            Ok(format!("Skill: {}\nFolder: {}\nOther files: {files} (read with read_skill_file; run scripts with run_command)\n\n{}", s.meta.name, s.dir.display(), s.body))
+        }
+        Tool::ReadSkillFile => learn.read_skill_file(name, args["path"].as_str().unwrap_or("")).map_err(|e| fail(e.to_string())),
+        _ => Err(fail("not a skill tool")),
+    }
+}

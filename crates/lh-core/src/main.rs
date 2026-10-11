@@ -2,7 +2,8 @@
 //!
 //! lhd --provider http://localhost:9292/v1 [--key secret:NAME] [--listen 127.0.0.1:7842]
 //!     [--token-file PATH] [--store PATH] [--spend-config PATH] [--compact-at TOKENS] [--idle-after SECONDS] [--searxng URL] [--image-model NAME]
-//!     [--no-memory] [--maintain-when-idle] [--memory-dir PATH] [--trust local|own|any]
+//!     [--no-memory] [--maintain-when-idle]
+//!     [--learn propose|silent|off] [--learn-threshold N] [--skills-dir PATH] [--skill-min-calls N] [--memory-dir PATH] [--trust local|own|any]
 //!     [--embed-server PATH --embed-model FILE.gguf [--embed-libs DIRS] [--embed-name NAME]]
 //!     [--embed-url URL --embed-name NAME [--embed-allow-cloud]] [--allow-sudo] [--allow "git status"]... [--dangerously-skip-permissions]
 
@@ -26,6 +27,7 @@ async fn main() {
     let (mut store_path, mut spend_path, mut compact_at, mut idle_after) = (None, None, None::<u64>, 600u64);
     let (mut searxng, mut image_model) = (None, None);
     let mut maintain_idle = false;
+    let (mut learn_mode, mut learn_threshold, mut skills_dir, mut skill_calls) = ("propose".to_string(), 3usize, None::<std::path::PathBuf>, 6usize);
     let (mut no_memory, mut memory_dir, mut trust) = (false, None::<std::path::PathBuf>, None::<String>);
     let (mut embed_server, mut embed_model, mut embed_libs, mut embed_name, mut embed_url, mut embed_cloud) = (None::<String>, None::<String>, None::<String>, None::<String>, None::<String>, false);
     let mut flags = (false, false, Vec::<String>::new()); // bypass, sudo, allow rules
@@ -40,6 +42,10 @@ async fn main() {
             "--spend-config" => spend_path = Some(std::path::PathBuf::from(val())),
             "--compact-at" => compact_at = Some(val().parse().unwrap_or_else(|_| fail("--compact-at needs a number of tokens (0 turns it off)"))),
             "--idle-after" => idle_after = val().parse().unwrap_or_else(|_| fail("--idle-after needs a number of seconds (0 means never)")),
+            "--learn" => learn_mode = val(),
+            "--learn-threshold" => learn_threshold = val().parse().unwrap_or_else(|_| fail("--learn-threshold needs a number")),
+            "--skills-dir" => skills_dir = Some(std::path::PathBuf::from(val())),
+            "--skill-min-calls" => skill_calls = val().parse().unwrap_or_else(|_| fail("--skill-min-calls needs a number")),
             "--no-memory" => no_memory = true,
             "--maintain-when-idle" => maintain_idle = true,
             "--memory-dir" => memory_dir = Some(std::path::PathBuf::from(val())),
@@ -79,15 +85,24 @@ async fn main() {
         None => lh_spend::Config::default(),
     };
     let spend = lh_spend::SpendMeter::new(store.clone(), spend_cfg, provider.clone(), lh_provider::is_local_url(&provider));
-    let _ = store.log("startup", "-", "lhd", &serde_json::json!({"provider": provider, "local": lh_provider::is_local_url(&provider), "bypass": flags.0, "sudo_enabled": flags.1, "allow_rules": flags.2, "memory": !no_memory}));
+    let _ = store.log("startup", "-", "lhd", &serde_json::json!({"provider": provider, "local": lh_provider::is_local_url(&provider), "bypass": flags.0, "sudo_enabled": flags.1, "allow_rules": flags.2, "memory": !no_memory, "learn": learn_mode}));
+    let provider_trust = match trust.as_deref() {
+        Some(t) => lh_memory::Trust::parse(t).unwrap_or_else(|| fail("--trust must be local, own or any")),
+        None if lh_provider::is_local_url(&provider) => lh_memory::Trust::Local,
+        None => lh_memory::Trust::AnyCloud,
+    };
+    let learn = match learn_mode.as_str() {
+        "off" => None,
+        "propose" | "silent" => {
+            let dir = skills_dir.unwrap_or_else(default_skills_dir);
+            let l = lh_learn::Learn::new(store.clone()).with_skills_dir(dir);
+            Some(lh_core::LearnRuntime { learn: Arc::new(l), trust: provider_trust, mode: if learn_mode == "silent" { lh_core::LearnMode::Silent } else { lh_core::LearnMode::Propose }, threshold: learn_threshold.max(2), skill_min_calls: skill_calls })
+        }
+        _ => fail("--learn must be propose, silent or off"),
+    };
     let memory = if no_memory {
         None
     } else {
-        let provider_trust = match trust.as_deref() {
-            Some(t) => lh_memory::Trust::parse(t).unwrap_or_else(|| fail("--trust must be local, own or any")),
-            None if lh_provider::is_local_url(&provider) => lh_memory::Trust::Local,
-            None => lh_memory::Trust::AnyCloud,
-        };
         let dir = memory_dir.unwrap_or_else(default_memory_dir);
         let memory = Arc::new(lh_memory::Memory::open(store.clone(), &dir).unwrap_or_else(|e| fail(format!("{}: {e}", dir.display()))));
         let _ = memory.scan();
@@ -109,7 +124,7 @@ async fn main() {
         };
         Some(lh_core::MemoryRuntime { memory, embedder: Arc::new(embedder), trust: provider_trust, cfg: lh_memory::RecallConfig::default() })
     };
-    let settings = Settings { maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2 };
+    let settings = Settings { learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2 };
 
     let token = auth::new_token();
     let path = token_file.unwrap_or_else(auth::default_token_path);
@@ -132,4 +147,7 @@ fn default_store_path() -> std::path::PathBuf {
 }
 fn default_memory_dir() -> std::path::PathBuf {
     default_store_path().parent().map(|p| p.join("memory")).unwrap_or_else(|| std::path::PathBuf::from("memory"))
+}
+fn default_skills_dir() -> std::path::PathBuf {
+    default_store_path().parent().map(|p| p.join("skills")).unwrap_or_else(|| std::path::PathBuf::from("skills"))
 }

@@ -2,5 +2,7 @@
 
 pub mod app;
 pub mod client;
+pub mod learn_cli;
 pub mod memory_cli;
+pub mod terminal;
 pub mod ui;
