@@ -180,3 +180,7 @@ The user agreed the app should feel calm and quiet by default: lots of space, on
 The toolkit test ran on Slint, egui, iced, GPUI and Qt Quick (results in `spikes/gui-toolkits/RESULT.md`). The user chose GPUI. Idle memory: GPUI 60 MB, Slint 73 MB, egui 118 MB, Qt 130 MB. The user rejected web-view shells (Tauri, Qt WebEngine) and closed or paid UI engines. Themes therefore cannot use real CSS in the native app; the theme file format stays open for the design talks.
 
 Open risks for GPUI: screen reader (AccessKit is in Zed's repository but not in the crates.io release), right-to-left layout (the app must mirror it itself), no Android or iOS support, the pinned gpui-component needs a local patch for an old dependency, and the theming tests (blur, gradients, live theme file, tray icon) were not done. The base prompt now says LastHarness is built by LastSoftware.
+
+## 2026-10-11: Theme file format
+
+The user chose TOML for theme files: plain text, editable and shareable. A theme sets colours, background, corner roundness, blur, shadows and animation. Built-in themes ship with the app and users can write their own. The browser page may also accept an extra CSS file later (not decided).
