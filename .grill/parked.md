@@ -121,3 +121,10 @@ Things that need the user. Agents add to this list instead of asking while the u
 - **WhatsApp:** out for good, as decided; nothing was written for it.
 - **Channel settings live in the store, not the settings file,** because they hold a list of people. The browser cannot reach them (terminal only). They are not part of export.
 - **Sending is logged by size only** (`channel_in`, `channel_out`: kind, number of characters, whether held back). Message text is not written to the activity log.
+
+## Milestone 8 (added by the build session, from the planning session)
+
+- **Resume a chat with a different model, after a warning.** A stored chat can be reopened with a model other than the one it started with. Before it continues the user is told what it costs: for a local model, that the first reply will be slow because the whole chat is read again, with the number of tokens of context the chat holds; for a cloud model, that it spends credits because the whole chat is sent again.
+- **lhd needs an endpoint to resume or switch a stored chat.** It also covers resuming after an lhd restart (today sessions live in memory, and lhd has no way to list stored conversations or rebuild one). The answer must include the context size in tokens.
+- **The privacy guard must still apply when a chat moves to a cloud model.** A chat that holds sensitive notes must not send them to a cloud model: the same outbound checks as for a new cloud session, applied to the whole stored history, not only to the next message.
+- Open for the design: what the warning looks like, whether credits are estimated in money or only in tokens, and whether a switch to a cloud model with sensitive history is refused or the sensitive parts are dropped first.

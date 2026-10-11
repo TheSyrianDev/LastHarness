@@ -202,3 +202,7 @@ Agent output is shown in our own native viewers first (markdown, code, images, t
 ## 2026-10-11: Resume a chat with a different model
 
 A chat can be resumed with a different model than it started with. A warning appears first. For a local model it says the first reply will take a long time because the whole chat must be read again, and shows how much context the chat holds. For a cloud model it says this will spend credits, because the whole chat is sent again. Open: whether the cloud warning shows an estimated cost.
+
+## 2026-10-11: Save the KV cache to continue chats faster
+
+The user wants the model's KV cache (prefill) saved per chat so a chat can be loaded and continued faster. Checked: llama-server has `--slot-save-path` and slot save and restore (the local build is b11541, and the llama-swap config already mentions slots). A saved cache only works with the same model file and settings, so it does not help when a chat moves to another model (that case still uses the warning). Cloud providers keep their own prompt cache, so nothing is saved by us there. A saved cache contains the chat's content in model form, so it counts as private data: same protection as the chat store, deleted when the chat is deleted or forgotten, and skipped for incognito chats. Open: automatic or manual, and a size cap.
