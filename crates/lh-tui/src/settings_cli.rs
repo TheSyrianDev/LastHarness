@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use crate::client::{Client, Result};
 
-const HELP: &str = "lh settings                  all settings with their values
+pub const HELP: &str = "lh settings                  all settings with their values
 lh settings <group>          only one group (provider, memory, learning, team, media, web, spending, permissions, core, reports, updates)
 lh settings set <key> <value>   change one (many keys: lh settings set a=1 b=2)
 lh settings reset <key>      back to the default

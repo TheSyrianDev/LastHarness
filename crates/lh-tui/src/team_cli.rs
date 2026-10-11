@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 
 use crate::client::{Client, Result};
 
-const HELP: &str = "lh team <command>
+pub const HELP: &str = "lh team <command>
   roles                                   the roles
   role show <name>                        a role as its file text
   role set <name> <file>                  save a role from a file (a new version)

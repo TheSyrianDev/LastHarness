@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::client::{Client, Result};
 
-const HELP: &str = "lh learn <command>
+pub const HELP: &str = "lh learn <command>
   rules [--all]                              the rules in force (--all includes switched-off ones)
   rule add <text> [--topic T] [--project P]  add a rule yourself
   rule edit <id> -- <new text>               change the wording (the old one stays in the history)

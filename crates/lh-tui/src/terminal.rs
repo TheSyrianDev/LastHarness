@@ -4,6 +4,7 @@
 //! lh memory <command>     (see `lh memory help`)
 //! lh learn <command>      (see `lh learn help`)
 //! lh team <command>       (see `lh team help`)
+//! lh service [preview|install|remove|status]  start the core at login (systemd user service)
 //! lh channels [add|enable|...]  messaging channels (see `lh channels help`)
 //! lh devices [accept PIN|remove ID]
 //! lh export <folder>; lh import <folder> [--apply]
@@ -54,6 +55,7 @@ pub async fn run() {
     let mut data_cmd: Option<(bool, Vec<String>)> = None;
     let mut devices_cmd: Option<Vec<String>> = None;
     let mut channels_cmd: Option<Vec<String>> = None;
+    let mut service_cmd: Option<Vec<String>> = None;
     while let Some(arg) = a.next() {
         let mut val = || a.next().unwrap_or_else(|| fail(format!("{arg} needs a value")));
         match arg.as_str() {
@@ -62,8 +64,16 @@ pub async fn run() {
             "--model" => model = Some(val()),
             "--ask-all" => ask_all = true,
             "--incognito" => incognito = true,
+            "--help" | "-h" => {
+                println!("lh [--url URL] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]    chat with the core in the terminal\nOther commands: setup, settings, memory, learn, team, mcp, trust, devices, channels, export, import, service. Run `lh <command> help` for each.");
+                return;
+            }
             "learn" => {
                 learn_cmd = Some(a.by_ref().collect());
+                break;
+            }
+            "service" => {
+                service_cmd = Some(a.by_ref().collect());
                 break;
             }
             "channels" => {
@@ -113,6 +123,44 @@ pub async fn run() {
             Ok(Err(e)) => fail(e),
             Err(e) => fail(e),
         }
+        return;
+    }
+    if let Some(cmd) = service_cmd {
+        let mut ask = |q: &str| {
+            use std::io::Write;
+            print!("{q} ");
+            let _ = std::io::stdout().flush();
+            let mut l = String::new();
+            let _ = std::io::stdin().read_line(&mut l);
+            l.trim().to_lowercase().starts_with('y')
+        };
+        match crate::service_cli::run(&cmd, crate::service_cli::find_lhd(), &mut ask, &mut crate::service_cli::real_systemctl) {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    // help needs no running core
+    let wants_help = |c: &Option<Vec<String>>| c.as_ref().is_some_and(|c| matches!(c.first().map(String::as_str), Some("help" | "--help" | "-h")));
+    for (cmd, text) in [
+        (&learn_cmd, crate::learn_cli::HELP),
+        (&memory_cmd, crate::memory_cli::HELP),
+        (&team_cmd, crate::team_cli::HELP),
+        (&settings_cmd, crate::settings_cli::HELP),
+        (&devices_cmd, crate::devices_cli::HELP),
+        (&channels_cmd, crate::channels_cli::HELP),
+    ] {
+        if wants_help(cmd) {
+            println!("{text}");
+            return;
+        }
+    }
+    if wants_help(&mcp_cmd.as_ref().map(|m| m.1.clone())) {
+        println!("{}", crate::mcp_cli::HELP);
+        return;
+    }
+    if wants_help(&data_cmd.as_ref().map(|m| m.1.clone())) {
+        println!("{}", crate::data_cli::HELP);
         return;
     }
     let client = Arc::new(Client::from_token_file(&url, &token_file).unwrap_or_else(|e| fail(e)));

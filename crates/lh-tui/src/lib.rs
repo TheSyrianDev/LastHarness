@@ -9,6 +9,7 @@ pub mod learn_cli;
 pub mod mcp_cli;
 pub mod memory_cli;
 pub mod team_cli;
+pub mod service_cli;
 pub mod settings_cli;
 pub mod setup;
 pub mod terminal;

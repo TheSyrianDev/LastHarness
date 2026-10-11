@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use crate::client::{Client, Result};
 
-const HELP: &str = "lh mcp <command>
+pub const HELP: &str = "lh mcp <command>
   list                                    servers, whether you approved them, and their tools
   add <name> --command <program> [args...]   a local server (the exact command is shown before you approve)
   add <name> --url <link> [--bearer-env <VAR>]   a remote server; the key is read from the environment variable

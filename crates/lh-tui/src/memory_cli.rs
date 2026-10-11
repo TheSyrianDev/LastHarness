@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use crate::client::{Client, Result};
 
-const HELP: &str = "lh memory <command>
+pub const HELP: &str = "lh memory <command>
   list [preferences|facts|projects] [--archived|--all]   pages, one line each
   search <words> [--archived]                            by words and, if set up, by meaning
   show <id>                                              the whole page and its history
