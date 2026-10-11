@@ -250,7 +250,10 @@ mod tests {
         let worst = estimate_tokens(&all);
         assert!(worst <= CAP_TOKENS, "base plus tool lines is {worst} tokens (cap {CAP_TOKENS}):\n{all}");
         // every tool that has a line, as in a session with memory, skills, web and a shell
-        let every: Vec<String> = [crate::Tool::RunCommand, crate::Tool::WebFetch, crate::Tool::Recall, crate::Tool::Remember, crate::Tool::UseSkill].iter().filter_map(|t| t.guideline().map(str::to_string)).collect();
+        let mut every: Vec<String> = [crate::Tool::RunCommand, crate::Tool::WebFetch, crate::Tool::Recall, crate::Tool::Remember, crate::Tool::UseSkill].iter().filter_map(|t| t.guideline().map(str::to_string)).collect();
+        // the lines the core adds for its own tools (kept in step with lh-core: `show` and the department tools)
+        every.push("show opens a long answer, file or image beside the chat.".into());
+        every.push("Departments do bigger jobs: call_department for a job here, start_project for a new project.".into());
         let mut e = ctx(SessionKind::Project, Mode::Tiered, true, Some(worst_dir), &every);
         e.identity = w.identity.clone();
         let full = estimate_tokens(&base_prompt(&e));

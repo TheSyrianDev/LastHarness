@@ -159,6 +159,7 @@ impl Chat {
                     self.blocks.push(Block::Error(m.clone()));
                 }
             }
+            ServerEvent::Show { title, .. } => self.blocks.push(Block::Notice(format!("Opened \"{title}\" beside the chat."))),
             ServerEvent::Finish(_) | ServerEvent::Other => {}
         }
     }
@@ -266,6 +267,15 @@ mod tests {
         }
         assert_eq!(Mode::parse("something else"), Mode::Chat);
         assert_eq!(Chat::new(1, "m").mode, Mode::Chat);
+    }
+
+    #[test]
+    fn something_the_assistant_shows_leaves_a_line_in_the_chat() {
+        let mut c = Chat::new(1, "m");
+        c.push_user("x");
+        c.apply(&ServerEvent::Show { title: "Plan".into(), kind: "markdown".into(), content: "# Plan".into(), path: None });
+        assert_eq!(c.blocks.last(), Some(&Block::Notice("Opened \"Plan\" beside the chat.".into())));
+        assert!(c.busy, "showing something does not end the turn");
     }
 
     #[test]

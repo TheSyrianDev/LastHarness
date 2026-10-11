@@ -347,3 +347,24 @@ async fn a_tool_that_needs_permission_asks_and_goes_ahead_when_the_user_says_yes
 fn file_exists(dir: &std::path::Path) -> bool {
     dir.join("note.txt").exists()
 }
+
+#[tokio::test]
+async fn something_the_assistant_shows_arrives_as_content_for_the_side_panel() {
+    let folder = tempfile::tempdir().unwrap();
+    let show = Response {
+        tool_calls: vec![lh_provider::ToolCall { id: "s1".into(), name: "show".into(), arguments: json!({"title": "Summary", "content": "# Summary\n- done", "kind": "markdown"}).to_string(), repaired: false }],
+        finish: Some(FinishReason::ToolCalls),
+        ..Default::default()
+    };
+    let core = fresh(vec![show, text("It is open beside the chat.")], Duration::ZERO, false);
+    let mut w = Window::open(&core.cfg);
+    let start = lh_gui::api::SessionStart { mode: "project".into(), project_dir: Some(folder.path().to_string_lossy().into()), incognito: false };
+    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "beta".into(), text: "summarise".into(), start });
+    let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
+    let shown = evs.iter().find_map(|e| match e {
+        Ev::Server { event: lh_client::ServerEvent::Show { title, kind, content, path }, .. } => Some(lh_gui::content::Content::from_show(title, kind, content, path.as_deref())),
+        _ => None,
+    });
+    let c = shown.expect("a show event arrived");
+    assert_eq!((c.title.as_str(), c.kind, c.body.as_str()), ("Summary", lh_gui::content::ContentKind::Markdown, "# Summary\n- done"));
+}

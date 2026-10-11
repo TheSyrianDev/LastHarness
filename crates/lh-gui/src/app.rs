@@ -472,6 +472,11 @@ impl App {
                 self.core_models.insert(chat, self.models.name_of(&model));
             }
             Ev::Server { chat, event } => {
+                // the assistant opened something: it goes to the side panel (of whatever chat is shown)
+                if let ServerEvent::Show { title, kind, content, path } = &event {
+                    let c = lh_gui::content::Content::from_show(title, kind, content, path.as_deref());
+                    self.open_content(c, cx);
+                }
                 let current = self.chats.current().map(|c| c.key);
                 if let Some(c) = self.chats.by_key(chat) {
                     c.apply(&event);

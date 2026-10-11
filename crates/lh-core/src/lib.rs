@@ -33,6 +33,7 @@ mod memory_api;
 mod session;
 pub mod web;
 mod settings_api;
+mod show_tool;
 mod team_api;
 
 pub use learn_api::{LearnMode, LearnRuntime};
@@ -365,9 +366,13 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         }
         pending_trust = project.as_deref().and_then(|p| m.pending_trust(p));
     }
-    let slot = (tools_on && st.settings.team.is_some()).then(|| {
+    // tools that need to reach back into the session (departments, show) share one slot, filled once it exists
+    let slot = tools_on.then(|| {
         let slot = Arc::new(std::sync::OnceLock::new());
-        tools = std::mem::take(&mut tools).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(st), session: slot.clone(), project: false })).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(st), session: slot.clone(), project: true }));
+        tools = std::mem::take(&mut tools).with_extra(Arc::new(show_tool::ShowTool { session: slot.clone() }));
+        if st.settings.team.is_some() {
+            tools = std::mem::take(&mut tools).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(st), session: slot.clone(), project: false })).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(st), session: slot.clone(), project: true }));
+        }
         slot
     });
     let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), permissions: perms.mode, sudo_enabled: perms.sudo_enabled, guidelines: tools.guidelines(), client_block, learned_block, about };

@@ -11,40 +11,7 @@ use lh_gui::runs::{Outcome, Question, Run, StepState};
 use lh_gui::settings;
 use crate::ui::Kind;
 
-/// Something the agent (or the user) opened to look at properly.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Content {
-    pub title: String,
-    pub kind: ContentKind,
-    pub body: String,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ContentKind {
-    Markdown,
-    Code,
-    Text,
-    /// `body` is a file path.
-    Image,
-}
-
-impl Content {
-    /// Choose a viewer for a piece of text or a path.
-    pub fn detect(title: &str, body: &str) -> Content {
-        let t = body.trim();
-        let kind = if !t.contains('\n') && [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"].iter().any(|e| t.to_lowercase().ends_with(e)) && std::path::Path::new(t).is_file() {
-            ContentKind::Image
-        } else if t.starts_with("```") && t.trim_end().ends_with("```") && t.matches("```").count() == 2 {
-            ContentKind::Code
-        } else if t.lines().any(|l| l.starts_with('#') || l.starts_with("- ") || l.starts_with("* ") || l.starts_with("> ") || l.contains("](") || l.starts_with("|") || l.contains("**") || l.starts_with("```")) {
-            ContentKind::Markdown
-        } else {
-            ContentKind::Text
-        };
-        let body = if kind == ContentKind::Code { t.trim_start_matches("```").lines().skip(1).collect::<Vec<_>>().join("\n").trim_end_matches("```").trim_end().to_string() } else { body.to_string() };
-        Content { title: title.to_string(), kind, body }
-    }
-}
+pub use lh_gui::content::{Content, ContentKind};
 
 fn state_mark(s: StepState) -> &'static str {
     match s {
@@ -448,31 +415,3 @@ impl App {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // `gpui::*` brings its own `test` attribute into scope; the standard one is wanted here
-    use core::prelude::v1::test;
-
-    #[test]
-    fn content_gets_the_viewer_that_suits_it() {
-        assert_eq!(Content::detect("t", "plain words\nmore words").kind, ContentKind::Text);
-        assert_eq!(Content::detect("t", "# Title\n\ntext").kind, ContentKind::Markdown);
-        assert_eq!(Content::detect("t", "- one\n- two").kind, ContentKind::Markdown);
-        assert_eq!(Content::detect("t", "| a | b |\n|---|---|\n| 1 | 2 |").kind, ContentKind::Markdown, "tables go to the markdown viewer");
-        let c = Content::detect("t", "```rust\nfn main() {}\n```");
-        assert_eq!(c.kind, ContentKind::Code);
-        assert_eq!(c.body, "fn main() {}");
-        assert_eq!(Content::detect("t", "intro\n```x\ncode\n```\noutro").kind, ContentKind::Markdown, "text around code is markdown");
-        assert_eq!(Content::detect("t", "/no/such/file.png").kind, ContentKind::Text, "an image path that does not exist is just text");
-    }
-
-    #[test]
-    fn an_existing_image_file_opens_in_the_image_viewer() {
-        let p = std::env::temp_dir().join(format!("lh-gui-img-{}.png", std::process::id()));
-        std::fs::write(&p, b"x").unwrap();
-        let c = Content::detect("pic", &p.to_string_lossy());
-        assert_eq!(c.kind, ContentKind::Image);
-        let _ = std::fs::remove_file(&p);
-    }
-}

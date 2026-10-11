@@ -24,6 +24,8 @@ pub enum ServerEvent {
     Compacted { messages_summarized: u64 },
     Notice(String),
     Error(String),
+    /// The assistant opened something beside the chat: a title, how to show it, and the text (or, for an image, a path).
+    Show { title: String, kind: String, content: String, path: Option<String> },
     /// Something this client does not know about; ignored.
     Other,
 }
@@ -46,6 +48,7 @@ impl ServerEvent {
             "compacted" => Self::Compacted { messages_summarized: n("messages_summarized") },
             "notice" => Self::Notice(s("message")),
             "error" => Self::Error(s("message")),
+            "show" => Self::Show { title: s("title"), kind: s("kind"), content: s("content"), path: v["path"].as_str().map(str::to_string) },
             _ => Self::Other,
         }
     }

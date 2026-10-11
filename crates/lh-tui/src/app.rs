@@ -141,6 +141,11 @@ impl App {
                 self.question = None;
                 self.entries.push(Entry::Error(m));
             }
+            // the terminal has no side panel: what the assistant opened is printed here, an image as its path
+            ServerEvent::Show { title, kind, content, path } => self.entries.push(Entry::Notice(match (kind.as_str(), path) {
+                ("image", Some(p)) => format!("[{title}] image file: {p}"),
+                _ => format!("[{title}]\n{content}"),
+            })),
             ServerEvent::Other => {}
         }
         if matches!(self.entries.last(), Some(Entry::Assistant(_))) {
@@ -177,6 +182,11 @@ mod tests {
     #[test]
     fn tool_result_finds_its_call() {
         let mut a = App::new("m");
+        a.apply(ServerEvent::Show { title: "Plan".into(), kind: "markdown".into(), content: "# Plan".into(), path: None });
+        a.apply(ServerEvent::Show { title: "Pic".into(), kind: "image".into(), content: String::new(), path: Some("/p/a.png".into()) });
+        assert!(matches!(&a.entries[a.entries.len() - 2], Entry::Notice(n) if n == "[Plan]\n# Plan"));
+        assert!(matches!(a.entries.last(), Some(Entry::Notice(n)) if n == "[Pic] image file: /p/a.png"));
+        a.entries.clear();
         a.apply(ServerEvent::ToolStart { id: "1".into(), name: "read_file".into(), arguments: "{}".into() });
         a.apply(ServerEvent::ToolStart { id: "2".into(), name: "list_dir".into(), arguments: "{}".into() });
         a.apply(ServerEvent::ToolResult { id: "1".into(), text: "ok".into() });

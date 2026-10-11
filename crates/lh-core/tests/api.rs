@@ -312,6 +312,8 @@ async fn folderless_sessions_chat_without_tools_or_work_from_home() {
     let reqs = seen.lock().unwrap().clone();
     assert!(reqs[0].tools.is_empty(), "plain chat tells the model about no tools");
     assert!(reqs[1].tools.iter().any(|t| t.name == "read_file"), "the assistant has the normal tools");
+    assert!(reqs[1].tools.iter().any(|t| t.name == "show"), "and can open things beside the chat");
+    assert!(!reqs[0].tools.iter().any(|t| t.name == "show"), "a plain chat cannot");
     let bad = s.post("/v1/sessions", json!({"model":"m","mode":"wizard"})).send().await.unwrap();
     assert_eq!(bad.status(), 400);
 }
@@ -390,4 +392,33 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     let log = store.recent(10, Some("model_switched")).unwrap();
     assert_eq!(log.len(), 1);
     assert!(log[0].detail["note"].as_str().unwrap().contains("cold prefix") && log[0].detail["from"] == "/models/qwen/Qwen3.6-35B-A3B.gguf" && log[0].detail["to"] == "gpt-4o");
+}
+
+async fn run_turn_events(s: &Server, id: &str, msg: &str) -> Vec<Value> {
+    let (mut resp, mut p, mut got) = (s.post(&format!("/v1/sessions/{id}/turns"), json!({"text": msg})).send().await.unwrap(), SseParser::new(), vec![]);
+    read_until(&mut resp, &mut p, &mut got, |v| v["type"] == "done" || v["type"] == "error").await;
+    got
+}
+
+#[tokio::test]
+async fn show_opens_text_and_a_file_beside_the_chat_but_only_from_inside_the_folder() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(d.path().join("notes.md"), "# Notes\nfirst").unwrap();
+    let s = start(vec![
+        call("c1", "show", json!({"title": "The plan", "content": "# Plan\n- one"})),
+        call("c2", "show", json!({"title": "Notes", "path": "notes.md"})),
+        call("c3", "show", json!({"title": "Secret", "path": "/etc/hostname"})),
+        text("Opened them."),
+    ])
+    .await;
+    let id = s.post("/v1/sessions", json!({"model": "m", "project_dir": d.path()})).send().await.unwrap().json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string();
+    let events = run_turn_events(&s, &id, "show me things").await;
+    let shown: Vec<&Value> = events.iter().filter(|e| e["type"] == "show").collect();
+    assert_eq!(shown.len(), 2, "two were shown, the third was refused: {events:?}");
+    assert_eq!((shown[0]["title"].as_str(), shown[0]["kind"].as_str(), shown[0]["content"].as_str()), (Some("The plan"), Some("markdown"), Some("# Plan\n- one")));
+    assert_eq!((shown[1]["title"].as_str(), shown[1]["kind"].as_str(), shown[1]["content"].as_str()), (Some("Notes"), Some("markdown"), Some("# Notes\nfirst")));
+    let results: Vec<&str> = events.iter().filter(|e| e["type"] == "tool_result").filter_map(|e| e["text"].as_str()).collect();
+    assert!(results[0].contains("Opened \"The plan\""), "{results:?}");
+    assert!(results[2].contains("outside this session's folder"), "the refusal is told to the model: {results:?}");
+    assert!(events.iter().all(|e| e["type"] != "ask"), "showing needs no permission question");
 }
