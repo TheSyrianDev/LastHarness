@@ -30,6 +30,11 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// An error's text with any web address taken out, since an address can carry a token.
+pub(crate) fn scrub(e: impl std::fmt::Display) -> String {
+    e.to_string().split_whitespace().map(|w| if w.contains("://") { "[address]" } else { w }).collect::<Vec<_>>().join(" ")
+}
+
 pub(crate) fn msg(s: impl Into<String>) -> Error {
     Error::Msg(s.into())
 }

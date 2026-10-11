@@ -149,6 +149,7 @@ async fn a_folders_own_servers_load_only_after_the_user_trusts_the_folder() {
         Response { text: "a".into(), finish: Some(FinishReason::Stop), ..Default::default() },
         Response { text: "b".into(), finish: Some(FinishReason::Stop), ..Default::default() },
         Response { text: "c".into(), finish: Some(FinishReason::Stop), ..Default::default() },
+        Response { text: "d".into(), finish: Some(FinishReason::Stop), ..Default::default() },
     ]);
     let proj = s.dir.path().join("repo");
     std::fs::create_dir_all(proj.join(".lastharness")).unwrap();
@@ -168,11 +169,20 @@ async fn a_folders_own_servers_load_only_after_the_user_trusts_the_folder() {
     one_turn(&s, second["id"].as_str().unwrap(), "no").await;
     assert!(tool_names(&s, 1).iter().any(|n| n.ends_with("__tools__echo") || n.contains("tools_echo") || n.contains("__echo")), "trusted: {:?}", tool_names(&s, 1));
 
+    // the folder's list changes after trust (a pull adds a server): it is no longer trusted, and the client is asked again
+    std::fs::write(proj.join(".lastharness/mcp.json"), json!({"servers": [{"name": "tools", "transport": mock()}, {"name": "extra", "transport": mock()}]}).to_string()).unwrap();
+    let changed = s.session(&proj).await;
+    assert_eq!(changed["needs_trust"]["mcp"].as_array().unwrap().len(), 2, "{changed}");
+    one_turn(&s, changed["id"].as_str().unwrap(), "no").await;
+    assert!(!tool_names(&s, 2).iter().any(|n| n.starts_with("mcp__")), "a changed list is not trusted: {:?}", tool_names(&s, 2));
+    assert_eq!(s.get(&q).await["decision"], "changed");
+    s.call(reqwest::Method::POST, "/v1/trust", json!({"folder": proj, "decision": "trust"})).await;
+
     // "use my own": the folder's servers are switched off again, and the client is not asked again
     s.call(reqwest::Method::POST, "/v1/trust", json!({"folder": proj, "decision": "own"})).await;
     let third = s.session(&proj).await;
     assert_eq!(third["needs_trust"], Value::Null);
     one_turn(&s, third["id"].as_str().unwrap(), "no").await;
-    assert!(!tool_names(&s, 2).iter().any(|n| n.starts_with("mcp__")));
+    assert!(!tool_names(&s, 3).iter().any(|n| n.starts_with("mcp__")));
     assert_eq!(s.call(reqwest::Method::POST, "/v1/trust", json!({"folder": proj, "decision": "maybe"})).await.0, 400);
 }

@@ -10,7 +10,6 @@
 //! and the user compares it with the one in the browser's certificate details.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -33,6 +32,8 @@ const PENDING_TTL: Duration = Duration::from_secs(300);
 const MAX_PENDING: usize = 5;
 const CHALLENGE_TTL: Duration = Duration::from_secs(60);
 const SESSION_TTL: Duration = Duration::from_secs(12 * 3600);
+const MAX_CHALLENGES: usize = 1000;
+const MAX_CONNECTIONS: usize = 256;
 const MAX_FAILED_PINS: u32 = 5;
 const LOCKOUT: Duration = Duration::from_secs(60);
 
@@ -64,7 +65,6 @@ pub struct Web {
     challenges: Mutex<HashMap<String, (String, Instant)>>,
     sessions: Mutex<HashMap<String, (String, Instant)>>,
     pub fingerprint: String,
-    next: AtomicU64,
 }
 
 fn rand_hex(n: usize) -> String {
@@ -113,7 +113,7 @@ pub fn proof_for(pin: &str, jwk: &Value) -> Option<String> {
 
 impl Web {
     pub fn new(store: Arc<Store>, fingerprint: String) -> Arc<Self> {
-        Arc::new(Self { store, pairing: Mutex::default(), challenges: Mutex::default(), sessions: Mutex::default(), fingerprint, next: AtomicU64::new(1) })
+        Arc::new(Self { store, pairing: Mutex::default(), challenges: Mutex::default(), sessions: Mutex::default(), fingerprint })
     }
 
     fn device_key(&self, id: &str) -> Option<Value> {
@@ -164,7 +164,7 @@ impl Web {
         if p.pending.len() >= MAX_PENDING {
             return Err((StatusCode::TOO_MANY_REQUESTS, "too many pairing requests are waiting; try again in a few minutes"));
         }
-        let id = format!("p{}", self.next.fetch_add(1, Ordering::SeqCst));
+        let id = format!("p{}", rand_hex(12)); // not guessable: the status of a pairing names the device
         let name: String = name.chars().filter(|c| !c.is_control()).take(60).collect();
         p.pending.push(Pending { id: id.clone(), name: if name.is_empty() { "browser".into() } else { name }, public_key: jwk, proof: proof.to_lowercase(), at: Instant::now() });
         Ok(id)
@@ -231,6 +231,9 @@ impl Web {
         self.device_key(device_id)?;
         let mut c = self.challenges.lock().unwrap();
         c.retain(|_, (_, at)| at.elapsed() < CHALLENGE_TTL.max(PENDING_TTL));
+        if c.len() >= MAX_CHALLENGES {
+            return None; // a flood of requests cannot grow this without limit
+        }
         let nonce = rand_hex(32);
         c.insert(format!("nonce:{nonce}"), (device_id.to_string(), Instant::now()));
         Some(nonce)
@@ -247,7 +250,11 @@ impl Web {
         let sig = Signature::from_slice(&sig_bytes).ok()?;
         key.verify(nonce.as_bytes(), &sig).ok()?;
         let token = rand_hex(32);
-        self.sessions.lock().unwrap().insert(token.clone(), (device_id.to_string(), Instant::now() + SESSION_TTL));
+        {
+            let mut s = self.sessions.lock().unwrap();
+            s.retain(|_, (_, exp)| *exp > Instant::now());
+            s.insert(token.clone(), (device_id.to_string(), Instant::now() + SESSION_TTL));
+        }
         let _ = self.store.with(|c| c.execute("update devices set last_seen = ?1 where id = ?2", (now(), device_id)));
         Some(token)
     }
@@ -263,6 +270,21 @@ fn page(body: &'static str, content_type: &'static str) -> Response {
     let h = r.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     r
+}
+
+/// A paired browser may open a project only in a real folder below the home folder, not the home folder
+/// itself and not a hidden one (`.ssh`, `.config`, ...). Anything else is for the terminal on the machine.
+pub fn device_folder_ok(dir: &std::path::Path) -> Result<(), String> {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).and_then(|h| h.canonicalize().ok()).ok_or("the home folder is not known")?;
+    let real = dir.canonicalize().map_err(|e| format!("{}: {e}", dir.display()))?;
+    let below = real.strip_prefix(&home).map_err(|_| "from a browser a project must be a folder inside your home folder")?;
+    if below.as_os_str().is_empty() {
+        return Err("from a browser a project cannot be the whole home folder; pick a folder inside it".into());
+    }
+    if below.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.')) {
+        return Err("from a browser a project cannot be a hidden folder".into());
+    }
+    Ok(())
 }
 
 /// Headers on everything the web door sends.
@@ -335,7 +357,10 @@ pub fn public_routes(web: Arc<Web>) -> Router {
         )
         .route(
             "/auth/logout",
-            post(|| async {
+            post(|State(w): State<Arc<Web>>, req: Request| async move {
+                if let Some(t) = cookie(&req, "lh_session") {
+                    w.sessions.lock().unwrap().remove(&t);
+                }
                 let mut r = StatusCode::NO_CONTENT.into_response();
                 r.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_static("lh_session=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"));
                 r
@@ -487,7 +512,10 @@ pub fn load_or_create_tls(dir: &std::path::Path, extra_names: &[String]) -> Resu
 pub async fn serve_tls(listener: tokio::net::TcpListener, app: Router, acceptor: tokio_rustls::TlsAcceptor) {
     use tower::Service;
     let mut make = app.into_make_service();
+    let slots = Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
     loop {
+        // at the limit, wait: new connections queue in the OS instead of using up memory and descriptors
+        let Ok(slot) = slots.clone().acquire_owned().await else { return };
         let Ok((tcp, _)) = listener.accept().await else { continue };
         let svc = match make.call(&tcp).await {
             Ok(s) => s,
@@ -495,6 +523,7 @@ pub async fn serve_tls(listener: tokio::net::TcpListener, app: Router, acceptor:
         };
         let acceptor = acceptor.clone();
         tokio::spawn(async move {
+            let _slot = slot;
             // a handshake that does not finish quickly is dropped, so a stranger cannot hold the door open
             let Ok(Ok(tls)) = tokio::time::timeout(Duration::from_secs(10), acceptor.accept(tcp)).await else { return };
             let io = hyper_util::rt::TokioIo::new(tls);

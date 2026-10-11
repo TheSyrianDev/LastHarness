@@ -483,6 +483,9 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
     let toolbox: Toolbox = Arc::new(move |role, job| {
         let s = &st2.settings;
         let mut tools = lh_tools::default_tools().with_web(s.web.clone());
+        if let Some(g) = crate::outbound_guard(s) {
+            tools = tools.with_outbound_guard(g);
+        }
         if let Some(m) = &s.image_model {
             tools = tools.with_images(m.clone());
         }
@@ -528,7 +531,10 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
     Ok(run)
 }
 
-async fn start_run<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<NewRun>) -> Result<(StatusCode, Json<Value>), ApiError> {
+async fn start_run<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<axum::Extension<crate::web::Via>>, Json(b): Json<NewRun>) -> Result<(StatusCode, Json<Value>), ApiError> {
+    if let (Some(axum::Extension(crate::web::Via::Device(_))), Some(d)) = (&via, &b.project_dir) {
+        crate::web::device_folder_ok(std::path::Path::new(d)).map_err(|e| ApiError(StatusCode::FORBIDDEN, e))?;
+    }
     let run = start(&st, b.department, b.goal, b.project_dir, None).await?;
     Ok((StatusCode::CREATED, Json(json!({"id": run.id}))))
 }

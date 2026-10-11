@@ -28,8 +28,8 @@ impl Slack {
     }
 
     async fn connect(&self) -> Result<Socket> {
-        let r = self.http.post(format!("{}/apps.connections.open", self.api)).bearer_auth(&self.app_token).send().await.map_err(|e| msg(format!("Slack is not reachable: {e}")))?;
-        let v: Value = r.json().await.map_err(|e| msg(format!("Slack sent something unreadable: {e}")))?;
+        let r = self.http.post(format!("{}/apps.connections.open", self.api)).bearer_auth(&self.app_token).send().await.map_err(|e| msg(format!("Slack is not reachable: {}", e.without_url())))?;
+        let v: Value = r.json().await.map_err(|e| msg(format!("Slack sent something unreadable: {}", e.without_url())))?;
         if v["ok"] != true {
             return Err(match v["error"].as_str() {
                 Some("invalid_auth" | "not_authed" | "token_revoked" | "account_inactive") => Error::Auth("Slack".into()),
@@ -38,7 +38,7 @@ impl Slack {
         }
         let url = v["url"].as_str().ok_or_else(|| msg("Slack gave no socket address"))?;
         let connector = if url.starts_with("wss://") { Some(tls_connector()) } else { None };
-        let (ws, _) = tokio_tungstenite::connect_async_tls_with_config(url, None, false, connector).await.map_err(|e| msg(format!("cannot open the Slack socket: {e}")))?;
+        let (ws, _) = tokio_tungstenite::connect_async_tls_with_config(url, None, false, connector).await.map_err(|e| msg(format!("cannot open the Slack socket: {}", crate::scrub(e))))?;
         Ok(ws)
     }
 }
@@ -70,7 +70,7 @@ impl Channel for Slack {
                 }
                 Ok(Some(Err(e))) => {
                     *guard = None;
-                    return Err(msg(format!("the Slack socket broke: {e}")));
+                    return Err(msg(format!("the Slack socket broke: {}", crate::scrub(e))));
                 }
                 Ok(Some(Ok(f))) => f,
             };
@@ -101,8 +101,8 @@ impl Channel for Slack {
     fn send(&self, chat: &str, text: &str) -> BoxFut<'_, Result<()>> {
         let (chat, text) = (chat.to_string(), text.to_string());
         Box::pin(async move {
-            let r = self.http.post(format!("{}/chat.postMessage", self.api)).bearer_auth(&self.bot_token).json(&json!({"channel": chat, "text": text})).send().await.map_err(|e| msg(format!("Slack is not reachable: {e}")))?;
-            let v: Value = r.json().await.map_err(|e| msg(format!("Slack sent something unreadable: {e}")))?;
+            let r = self.http.post(format!("{}/chat.postMessage", self.api)).bearer_auth(&self.bot_token).json(&json!({"channel": chat, "text": text})).send().await.map_err(|e| msg(format!("Slack is not reachable: {}", e.without_url())))?;
+            let v: Value = r.json().await.map_err(|e| msg(format!("Slack sent something unreadable: {}", e.without_url())))?;
             if v["ok"] != true {
                 return Err(msg(format!("Slack refused the message: {}", v["error"].as_str().unwrap_or("not ok"))));
             }

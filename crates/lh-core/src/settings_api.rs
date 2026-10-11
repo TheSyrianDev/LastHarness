@@ -61,7 +61,7 @@ async fn change<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Opt
     // A paired browser may change how the assistant behaves, not where it sends data, what it may run, or
     // how much it may spend. Those stay on the machine's own terminal.
     if matches!(via.map(|v| v.0), Some(crate::web::Via::Device(_))) {
-        if let Some(k) = b.keys().find(|k| ["provider", "permissions", "web", "media", "spending"].iter().any(|g| k.split('.').next() == Some(g))) {
+        if let Some(k) = b.keys().find(|k| ["provider", "permissions", "web", "media", "spending"].iter().any(|g| k.split('.').next() == Some(g)) || k.as_str() == "memory.trust") {
             return Err(ApiError(StatusCode::FORBIDDEN, format!("{k} cannot be changed from a browser; use `lh settings` on the machine")));
         }
     }

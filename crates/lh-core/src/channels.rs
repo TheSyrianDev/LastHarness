@@ -283,7 +283,8 @@ fn bump(store: &Store, name: &str, key: &str) {
 impl Ctx {
     /// Send text to a chat. A reply that looks sensitive is held back; replies are logged by size only.
     async fn say(&self, chat: &str, text: &str) {
-        let (out, withheld) = if looks_sensitive(text) {
+        let leaked = lh_memory::leaks(text, &crate::sensitive_texts(&self.store)).is_some();
+        let (out, withheld) = if leaked || looks_sensitive(text) {
             ("I held back this reply because it looks like it contains sensitive information. Chat apps are not a safe place for that. You can see it in the terminal or the browser.".to_string(), true)
         } else {
             (text.to_string(), false)

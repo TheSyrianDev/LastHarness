@@ -225,6 +225,15 @@ async fn execute<M: Model, T: Meter, A: Asker>(
         Ok(v) => v,
         Err(e) => return fail(format!("Error: the arguments are not valid JSON ({e}).")),
     };
+    // Sensitive notes and rules never leave the machine: what a web, image or MCP tool is about to send
+    // is checked before the user is even asked.
+    if name.starts_with("mcp__") || matches!(name, "web_fetch" | "web_search" | "generate_image") {
+        if let Some(g) = &tools.guard.0 {
+            if let Some(what) = g(&args.to_string()) {
+                return fail(format!("Error: not sent. It repeats something marked sensitive (\"{what}...\"), and sensitive notes and rules do not leave this machine."));
+            }
+        }
+    }
     let action = match (builtin, extra) {
         (Some(tool), _) => match tool.action(&args, perms.root()) {
             Ok(a) => a,

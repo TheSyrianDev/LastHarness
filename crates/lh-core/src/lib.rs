@@ -250,7 +250,14 @@ struct SamplingBody {
     extra: serde_json::Map<String, Value>,
 }
 
-async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<NewSession>) -> Result<Json<Value>, ApiError> {
+async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<axum::Extension<web::Via>>, Json(mut b): Json<NewSession>) -> Result<Json<Value>, ApiError> {
+    if let Some(axum::Extension(web::Via::Device(_))) = via {
+        if let Some(d) = &b.project_dir {
+            web::device_folder_ok(d).map_err(|e| ApiError(StatusCode::FORBIDDEN, e))?;
+        } else if b.mode.as_deref() == Some("assistant") {
+            b.ask_all = true; // from a browser, the home folder is not read without asking
+        }
+    }
     let (dir, tools_on) = match (&b.project_dir, b.mode.as_deref()) {
         (Some(d), _) => (d.clone(), true),
         (None, Some("assistant")) => (std::env::var_os("HOME").map(PathBuf::from).ok_or(ApiError(StatusCode::BAD_REQUEST, "no home folder".into()))?, true),
@@ -411,11 +418,34 @@ async fn switch_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Pa
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// The text of every sensitive note and rule, archived ones too. Nothing that goes out of the machine may
+/// repeat it.
+pub(crate) fn sensitive_texts(store: &lh_store::Store) -> Vec<String> {
+    let mut out: Vec<String> = store
+        .with(|c| {
+            let mut q = c.prepare("select body, gist, title from pages where privacy = 'sensitive' union all select text, '', '' from rules where privacy = 'sensitive'")?;
+            let rows = q.query_map([], |r| Ok([r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?]))?;
+            Ok(rows.flatten().flatten().collect())
+        })
+        .unwrap_or_default();
+    out.retain(|t: &String| !t.trim().is_empty());
+    out
+}
+
+/// A guard for the tools that send things out: it refuses text that repeats a sensitive note or rule.
+pub(crate) fn outbound_guard(s: &Settings) -> Option<lh_tools::GuardFn> {
+    let store = s.store.clone();
+    Some(Arc::new(move |text: &str| lh_memory::leaks(text, &sensitive_texts(&store))))
+}
+
 fn session_tools(s: &Settings, tools_on: bool) -> lh_tools::ToolSet {
     if !tools_on {
         return lh_tools::ToolSet::default(); // plain chat: the model is told about no tools
     }
-    let t = default_tools().with_web(s.web.clone());
+    let mut t = default_tools().with_web(s.web.clone());
+    if let Some(g) = outbound_guard(s) {
+        t = t.with_outbound_guard(g);
+    }
     match &s.image_model {
         Some(m) => t.with_images(m.clone()),
         None => t,

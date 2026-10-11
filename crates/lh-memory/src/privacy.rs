@@ -141,6 +141,36 @@ pub fn detect(text: &str) -> Classification {
     Classification::normal()
 }
 
+fn shingles(text: &str, n: usize) -> std::collections::HashSet<String> {
+    let words: Vec<String> = text.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect();
+    if words.len() < n {
+        return std::iter::once(words.join(" ")).filter(|s| s.chars().count() >= 12).collect();
+    }
+    words.windows(n).map(|w| w.join(" ")).collect()
+}
+
+/// Would sending `outbound` give away something from `sensitive` (the text of sensitive notes and rules)?
+/// A run of four words in the same order is enough; a sensitive text shorter than that must appear whole.
+/// Returns the first few words of what matched, for the message to the user.
+pub fn leaks(outbound: &str, sensitive: &[String]) -> Option<String> {
+    let out = shingles(outbound, 4);
+    if out.is_empty() {
+        return None;
+    }
+    let flat = outbound.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+    for s in sensitive {
+        let theirs = shingles(s, 4);
+        if let Some(hit) = theirs.iter().find(|t| out.contains(*t)) {
+            return Some(hit.split(' ').take(3).collect::<Vec<_>>().join(" "));
+        }
+        let whole = s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+        if whole.chars().count() >= 12 && flat.contains(&whole) {
+            return Some(whole.split(' ').take(3).collect::<Vec<_>>().join(" "));
+        }
+    }
+    None
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Judgement {
     Normal,
@@ -284,5 +314,22 @@ mod tests {
         assert!(!Privacy::Sensitive.allowed_at(Trust::AnyCloud));
         assert_eq!(Trust::parse("local"), Some(Trust::Local));
         assert_eq!(Trust::parse("nonsense"), None);
+    }
+}
+
+#[cfg(test)]
+mod leak_tests {
+    use super::leaks;
+
+    #[test]
+    fn a_run_of_words_from_a_sensitive_text_is_a_leak_and_unrelated_text_is_not() {
+        let sens = vec!["My doctor is Dr. Amal and she prescribed metformin for my diabetes.".to_string(), "Takes metformin".to_string()];
+        assert!(leaks("search for: doctor is Dr. Amal and she", &sens).is_some());
+        assert!(leaks("https://x.example/?q=she prescribed metformin for my", &sens).is_some());
+        assert!(leaks("what about Takes metformin?", &sens).is_some(), "a short text must appear whole");
+        assert!(leaks("how do I make sourdough bread at home", &sens).is_none());
+        assert!(leaks("metformin side effects", &sens).is_none(), "a general question is the user's own to ask");
+        assert!(leaks("", &sens).is_none());
+        assert!(leaks("anything", &[]).is_none());
     }
 }

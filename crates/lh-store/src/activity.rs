@@ -37,8 +37,75 @@ pub fn content_hash(bytes: &[u8]) -> i64 {
     h as i64
 }
 
+const MASK: &str = "[secret removed]";
+
+/// Take anything shaped like a key or token out of a piece of text. The log is for the user to read and
+/// may be shown in a browser, so a secret that passed through a command or an error never stays in it.
+pub fn redact(text: &str) -> String {
+    fn secretish(w: &str) -> bool {
+        let w = w.trim_matches(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | '+' | '=' | ':')));
+        let after = |p: &str, n: usize| w.strip_prefix(p).is_some_and(|r| r.len() >= n && r.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')));
+        after("sk-", 16) || after("ghp_", 20) || after("gho_", 20) || after("ghu_", 20) || after("ghs_", 20) || after("ghr_", 20) || after("xoxb-", 10) || after("xoxp-", 10) || after("xoxa-", 10) || after("xoxs-", 10) || after("xapp-", 10)
+            || (w.starts_with("AKIA") && w.len() == 20 && w.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()))
+            || (w.starts_with("eyJ") && w.matches('.').count() == 2 && w.len() > 30)
+            // a Telegram bot token: digits, a colon, then a long run
+            || w.split_once(':').is_some_and(|(a, b)| a.len() >= 6 && a.chars().all(|c| c.is_ascii_digit()) && b.len() >= 30 && b.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')))
+    }
+    let mut out = text.to_string();
+    // key blocks
+    while let (Some(a), Some(b)) = (out.find("-----BEGIN "), out.find("PRIVATE KEY-----")) {
+        if b < a {
+            break;
+        }
+        let end = out[b..].find("-----END ").and_then(|e| out[b + e..].find("KEY-----").map(|k| b + e + k + 8)).unwrap_or(out.len());
+        out.replace_range(a..end, MASK);
+    }
+    // words, and the part of `Bearer <token>`, `key=<token>` and URLs with a password in them
+    let mut res = String::with_capacity(out.len());
+    let mut prev_bearer = false;
+    for part in out.split_inclusive(char::is_whitespace) {
+        let word = part.trim_end();
+        let tail = &part[word.len()..];
+        // user:password@host inside an address
+        let word_owned: String = match word.find("://").filter(|_| word.contains('@')) {
+            Some(i) => {
+                let (scheme, rest) = word.split_at(i + 3);
+                match rest.split_once('@') {
+                    Some((cred, host)) if cred.contains(':') && !cred.contains('/') => format!("{scheme}{MASK}@{host}"),
+                    _ => word.to_string(),
+                }
+            }
+            None => word.to_string(),
+        };
+        let word_ref = word_owned.as_str();
+        let masked = if prev_bearer && word_ref.len() >= 12 {
+            MASK.to_string()
+        } else if let Some((k, _)) = word_ref.split_once('=').filter(|(_, v)| secretish(v)) {
+            format!("{k}={MASK}")
+        } else if secretish(word_ref) {
+            MASK.to_string()
+        } else {
+            word_owned.clone()
+        };
+        prev_bearer = word.eq_ignore_ascii_case("bearer") || word.eq_ignore_ascii_case("bearer:");
+        res.push_str(&masked);
+        res.push_str(tail);
+    }
+    res
+}
+
+fn redact_value(v: &Value) -> Value {
+    match v {
+        Value::String(s) => Value::String(redact(s)),
+        Value::Array(a) => Value::Array(a.iter().map(redact_value).collect()),
+        Value::Object(m) => Value::Object(m.iter().map(|(k, v)| (k.clone(), redact_value(v))).collect()),
+        other => other.clone(),
+    }
+}
+
 impl Store {
     pub fn log(&self, kind: &str, session: &str, actor: &str, detail: &Value) -> Result<i64> {
+        let detail = redact_value(detail);
         self.with(|c| {
             c.execute("insert into activity(at, kind, session, actor, detail) values (?1,?2,?3,?4,?5)", (now(), kind, session, actor, detail.to_string()))?;
             Ok(c.last_insert_rowid())
@@ -110,6 +177,22 @@ mod tests {
         let seq = s.log("tool_call", "s1", "assistant", &json!({"tool":"write_file"})).unwrap();
         s.log_file_change(seq, path, previous, content_hash(content)).unwrap();
         seq
+    }
+
+    #[test]
+    fn secrets_never_stay_in_the_log() {
+        let s = Store::open_memory().unwrap();
+        let cmd = "curl -H 'Authorization: Bearer abcdefghijklmnop1234' https://u:hunter2@host.example/x?key=sk-abcdefghijklmnopqrstuv -d token=ghp_abcdefghijklmnopqrstuvwx";
+        s.log("tool_call", "s", "a", &json!({"arguments": cmd, "nested": {"list": ["xoxb-1234567890-abcdef", "123456789:AAEhBP0abcdefghijklmnopqrstuvwxyz012", "AKIAABCDEFGHIJKLMNOP"]}})).unwrap();
+        s.log("x", "s", "a", &json!({"text": "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEA\n-----END OPENSSH PRIVATE KEY----- done"})).unwrap();
+        s.log("y", "s", "a", &json!({"jwt": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnopqrstu"})).unwrap();
+        let all = serde_json::to_string(&s.recent(10, None).unwrap().iter().map(|e| e.detail.clone()).collect::<Vec<_>>()).unwrap();
+        for secret in ["abcdefghijklmnop1234", "hunter2", "sk-abcdefghijklmnopqrstuv", "ghp_abcdefghijklmnopqrstuvwx", "xoxb-1234567890", "AAEhBP0abc", "AKIAABCDEFGHIJKLMNOP", "b3BlbnNzaC1rZXk", "eyJhbGciOiJIUzI1NiJ9"] {
+            assert!(!all.contains(secret), "{secret} is in the log: {all}");
+        }
+        assert!(all.contains("curl -H") && all.contains("host.example") && all.contains("done"), "the rest is kept: {all}");
+        // ordinary text is left alone
+        assert_eq!(redact("ls -la src/main.rs && echo sk-short"), "ls -la src/main.rs && echo sk-short");
     }
 
     #[test]

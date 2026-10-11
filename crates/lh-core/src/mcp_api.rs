@@ -32,6 +32,9 @@ struct Saved {
     servers: Vec<Entry>,
     /// Folder to the user's decision: `trust` or `own` (use my own servers and skills instead).
     trust: BTreeMap<String, String>,
+    /// What the folder's server list looked like when it was trusted. A changed list is not trusted.
+    #[serde(default)]
+    trust_hash: BTreeMap<String, String>,
 }
 
 pub struct McpRuntime {
@@ -42,6 +45,13 @@ pub struct McpRuntime {
 
 fn folder_file(folder: &str) -> PathBuf {
     FsPath::new(folder).join(".lastharness").join("mcp.json")
+}
+
+/// Fingerprint of the folder's server list, so a list that changes after trust (a `git pull` that adds a
+/// server) has to be looked at again.
+fn folder_hash(folder: &str) -> String {
+    use sha2::{Digest, Sha256};
+    std::fs::read(folder_file(folder)).map(|b| Sha256::digest(b).iter().map(|x| format!("{x:02x}")).collect()).unwrap_or_default()
 }
 
 /// The servers a folder asks for. Names and transports only; whether they run is up to the user.
@@ -65,14 +75,20 @@ impl McpRuntime {
         std::fs::write(&self.path, text).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("cannot save {}: {e}", self.path.display())))
     }
 
+    /// `trust`, `own`, `changed` (trusted once, but the list is different now) or nothing yet.
     pub fn decision(&self, folder: &str) -> Option<String> {
-        self.saved.lock().unwrap().trust.get(folder).cloned()
+        let s = self.saved.lock().unwrap();
+        let d = s.trust.get(folder).cloned()?;
+        if d == "trust" && s.trust_hash.get(folder).map(String::as_str) != Some(folder_hash(folder).as_str()) {
+            return Some("changed".into());
+        }
+        Some(d)
     }
 
     /// What the folder wants that the user has not yet decided about.
     pub fn pending_trust(&self, folder: &str) -> Option<Value> {
         let servers = folder_servers(folder);
-        (self.decision(folder).is_none() && !servers.is_empty()).then(|| json!({"folder": folder, "mcp": servers.iter().map(|(n, t)| json!({"name": n, "runs": t.display()})).collect::<Vec<_>>()}))
+        (matches!(self.decision(folder).as_deref(), None | Some("changed")) && !servers.is_empty()).then(|| json!({"folder": folder, "mcp": servers.iter().map(|(n, t)| json!({"name": n, "runs": t.display()})).collect::<Vec<_>>()}))
     }
 
     async fn connection(&self, name: &str, t: &Transport) -> Result<Arc<Connection>, lh_mcp::Error> {
@@ -202,10 +218,15 @@ async fn set_trust<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(
     let folder = std::fs::canonicalize(&b.folder).map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("{}: {e}", b.folder)))?.to_string_lossy().to_string();
     match b.decision.as_str() {
         "trust" | "own" => {
-            r.saved.lock().unwrap().trust.insert(folder.clone(), b.decision.clone());
+            let h = folder_hash(&folder);
+            let mut s = r.saved.lock().unwrap();
+            s.trust.insert(folder.clone(), b.decision.clone());
+            s.trust_hash.insert(folder.clone(), h);
         }
         "forget" => {
-            r.saved.lock().unwrap().trust.remove(&folder);
+            let mut s = r.saved.lock().unwrap();
+            s.trust.remove(&folder);
+            s.trust_hash.remove(&folder);
         }
         _ => return Err(ApiError(StatusCode::BAD_REQUEST, "decision must be trust, own or forget".into())),
     }

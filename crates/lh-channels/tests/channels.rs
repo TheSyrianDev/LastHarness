@@ -40,6 +40,7 @@ async fn telegram_returns_messages_once_moves_its_offset_and_sends() {
                         {"update_id": 10, "message": {"text": "hello", "from": {"id": 42, "is_bot": false}, "chat": {"id": 42}}},
                         {"update_id": 11, "message": {"from": {"id": 42}, "chat": {"id": 42}, "photo": []}},
                         {"update_id": 12, "message": {"text": "from a bot", "from": {"id": 7, "is_bot": true}, "chat": {"id": 7}}},
+                        {"update_id": 13, "message": {"text": "in a group", "from": {"id": 42, "is_bot": false}, "chat": {"id": -100, "type": "supergroup"}}},
                     ]}))
                 } else {
                     Json(json!({"ok": true, "result": []}))
@@ -55,8 +56,13 @@ async fn telegram_returns_messages_once_moves_its_offset_and_sends() {
     assert_eq!(first, vec![Message { chat: "42".into(), sender: "42".into(), text: "hello".into() }], "text from people only");
     assert!(t.next().await.unwrap().is_empty());
     t.send("42", "hi back").await.unwrap();
-    assert_eq!(*s.log.lock().unwrap(), ["offset=0", "offset=13", "send \"42\" \"hi back\""], "the next poll asks past the last update");
+    assert_eq!(*s.log.lock().unwrap(), ["offset=0", "offset=14", "send \"42\" \"hi back\""], "the next poll asks past the last update");
     assert!(matches!(Telegram::new(&base, "BAD").next().await, Err(Error::Auth(_))));
+    // an unreachable service must not put the token (which is part of Telegram's address) into the error
+    let e = Telegram::new("http://127.0.0.1:9", "123456:SECRETTOKEN").next().await.unwrap_err().to_string();
+    assert!(!e.contains("SECRETTOKEN") && e.contains("not reachable"), "{e}");
+    let e = Telegram::new("http://127.0.0.1:9", "123456:SECRETTOKEN").send("1", "x").await.unwrap_err().to_string();
+    assert!(!e.contains("SECRETTOKEN"), "{e}");
 }
 
 // ---- Matrix ----
@@ -81,7 +87,7 @@ async fn matrix_skips_history_its_own_messages_and_encrypted_rooms_and_joins_onl
                     return Json(json!({"next_batch": "b1", "rooms": {"join": {"!old:hs": {"timeline": {"events": [{"type": "m.room.message", "sender": "@me:hs", "content": {"msgtype": "m.text", "body": "old"}}]}}}}}));
                 }
                 Json(json!({"next_batch": "b2", "rooms": {
-                    "join": {"!r:hs": {"timeline": {"events": [
+                    "join": {"!group:hs": {"timeline": {"events": [{"type": "m.room.message", "sender": "@me:hs", "content": {"msgtype": "m.text", "body": "said in a group"}}]}}, "!r:hs": {"timeline": {"events": [
                         {"type": "m.room.message", "sender": "@me:hs", "content": {"msgtype": "m.text", "body": "hello bot"}},
                         {"type": "m.room.message", "sender": "@bot:hs", "content": {"msgtype": "m.text", "body": "my own echo"}},
                         {"type": "m.room.encrypted", "sender": "@me:hs", "content": {}},
@@ -93,6 +99,7 @@ async fn matrix_skips_history_its_own_messages_and_encrypted_rooms_and_joins_onl
                     }}}))
             }),
         )
+        .route("/_matrix/client/v3/rooms/{room}/joined_members", get(|Path(r): Path<String>| async move { if r == "!r:hs" { Json(json!({"joined": {"@me:hs": {}, "@bot:hs": {}}})) } else { Json(json!({"joined": {"@me:hs": {}, "@bot:hs": {}, "@x:hs": {}}})) } }))
         .route("/_matrix/client/v3/join/{room}", post(|State(s): State<S>, Path(r): Path<String>| async move { s.log.lock().unwrap().push(format!("join {r}")); Json(json!({})) }))
         .route("/_matrix/client/v3/rooms/{room}/send/m.room.message/{txn}", put(|State(s): State<S>, h: HeaderMap, Path((r, _t)): Path<(String, String)>, Json(b): Json<Value>| async move { s.log.lock().unwrap().push(format!("send {r} {} auth={}", b["body"], h["authorization"].to_str().unwrap())); Json(json!({"event_id": "$e"})) }))
         .with_state(s.clone());
@@ -116,7 +123,7 @@ async fn signal_reads_the_event_stream_and_sends_through_rpc() {
     let l2 = log.clone();
     let app = Router::new()
         .route("/api/v1/events", get(|| async {
-            let body = "data: {\"envelope\":{\"sourceNumber\":\"+15550001\",\"dataMessage\":{\"message\":\"hi there\"}}}\n\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"receive\",\"params\":{\"envelope\":{\"source\":\"+15550002\",\"dataMessage\":{\"message\":\"wrapped\"}}}}\n\ndata: {\"envelope\":{\"sourceNumber\":\"+15559999\",\"dataMessage\":{\"message\":\"my own\"}}}\n\ndata: {\"envelope\":{\"sourceNumber\":\"+15550003\",\"receiptMessage\":{}}}\n\n";
+            let body = "data: {\"envelope\":{\"sourceNumber\":\"+15550001\",\"dataMessage\":{\"message\":\"hi there\"}}}\n\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"receive\",\"params\":{\"envelope\":{\"source\":\"+15550002\",\"dataMessage\":{\"message\":\"wrapped\"}}}}\n\ndata: {\"envelope\":{\"sourceNumber\":\"+15559999\",\"dataMessage\":{\"message\":\"my own\"}}}\n\ndata: {\"envelope\":{\"sourceNumber\":\"+15550004\",\"dataMessage\":{\"message\":\"in a group\",\"groupInfo\":{\"groupId\":\"g\"}}}}\n\ndata: {\"envelope\":{\"sourceNumber\":\"+15550003\",\"receiptMessage\":{}}}\n\n";
             ([("content-type", "text/event-stream")], body)
         }))
         .route("/api/v1/rpc", post(move |Json(b): Json<Value>| { let l = l2.clone(); async move {

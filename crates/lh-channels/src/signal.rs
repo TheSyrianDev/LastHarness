@@ -30,8 +30,8 @@ fn from_event(v: &Value, me: &str) -> Option<Message> {
     let env = v.get("envelope").or_else(|| v["params"].get("envelope"))?;
     let text = env["dataMessage"]["message"].as_str()?;
     let sender = env["sourceNumber"].as_str().or_else(|| env["source"].as_str())?;
-    if sender == me {
-        return None;
+    if sender == me || env["dataMessage"].get("groupInfo").is_some() || env["dataMessage"].get("groupV2").is_some() {
+        return None; // our own message, or one in a group (a reply there would reach everyone in it)
     }
     Some(Message { chat: sender.to_string(), sender: sender.to_string(), text: text.to_string() })
 }
@@ -45,7 +45,7 @@ impl Channel for Signal {
         Box::pin(async move {
             let mut guard = self.stream.lock().await;
             if guard.is_none() {
-                let r = self.http.get(format!("{}/api/v1/events", self.base)).header("Accept", "text/event-stream").send().await.map_err(|e| msg(format!("signal-cli is not reachable at {}: {e}", self.base)))?;
+                let r = self.http.get(format!("{}/api/v1/events", self.base)).header("Accept", "text/event-stream").send().await.map_err(|e| msg(format!("signal-cli is not reachable at {}: {}", self.base, crate::scrub(e))))?;
                 if !r.status().is_success() {
                     return Err(msg(format!("signal-cli answered {} at {}", r.status(), self.base)));
                 }
@@ -57,7 +57,7 @@ impl Channel for Signal {
                 Err(_) => Ok(vec![]),
                 Ok(Err(e)) => {
                     *guard = None;
-                    Err(msg(format!("the connection to signal-cli broke: {e}")))
+                    Err(msg(format!("the connection to signal-cli broke: {}", crate::scrub(e))))
                 }
                 Ok(Ok(None)) => {
                     *guard = None;
@@ -72,8 +72,8 @@ impl Channel for Signal {
         let (chat, text) = (chat.to_string(), text.to_string());
         Box::pin(async move {
             let body = json!({"jsonrpc": "2.0", "id": self.id.fetch_add(1, Ordering::SeqCst), "method": "send", "params": {"account": self.account, "recipient": [chat], "message": text}});
-            let r = self.http.post(format!("{}/api/v1/rpc", self.base)).json(&body).send().await.map_err(|e| msg(format!("signal-cli is not reachable at {}: {e}", self.base)))?;
-            let v: Value = r.json().await.map_err(|e| msg(format!("signal-cli sent something unreadable: {e}")))?;
+            let r = self.http.post(format!("{}/api/v1/rpc", self.base)).json(&body).send().await.map_err(|e| msg(format!("signal-cli is not reachable at {}: {}", self.base, crate::scrub(e))))?;
+            let v: Value = r.json().await.map_err(|e| msg(format!("signal-cli sent something unreadable: {}", e.without_url())))?;
             if let Some(e) = v.get("error") {
                 return Err(msg(format!("signal-cli said: {}", e["message"].as_str().unwrap_or("error"))));
             }

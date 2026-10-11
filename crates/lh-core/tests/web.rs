@@ -256,3 +256,65 @@ async fn the_browsers_own_cryptography_is_accepted() {
     let out = tokio::process::Command::new("node").arg(script).args([&r.https, &r.local, &r.token]).env("NODE_TLS_REJECT_UNAUTHORIZED", "0").output().await.unwrap();
     assert!(out.status.success() && String::from_utf8_lossy(&out.stdout).contains("interop ok"), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
 }
+
+#[tokio::test]
+async fn pairing_ids_cannot_be_guessed_logout_ends_the_session_and_floods_are_capped() {
+    let r = rig().await;
+    let b = Browser::new();
+    let start: Value = r.http.post(format!("{}/pair/start", r.https)).json(&json!({"name": "x", "public_key": b.jwk, "proof": web::proof_for("135790", &b.jwk).unwrap()})).send().await.unwrap().json().await.unwrap();
+    let id = start["id"].as_str().unwrap();
+    assert!(id.len() >= 20 && id != "p1", "{id}");
+    // someone who tries the old sequential names learns nothing
+    for guess in ["p1", "p2", "p3"] {
+        let st: Value = r.http.get(format!("{}/pair/status/{guess}", r.https)).send().await.unwrap().json().await.unwrap();
+        assert_eq!(st["state"], "expired", "{guess}");
+    }
+    // logout: the session stops working even if the cookie is kept
+    let dev = pair(&r, &b, "246810").await;
+    let cookie = sign_in(&r, &b, &dev).await.unwrap();
+    assert_eq!(r.http.get(format!("{}/v1/status", r.https)).header("cookie", &cookie).send().await.unwrap().status(), 200);
+    r.http.post(format!("{}/auth/logout", r.https)).header("cookie", &cookie).send().await.unwrap();
+    assert_eq!(r.http.get(format!("{}/v1/status", r.https)).header("cookie", &cookie).send().await.unwrap().status(), 401);
+    // challenges are capped for one device name; the pile stays bounded
+    let mut refused = 0;
+    for _ in 0..1100 {
+        let c = r.http.post(format!("{}/auth/challenge", r.https)).json(&json!({"device_id": dev})).send().await.unwrap();
+        if c.status() == 401 {
+            refused += 1;
+        }
+    }
+    assert!(refused > 0, "the 1001st open challenge must be refused");
+}
+
+#[tokio::test]
+async fn a_browser_cannot_loosen_how_far_the_model_endpoint_is_trusted_with_memory() {
+    let r = rig().await;
+    let b = Browser::new();
+    let dev = pair(&r, &b, "112233").await;
+    let cookie = sign_in(&r, &b, &dev).await.unwrap();
+    for (key, val) in [("memory.trust", "local"), ("permissions.bypass", "true"), ("provider.url", "http://evil/v1"), ("web.listen", "0.0.0.0:7843"), ("spending.mode", "none")] {
+        let resp = r.http.put(format!("{}/v1/settings", r.https)).header("cookie", &cookie).header("origin", &r.https).json(&json!({ key: val })).send().await.unwrap();
+        assert_eq!(resp.status(), 403, "{key} must stay on the machine");
+    }
+}
+
+#[tokio::test]
+async fn a_browser_cannot_open_a_project_at_the_root_or_in_a_hidden_folder_and_reads_home_only_with_questions() {
+    let r = rig().await;
+    let b = Browser::new();
+    let dev = pair(&r, &b, "778899").await;
+    let cookie = sign_in(&r, &b, &dev).await.unwrap();
+    let origin = r.https.clone();
+    let make = |body: Value| r.http.post(format!("{}/v1/sessions", r.https)).header("cookie", &cookie).header("origin", &origin).json(&body).send();
+    let home = std::env::var("HOME").unwrap();
+    for dir in ["/", "/etc", home.as_str(), &format!("{home}/.ssh"), "/tmp"] {
+        let resp = make(json!({"model": "m", "project_dir": dir})).await.unwrap();
+        assert_eq!(resp.status(), 403, "{dir} must be refused from a browser");
+    }
+    // the run endpoint has the same rule
+    let resp = r.http.post(format!("{}/v1/team/runs", r.https)).header("cookie", &cookie).header("origin", &origin).json(&json!({"department": "x", "goal": "y", "project_dir": "/"})).send().await.unwrap();
+    assert_eq!(resp.status(), 403);
+    // the machine's own terminal is not limited
+    let local = r.http.post(format!("{}/v1/sessions", r.local)).bearer_auth(&r.token).json(&json!({"model": "m", "project_dir": "/tmp"})).send().await.unwrap();
+    assert_eq!(local.status(), 200);
+}

@@ -33,16 +33,41 @@ pub fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(a) => {
             let o = a.octets();
-            !(a.is_loopback() || a.is_private() || a.is_link_local() || a.is_unspecified() || a.is_broadcast() || a.is_multicast() || a.is_documentation() || (o[0] == 100 && (64..128).contains(&o[1])) || o[0] == 0 || o[0] >= 240)
+            !(a.is_loopback() || a.is_private() || a.is_link_local() || a.is_unspecified() || a.is_broadcast() || a.is_multicast() || a.is_documentation() || (o[0] == 100 && (64..128).contains(&o[1])) || o[0] == 0 || o[0] >= 240
+                || (o[0] == 192 && o[1] == 0 && o[2] == 0) // 192.0.0.0/24 protocol assignments
+                || (o[0] == 198 && (o[1] == 18 || o[1] == 19))) // benchmarking
         }
         IpAddr::V6(a) => {
             if let Some(v4) = a.to_ipv4_mapped() {
                 return is_public(IpAddr::V4(v4));
             }
             let s = a.segments();
-            !(a.is_loopback() || a.is_unspecified() || a.is_multicast() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80)
+            // addresses that carry an IPv4 address inside: NAT64 (64:ff9b::/96), 6to4 (2002::/16) and the old IPv4-compatible form
+            let embedded = |hi: u16, lo: u16| std::net::Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8);
+            if s[0] == 0x64 && s[1] == 0xff9b && s[2..6].iter().all(|x| *x == 0) {
+                return is_public(IpAddr::V4(embedded(s[6], s[7])));
+            }
+            if s[0] == 0x2002 {
+                return is_public(IpAddr::V4(embedded(s[1], s[2])));
+            }
+            if s[..6].iter().all(|x| *x == 0) {
+                return false; // ::a.b.c.d, deprecated, and ::1 / :: themselves
+            }
+            !(a.is_loopback() || a.is_unspecified() || a.is_multicast() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80 || (s[0] & 0xffc0) == 0xfec0 /* site-local */ || (s[0] == 0x2001 && s[1] == 0xdb8) /* documentation */ || (s[0] == 0x2001 && s[1] == 0) /* Teredo */)
         }
     }
+}
+
+/// What the agent sends out in an address or a search must not carry a key, a card or account number, or
+/// an identity number. (Ordinary words about health or money are the user's own to ask about.)
+fn outbound_ok(text: &str, words_too: bool) -> Result<(), ToolError> {
+    let c = lh_memory::detect(text);
+    // in an address a word like "passwd" is just part of a page name; only key shapes count there
+    let credentials = if words_too { c.reason.starts_with("credentials") } else { c.reason.starts_with("credentials: looks like a key") };
+    if c.privacy == lh_memory::Privacy::Sensitive && (credentials || c.reason.starts_with("finance: card") || c.reason.starts_with("identity document number")) {
+        return Err(fail(format!("not sent: it looks like it holds a secret or an account number ({}). Nothing was sent.", c.reason)));
+    }
+    Ok(())
 }
 
 pub async fn fetch(cfg: &WebConfig, url: &str) -> Result<String, ToolError> {
@@ -51,6 +76,7 @@ pub async fn fetch(cfg: &WebConfig, url: &str) -> Result<String, ToolError> {
         if !matches!(url.scheme(), "http" | "https") {
             return Err(fail("only http and https addresses can be fetched"));
         }
+        outbound_ok(url.as_str(), false)?;
         let host = url.host_str().ok_or_else(|| fail("the address has no host"))?.to_string();
         let port = url.port_or_known_default().unwrap_or(80);
         let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), port)).await.map_err(|e| fail(format!("cannot find {host}: {e}")))?.collect();
@@ -62,6 +88,7 @@ pub async fn fetch(cfg: &WebConfig, url: &str) -> Result<String, ToolError> {
         }
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            .no_proxy() // a proxy would resolve the name itself and could be led to a private address
             .timeout(TIMEOUT)
             .resolve_to_addrs(&host, &addrs)
             .user_agent("LastHarness/0 (agent fetch)")
@@ -102,6 +129,7 @@ pub async fn fetch(cfg: &WebConfig, url: &str) -> Result<String, ToolError> {
 }
 
 pub async fn search(cfg: &WebConfig, query: &str, max: usize) -> Result<String, ToolError> {
+    outbound_ok(query, true)?;
     let base = cfg.searxng_url.as_deref().ok_or_else(|| fail("web search is not set up. Set a SearXNG address in the settings."))?;
     let mut url = reqwest::Url::parse(&format!("{}/search", base.trim_end_matches('/'))).map_err(|e| fail(format!("the SearXNG address is not valid: {e}")))?;
     url.query_pairs_mut().append_pair("q", query).append_pair("format", "json");
@@ -206,6 +234,36 @@ mod tests {
         for a in ["127.0.0.1", "10.1.2.3", "192.168.0.9", "172.16.5.5", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "224.0.0.1"] {
             assert!(!is_public(a.parse().unwrap()), "{a}");
         }
+    }
+
+    #[test]
+    fn tricky_addresses_are_not_public() {
+        for a in ["64:ff9b::7f00:1", "64:ff9b::a00:1", "2002:7f00:1::", "2002:c0a8:1::1", "::127.0.0.1", "::10.0.0.1", "fec0::1", "2001:db8::1", "2001::1", "192.0.0.8", "198.18.0.1", "198.19.255.255", "::ffff:10.0.0.1", "::ffff:169.254.169.254", "255.255.255.255"] {
+            assert!(!is_public(a.parse().unwrap()), "{a}");
+        }
+        for a in ["64:ff9b::808:808", "2002:0808:0808::1", "198.20.0.1"] {
+            assert!(is_public(a.parse().unwrap()), "{a}");
+        }
+    }
+
+    #[tokio::test]
+    async fn odd_spellings_of_local_addresses_are_blocked() {
+        // the address parser turns these into 127.0.0.1 or similar before anything is resolved
+        for u in ["http://2130706433/", "http://0x7f.1/", "http://0177.0.0.1/", "http://127.1/", "http://[::1]/", "http://[::ffff:127.0.0.1]/", "http://[::ffff:7f00:1]/", "http://0/", "http://localhost./", "http://LOCALHOST/", "http://169.254.169.254/latest/meta-data/", "http://user:pw@127.0.0.1/", "http://127.0.0.1.nip.io@127.0.0.1/"] {
+            let e = fetch(&WebConfig::default(), u).await.unwrap_err().to_string();
+            assert!(e.contains("blocked") || e.contains("cannot find"), "{u}: {e}");
+        }
+    }
+
+    #[tokio::test]
+    async fn secrets_and_account_numbers_are_not_sent_in_addresses_or_searches() {
+        for u in ["https://example.com/?key=sk-abcdefghijklmnopqrstuvwx", "https://example.com/?card=4111111111111111", "https://example.com/?iban=DE89370400440532013000"] {
+            assert!(fetch(&WebConfig::default(), u).await.unwrap_err().to_string().contains("Nothing was sent"), "{u}");
+        }
+        let cfg = WebConfig { searxng_url: Some("http://127.0.0.1:9".into()), allow_private: true };
+        assert!(search(&cfg, "my password is hunter2", 3).await.unwrap_err().to_string().contains("Nothing was sent"));
+        // an ordinary question about health is the user's own to ask
+        assert!(!search(&cfg, "diabetes symptoms", 3).await.unwrap_err().to_string().contains("Nothing was sent"));
     }
 
     #[test]

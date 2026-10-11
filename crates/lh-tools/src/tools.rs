@@ -50,6 +50,7 @@ pub struct Undo {
     pub previous: Option<Vec<u8>>,
 }
 
+#[derive(Debug)]
 pub struct ToolOutput {
     pub text: String,
     pub undo: Option<Undo>,
@@ -187,6 +188,11 @@ impl Tool {
                     Action::Read(p) => p,
                     _ => unreachable!(),
                 };
+                // a pipe or a device would block or never end; only ordinary files are read
+                match tokio::fs::metadata(&p).await {
+                    Ok(m) if !m.is_file() => return Err(ToolError::Failed(format!("{} is not an ordinary file", p.display()))),
+                    _ => {}
+                }
                 let f = tokio::fs::File::open(&p).await.map_err(|e| ToolError::Failed(format!("cannot open {}: {e}", p.display())))?;
                 let mut buf = Vec::new();
                 f.take(MAX_READ as u64 + 1).read_to_end(&mut buf).await.map_err(|e| ToolError::Failed(e.to_string()))?;
@@ -209,10 +215,23 @@ impl Tool {
                 if let Some(dir) = p.parent() {
                     tokio::fs::create_dir_all(dir).await.map_err(|e| ToolError::Failed(e.to_string()))?;
                 }
-                // write to a sibling and rename, so a crash never leaves half a file
-                let tmp = p.with_extension("lh-tmp");
-                tokio::fs::write(&tmp, content).await.map_err(|e| ToolError::Failed(e.to_string()))?;
-                tokio::fs::rename(&tmp, &p).await.map_err(|e| ToolError::Failed(e.to_string()))?;
+                // Write to a sibling and rename, so a crash never leaves half a file. The sibling has a name
+                // nobody can predict and is created new, so a link planted at that name cannot redirect the write.
+                let mut rnd = [0u8; 6];
+                let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| std::io::Read::read_exact(&mut f, &mut rnd));
+                let tmp = p.with_file_name(format!(".{}.{}.lh-tmp", p.file_name().and_then(|n| n.to_str()).unwrap_or("file"), rnd.iter().map(|b| format!("{b:02x}")).collect::<String>()));
+                {
+                    use tokio::io::AsyncWriteExt;
+                    let mut f = tokio::fs::OpenOptions::new().write(true).create_new(true).open(&tmp).await.map_err(|e| ToolError::Failed(e.to_string()))?;
+                    if let Err(e) = f.write_all(content.as_bytes()).await {
+                        let _ = tokio::fs::remove_file(&tmp).await;
+                        return Err(ToolError::Failed(e.to_string()));
+                    }
+                }
+                if let Err(e) = tokio::fs::rename(&tmp, &p).await {
+                    let _ = tokio::fs::remove_file(&tmp).await;
+                    return Err(ToolError::Failed(e.to_string()));
+                }
                 Ok(ToolOutput { text: format!("wrote {} bytes to {}", content.len(), p.strip_prefix(root).unwrap_or(&p).display()), undo })
             }
             Tool::ListDir => {
@@ -229,28 +248,78 @@ impl Tool {
             Tool::RunCommand => {
                 let Action::Run(cmd) = self.action(args, root)? else { unreachable!() };
                 let secs = args["timeout_secs"].as_u64().unwrap_or(60).clamp(1, 600);
-                let child = tokio::process::Command::new("sh")
+                let mut child = tokio::process::Command::new("sh")
                     .arg("-c")
                     .arg(&cmd)
                     .current_dir(root)
+                    .env_clear()
+                    .envs(safe_env())
+                    .process_group(0)
                     .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
                     .kill_on_drop(true)
-                    .output();
-                match tokio::time::timeout(Duration::from_secs(secs), child).await {
-                    Err(_) => Err(ToolError::Failed(format!("the command ran longer than {secs} s and was stopped"))),
-                    Ok(Err(e)) => Err(ToolError::Failed(format!("cannot start the command: {e}"))),
-                    Ok(Ok(o)) => {
-                        let mut text = String::from_utf8_lossy(&o.stdout).into_owned();
-                        let err = String::from_utf8_lossy(&o.stderr);
+                    .spawn()
+                    .map_err(|e| ToolError::Failed(format!("cannot start the command: {e}")))?;
+                let pid = child.id();
+                let (out, err) = (child.stdout.take(), child.stderr.take());
+                let run = async {
+                    let (o, e) = tokio::join!(read_capped(out), read_capped(err));
+                    let status = child.wait().await;
+                    (o, e, status)
+                };
+                match tokio::time::timeout(Duration::from_secs(secs), run).await {
+                    Err(_) => {
+                        kill_group(pid);
+                        Err(ToolError::Failed(format!("the command ran longer than {secs} s and was stopped")))
+                    }
+                    Ok((o, e, status)) => {
+                        let status = status.map_err(|e| ToolError::Failed(format!("cannot run the command: {e}")))?;
+                        let mut text = String::from_utf8_lossy(&o).into_owned();
+                        let err = String::from_utf8_lossy(&e);
                         if !err.is_empty() {
                             text.push_str("\n[stderr]\n");
                             text.push_str(&err);
                         }
-                        Ok(format!("exit code {}\n{}", o.status.code().map_or("none (killed by a signal)".into(), |c| c.to_string()), shorten(&text)).into())
+                        Ok(format!("exit code {}\n{}", status.code().map_or("none (killed by a signal)".into(), |c| c.to_string()), shorten(&text)).into())
                     }
                 }
             }
         }
+    }
+}
+
+/// What a command may see of the environment. The core's own variables can hold tokens and keys (a
+/// messaging token is read from one), and `env` would hand them to the model, so only plain, harmless
+/// ones go through.
+fn safe_env() -> Vec<(String, String)> {
+    const KEEP: &[&str] = &["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TERM", "TZ", "TMPDIR", "DISPLAY", "WAYLAND_DISPLAY", "SSH_AUTH_SOCK", "CARGO_HOME", "RUSTUP_HOME", "GOPATH", "NO_COLOR"];
+    std::env::vars().filter(|(k, _)| KEEP.contains(&k.as_str()) || k.starts_with("LC_")).collect()
+}
+
+/// Read a stream, keep the first part and throw the rest away, so a command that prints without end
+/// cannot use up memory.
+async fn read_capped<R: tokio::io::AsyncRead + Unpin>(r: Option<R>) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    const KEEP: usize = 4 * MAX_OUT;
+    let Some(mut r) = r else { return vec![] };
+    let (mut kept, mut buf) = (Vec::new(), vec![0u8; 16 * 1024]);
+    loop {
+        match r.read(&mut buf).await {
+            Ok(0) | Err(_) => return kept,
+            Ok(n) => {
+                if kept.len() < KEEP {
+                    kept.extend_from_slice(&buf[..n.min(KEEP - kept.len())]);
+                }
+            }
+        }
+    }
+}
+
+/// Stop the command and everything it started.
+fn kill_group(pid: Option<u32>) {
+    if let Some(p) = pid {
+        let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{p}")]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
     }
 }
 
@@ -275,9 +344,23 @@ fn ceil(s: &str, mut i: usize) -> usize {
     i
 }
 
+/// Looks at what a tool is about to send out of the machine. `Some(reason)` stops it.
+/// The check itself: text in, `Some(what it repeats)` out.
+pub type GuardFn = std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+#[derive(Clone, Default)]
+pub struct OutboundGuard(pub Option<GuardFn>);
+
+impl std::fmt::Debug for OutboundGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OutboundGuard({})", if self.0.is_some() { "on" } else { "off" })
+    }
+}
+
 /// The tools one worker may use. Anything not listed does not exist for it.
 #[derive(Clone, Debug, Default)]
 pub struct ToolSet {
+    pub(crate) guard: OutboundGuard,
     tools: Vec<Tool>,
     web: crate::WebConfig,
     image_model: Option<String>,
@@ -288,7 +371,12 @@ pub struct ToolSet {
 
 impl ToolSet {
     pub fn new(tools: impl IntoIterator<Item = Tool>) -> Self {
-        Self { tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None, extras: vec![] }
+        Self { guard: OutboundGuard::default(), tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None, extras: vec![] }
+    }
+    /// Check what web, image and MCP tools send out against this function before they run.
+    pub fn with_outbound_guard(mut self, g: GuardFn) -> Self {
+        self.guard = OutboundGuard(Some(g));
+        self
     }
     pub fn with_web(mut self, web: crate::WebConfig) -> Self {
         self.web = web;
@@ -393,6 +481,52 @@ pub(crate) fn image_stem(prompt: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn run_cmd(root: &Path, cmd: &str, secs: u64) -> Result<String, ToolError> {
+        let set = ToolSet::new([Tool::RunCommand]);
+        Tool::RunCommand.run(&json!({"command": cmd, "timeout_secs": secs}), root, &set).await.map(|o| o.text)
+    }
+
+    #[tokio::test]
+    async fn commands_do_not_see_the_cores_secrets() {
+        let d = tempfile::tempdir().unwrap();
+        std::env::set_var("LH_TEST_MESSAGING_TOKEN", "123456:SECRETVALUE");
+        std::env::set_var("OPENAI_API_KEY", "sk-secretsecretsecretsecret");
+        let out = run_cmd(d.path(), "env; echo ${LH_TEST_MESSAGING_TOKEN}; printenv", 10).await.unwrap();
+        assert!(!out.contains("SECRETVALUE") && !out.contains("sk-secret") && !out.contains("LH_TEST_MESSAGING_TOKEN"), "{out}");
+        assert!(out.contains("PATH="), "ordinary variables still work: {out}");
+    }
+
+    #[tokio::test]
+    async fn endless_output_is_capped_and_a_timeout_stops_what_the_command_started() {
+        let d = tempfile::tempdir().unwrap();
+        let out = run_cmd(d.path(), "head -c 60000000 /dev/zero | tr '\\0' a", 30).await.unwrap();
+        assert!(out.len() < 2 * MAX_OUT + 200 && out.contains("bytes cut"), "{}", out.len());
+        let pidfile = d.path().join("pid");
+        let e = run_cmd(d.path(), &format!("sleep 31 & echo $! > {}; sleep 31", pidfile.display()), 1).await.unwrap_err().to_string();
+        assert!(e.contains("longer than 1 s"), "{e}");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let pid = std::fs::read_to_string(&pidfile).unwrap().trim().to_string();
+        assert!(!Path::new(&format!("/proc/{pid}")).exists() || std::fs::read_to_string(format!("/proc/{pid}/stat")).map(|s| s.contains(") Z")).unwrap_or(true), "the background process {pid} is still running");
+    }
+
+    #[tokio::test]
+    async fn writes_ignore_planted_links_and_reads_refuse_pipes() {
+        let d = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let set = ToolSet::new([Tool::WriteFile, Tool::ReadFile]);
+        // a link planted where the old fixed temporary name would have been
+        std::os::unix::fs::symlink(outside.path().join("victim"), d.path().join("a.lh-tmp")).unwrap();
+        Tool::WriteFile.run(&json!({"path": "a.txt", "content": "hello"}), d.path(), &set).await.unwrap();
+        assert!(!outside.path().join("victim").exists(), "nothing was written through the link");
+        assert_eq!(std::fs::read_to_string(d.path().join("a.txt")).unwrap(), "hello");
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".lh-tmp") && !e.path().is_symlink()).count(), 0, "no temporary file is left behind");
+        // a named pipe would block a read forever
+        let fifo = d.path().join("pipe");
+        assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+        let e = tokio::time::timeout(Duration::from_secs(5), Tool::ReadFile.run(&json!({"path": "pipe"}), d.path(), &set)).await.expect("the read must not hang").unwrap_err().to_string();
+        assert!(e.contains("not an ordinary file"), "{e}");
+    }
 
     #[test]
     fn image_names_are_safe() {

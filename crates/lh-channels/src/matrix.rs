@@ -30,12 +30,18 @@ impl Matrix {
         Self { base: homeserver.trim_end_matches('/').to_string(), token: token.to_string(), http: reqwest::Client::builder().timeout(Duration::from_secs(60)).build().unwrap_or_default(), allow: allow.into_iter().map(|a| a.to_lowercase()).collect(), since: Mutex::new(None), me: Mutex::new(None), txn: AtomicU64::new(1) }
     }
 
+    /// How many people are in the room; `None` if it cannot be found out (then the room is not served).
+    async fn member_count(&self, room: &str) -> Option<usize> {
+        let v = self.get(&format!("rooms/{}/joined_members", enc(room)), &[]).await.ok()?;
+        v["joined"].as_object().map(|m| m.len())
+    }
+
     async fn get(&self, path: &str, query: &[(&str, String)]) -> Result<Value> {
-        let r = self.http.get(format!("{}/_matrix/client/v3/{path}", self.base)).bearer_auth(&self.token).query(query).send().await.map_err(|e| msg(format!("the Matrix server is not reachable: {e}")))?;
+        let r = self.http.get(format!("{}/_matrix/client/v3/{path}", self.base)).bearer_auth(&self.token).query(query).send().await.map_err(|e| msg(format!("the Matrix server is not reachable: {}", e.without_url())))?;
         if r.status() == 401 || r.status() == 403 {
             return Err(Error::Auth("the Matrix server".into()));
         }
-        r.json().await.map_err(|e| msg(format!("the Matrix server sent something unreadable: {e}")))
+        r.json().await.map_err(|e| msg(format!("the Matrix server sent something unreadable: {}", e.without_url())))
     }
 }
 
@@ -72,6 +78,11 @@ impl Channel for Matrix {
             let me = self.me.lock().unwrap().clone().unwrap_or_default();
             let mut out = vec![];
             for (room, r) in v["rooms"]["join"].as_object().into_iter().flatten() {
+                // a reply goes to everyone in the room, so only one-to-one rooms are served
+                let wrote = r["timeline"]["events"].as_array().into_iter().flatten().any(|e| e["type"] == "m.room.message" && e["sender"].as_str() != Some(&me));
+                if wrote && self.member_count(room).await.is_none_or(|n| n > 2) {
+                    continue;
+                }
                 for e in r["timeline"]["events"].as_array().into_iter().flatten() {
                     if e["type"] == "m.room.message" && e["content"]["msgtype"] == "m.text" && e["sender"].as_str() != Some(&me) {
                         if let (Some(s), Some(b)) = (e["sender"].as_str(), e["content"]["body"].as_str()) {
@@ -88,7 +99,7 @@ impl Channel for Matrix {
         let (chat, text) = (chat.to_string(), text.to_string());
         Box::pin(async move {
             let txn = format!("lh{}-{}", std::process::id(), self.txn.fetch_add(1, Ordering::SeqCst));
-            let r = self.http.put(format!("{}/_matrix/client/v3/rooms/{}/send/m.room.message/{txn}", self.base, enc(&chat))).bearer_auth(&self.token).json(&json!({"msgtype": "m.text", "body": text})).send().await.map_err(|e| msg(format!("the Matrix server is not reachable: {e}")))?;
+            let r = self.http.put(format!("{}/_matrix/client/v3/rooms/{}/send/m.room.message/{txn}", self.base, enc(&chat))).bearer_auth(&self.token).json(&json!({"msgtype": "m.text", "body": text})).send().await.map_err(|e| msg(format!("the Matrix server is not reachable: {}", e.without_url())))?;
             if !r.status().is_success() {
                 return Err(msg(format!("the Matrix server refused the message ({})", r.status())));
             }

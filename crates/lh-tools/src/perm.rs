@@ -89,8 +89,25 @@ impl Permissions {
     }
 
     /// Is this path inside the project? Follows symlinks and `..`; for a file that does not exist
-    /// yet, the nearest existing parent is checked.
+    /// yet, the nearest existing parent is checked. Places that hold keys, passwords, browser profiles or
+    /// LastHarness's own data never count as inside, even when the project is the whole home folder.
     pub fn inside(&self, path: &Path) -> bool {
+        self.inside_raw(path) && !self.in_secret_place(path)
+    }
+
+    fn in_secret_place(&self, path: &Path) -> bool {
+        const SINGLE: &[&str] = &[".ssh", ".gnupg", ".aws", ".azure", ".kube", ".password-store", ".netrc", ".mozilla", "keyrings", ".pki"];
+        const PAIRS: &[(&str, &str)] = &[(".config", "gcloud"), (".config", "lastharness"), (".config", "BraveSoftware"), (".config", "chromium"), (".config", "google-chrome"), (".config", "Signal"), (".config", "rclone"), (".config", "gh"), (".docker", "config.json"), (".local", "lastharness")];
+        let abs = if path.is_absolute() { path.to_path_buf() } else { self.root.join(path) };
+        // judge the real place when it exists, so a link into one of these folders is caught too
+        let real = abs.ancestors().find_map(|a| a.canonicalize().ok().map(|r| r.join(abs.strip_prefix(a).unwrap_or(Path::new(""))))).unwrap_or(abs);
+        // only the part below the project root: a project that lives somewhere odd is the user's choice
+        let below = real.strip_prefix(&self.root).unwrap_or(&real);
+        let parts: Vec<&str> = below.components().filter_map(|c| c.as_os_str().to_str()).collect();
+        parts.iter().any(|p| SINGLE.contains(p)) || parts.windows(2).any(|w| PAIRS.contains(&(w[0], w[1]))) || parts.windows(3).any(|w| w == [".local", "share", "lastharness"])
+    }
+
+    fn inside_raw(&self, path: &Path) -> bool {
         let abs = if path.is_absolute() { path.to_path_buf() } else { self.root.join(path) };
         let mut probe = abs.as_path();
         let mut tail = PathBuf::new();
@@ -170,11 +187,51 @@ impl Permissions {
         }
     }
 
-    /// Does the command name a path outside the project folder?
+    /// Does the command name a path outside the project folder? Every word is looked at, not only the
+    /// ones that start with `/`: relative paths that climb out (`a/../../x`) or run through a symlink,
+    /// `--option=/path`, `VAR=/path`, input redirects (`</etc/passwd`), `~user` and anything built from a
+    /// variable all count. What cannot be judged counts as leaving.
     fn command_leaves(&self, cmd: &str) -> bool {
-        cmd.split_whitespace().any(|w| {
-            let w = w.trim_matches(|c| c == '"' || c == '\'');
-            (w.starts_with('/') || w.starts_with("~/") || w == "~" || w.starts_with("../") || w == "..") && !self.inside(Path::new(&w.replacen('~', "/home-dir-placeholder", 1)))
+        cmd.split_whitespace().any(|raw| {
+            let w = raw.trim_matches(|c| c == '"' || c == '\'');
+            // drop a redirect operator in front: `2>file`, `<file`, `>>file`, `&>file`
+            let w = match w.find(['<', '>']) {
+                Some(i) if w[..i].chars().all(|c| c.is_ascii_digit() || c == '&') => w[i..].trim_start_matches(['<', '>', '&']),
+                _ => w,
+            };
+            let mut candidates = vec![w];
+            if let Some((_, v)) = w.split_once('=') {
+                candidates.push(v.trim_matches(|c| c == '"' || c == '\''));
+            }
+            candidates.into_iter().any(|s| {
+                if s.is_empty() || s.starts_with('-') {
+                    return false;
+                }
+                if s.starts_with('$') || s.starts_with('`') || s.starts_with('~') || s.contains("$(") || s.contains("${") {
+                    return true;
+                }
+                if matches!(s, "/dev/null" | "/dev/stdout" | "/dev/stderr") {
+                    return false;
+                }
+                // brace expansion: `{a,/etc/passwd}` is two paths. One group is expanded and each result judged;
+                // anything more tangled counts as leaving.
+                if let (Some(open), Some(close)) = (s.find('{'), s.rfind('}')) {
+                    let inner = &s[open + 1..close];
+                    if open < close && (inner.contains('{') || s[close + 1..].contains('{') || s[..open].contains('}')) {
+                        return true;
+                    }
+                    if open < close && inner.contains(',') {
+                        return inner.split(',').any(|alt| {
+                            let word = format!("{}{}{}", &s[..open], alt, &s[close + 1..]);
+                            word.starts_with('$') || word.starts_with('~') || !self.inside(Path::new(&word))
+                        });
+                    }
+                    if open < close && inner.contains("..") {
+                        return true; // a range such as {1..9}: not worth judging
+                    }
+                }
+                !self.inside(Path::new(s))
+            })
         })
     }
 
@@ -244,6 +301,74 @@ mod tests {
         std::os::unix::fs::symlink("/etc", d.path().join("link")).unwrap();
         assert!(!p.inside(&d.path().join("link/passwd")));
         assert!(is_ask(&run(&p, "cat ../secret")));
+    }
+
+    #[test]
+    fn keys_browser_profiles_and_the_cores_own_data_are_never_inside_even_when_the_project_is_home() {
+        let d = tempfile::tempdir().unwrap();
+        for dir in [".ssh", ".gnupg", ".aws", ".config/lastharness", ".local/share/lastharness/memory/facts", ".config/BraveSoftware/Brave-Browser", "Documents"] {
+            std::fs::create_dir_all(d.path().join(dir)).unwrap();
+        }
+        std::fs::write(d.path().join(".ssh/id_rsa"), "key").unwrap();
+        std::fs::write(d.path().join(".local/share/lastharness/memory/facts/health.md"), "sensitive note").unwrap();
+        std::fs::write(d.path().join("Documents/a.txt"), "ok").unwrap();
+        std::os::unix::fs::symlink(d.path().join(".ssh"), d.path().join("Documents/shortcut")).unwrap();
+        let p = Permissions::new(d.path()).unwrap();
+        for f in [".ssh/id_rsa", ".ssh/new_key", ".local/share/lastharness/memory/facts/health.md", ".config/lastharness/config.toml", ".config/BraveSoftware/Brave-Browser/Cookies", ".gnupg/x", ".aws/credentials", "Documents/shortcut/id_rsa"] {
+            assert!(is_ask(&p.decide(&Action::Read(d.path().join(f)))), "{f} must ask");
+            assert!(is_ask(&p.decide(&Action::Write(d.path().join(f)))), "{f} must ask to write");
+        }
+        assert_eq!(p.decide(&Action::Read(d.path().join("Documents/a.txt"))), Decision::Allow);
+        assert!(is_ask(&run(&p, "cat .ssh/id_rsa")));
+        assert!(is_ask(&run(&p, "cat .local/share/lastharness/memory/facts/health.md")));
+        assert!(is_ask(&run(&p, "grep -r note .local")) || run(&p, "grep -r note .local") == Decision::Allow, "a bare folder name is not a path into the place");
+        assert_eq!(run(&p, "ls Documents"), Decision::Allow);
+    }
+
+    #[test]
+    fn commands_cannot_reach_outside_by_less_obvious_paths() {
+        let (d, p) = perms();
+        std::fs::create_dir(d.path().join("sub")).unwrap();
+        std::os::unix::fs::symlink("/etc/hostname", d.path().join("hn")).unwrap();
+        std::os::unix::fs::symlink("/etc", d.path().join("etc-link")).unwrap();
+        for c in [
+            "cat sub/../../secret",
+            "cat $HOME/.ssh/id_rsa",
+            "cat ${HOME}/x",
+            "cat </etc/passwd",
+            "cat 0</etc/passwd",
+            "grep --file=/etc/passwd x",
+            "ls --ignore=../x",
+            "cat ~root/.bashrc",
+            "cat hn",
+            "cat etc-link/passwd",
+            "cat \"/etc/passwd\"",
+            "cat {a,/etc/passwd}",
+            "cat /{etc,tmp}/x",
+            "cat x{a,{b,/etc/passwd}}",
+            "ls {1..9}/../../x",
+            "wc --files0-from=/etc/x",
+            "cp src /tmp/out",
+            "cat x > /etc/out",
+            "echo hi 2>/tmp/err",
+            "echo a >>../log",
+            "FOO=/etc/x ls",
+        ] {
+            assert!(is_ask(&run(&p, c)), "{c} should ask, got {:?}", run(&p, c));
+        }
+        for c in ["cat sub/a.txt", "ls -la", "cat a.txt 2>/dev/null", "grep -rn 'fn main' src", "echo 2>&1", "sed -n 1,5p src/a.rs"] {
+            assert_eq!(run(&p, c), Decision::Allow, "{c} stays inside");
+        }
+    }
+
+    #[test]
+    fn substitution_and_odd_environment_never_ride_on_an_allow_rule() {
+        let (_d, mut p) = perms();
+        p.allow_rules = vec!["git status".into(), "cat".into(), "ls".into()];
+        for c in ["git status <(rm x)", "cat >(sh)", "ls $(rm x)", "ls `rm x`", "PATH=./bin ls", "LD_PRELOAD=./x.so ls"] {
+            // an allow rule matches the start of a segment; none of these may be waved through
+            assert!(is_ask(&run(&p, c)), "{c} -> {:?}", run(&p, c));
+        }
     }
 
     #[test]
