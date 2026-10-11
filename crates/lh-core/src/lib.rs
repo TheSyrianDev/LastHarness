@@ -25,6 +25,7 @@
 pub mod auth;
 pub mod idle;
 pub mod channels;
+mod chats_api;
 mod export_api;
 mod learn_api;
 mod mcp_api;
@@ -134,7 +135,8 @@ impl<M: Model + 'static> AppState<M> {
             });
         }
         tokio::spawn(idle.clone().run());
-        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(1), idle })
+        let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
+        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle })
     }
 
     pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
@@ -164,6 +166,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(settings_api::routes::<M>())
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
+        .merge(chats_api::routes::<M>())
 }
 
 /// Only a request that passed its guard counts as activity: this layer sits outside the guard, so it
@@ -258,6 +261,12 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
             b.ask_all = true; // from a browser, the home folder is not read without asking
         }
     }
+    new_session(&st, b, None).await
+}
+
+/// Build a session. `forced_id` is used when a stored chat is opened again: the session then carries the
+/// chat's own id, so what is said next is stored in the same conversation.
+async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, forced_id: Option<String>) -> Result<Json<Value>, ApiError> {
     let (dir, tools_on) = match (&b.project_dir, b.mode.as_deref()) {
         (Some(d), _) => (d.clone(), true),
         (None, Some("assistant")) => (std::env::var_os("HOME").map(PathBuf::from).ok_or(ApiError(StatusCode::BAD_REQUEST, "no home folder".into()))?, true),
@@ -281,7 +290,13 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     if let Some(s) = b.system {
         req.messages.push(Message::system(s));
     }
-    let id = format!("s{}", st.next.fetch_add(1, Ordering::SeqCst));
+    let id = forced_id.unwrap_or_else(|| format!("s{}", st.next.fetch_add(1, Ordering::SeqCst)));
+    let model_name = req.model.clone();
+    let mode_name = match (&b.project_dir, tools_on) {
+        (Some(_), _) => "project",
+        (None, true) => "assistant",
+        (None, false) => "chat",
+    };
     let project = b.project_dir.as_ref().and_then(|d| std::fs::canonicalize(d).ok()).map(|d| d.to_string_lossy().to_string());
     let mut tools = session_tools(&st.settings, tools_on);
     let (mut dest, mut conv) = (None, None);
@@ -299,6 +314,7 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
         }
         about = text;
         let _ = rt.memory.start_conversation(&id, project.as_deref());
+        let _ = rt.memory.set_conversation_meta(&id, &model_name, mode_name);
         conv = Some(id.clone());
         if tools_on {
             tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: rt.cfg.clone(), layers: None }));
@@ -351,7 +367,7 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     }
     let slot = (tools_on && st.settings.team.is_some()).then(|| {
         let slot = Arc::new(std::sync::OnceLock::new());
-        tools = std::mem::take(&mut tools).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(&st), session: slot.clone(), project: false })).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(&st), session: slot.clone(), project: true }));
+        tools = std::mem::take(&mut tools).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(st), session: slot.clone(), project: false })).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(st), session: slot.clone(), project: true }));
         slot
     });
     let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), permissions: perms.mode, sudo_enabled: perms.sudo_enabled, guidelines: tools.guidelines(), client_block, learned_block, about };
@@ -411,6 +427,9 @@ async fn switch_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Pa
     let mut req = s.req.lock().await;
     let from = std::mem::replace(&mut req.model, b.model.clone());
     drop(req);
+    if let (Some(rt), Some(conv)) = (&st.settings.memory, &s.conv) {
+        let _ = rt.memory.set_conversation_model(conv, &b.model);
+    }
     s.known_tokens.store(0, Ordering::SeqCst);
     s.identity_stale.store(true, Ordering::SeqCst);
     s.finish_turn();
@@ -660,6 +679,7 @@ async fn start_turn<M: Model + 'static>(
                     }
                     if let (Some(rt), Some(conv)) = (&st2.settings.memory, &s.conv) {
                         let _ = rt.memory.append_message(conv, "user", &b.text);
+                        let _ = rt.memory.set_title_if_empty(conv, &b.text);
                         if !r.text.is_empty() {
                             let _ = rt.memory.append_message(conv, "assistant", &r.text);
                         }

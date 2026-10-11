@@ -1,0 +1,39 @@
+[package]
+name = "lh-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lh_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lastharness-gui"
+path = "src/main.rs"
+
+[dependencies]
+lh-client = { path = "../lh-client" }
+serde.workspace = true
+serde_json.workspace = true
+toml = "0.8"
+futures-util.workspace = true
+gpui = { package = "gpui-pre", version = "=0.3.8" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui-component = "0.7.1"
+ksni = { version = "0.3", features = ["blocking"] }
+tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "time", "macros"] }
+
+[dev-dependencies]
+lh-core = { path = "../lh-core" }
+lh-tools = { path = "../lh-tools" }
+lh-spend = { path = "../lh-spend" }
+lh-memory = { path = "../lh-memory" }
+lh-learn = { path = "../lh-learn" }
+lh-team = { path = "../lh-team" }
+lh-store = { path = "../lh-store" }
+lh-provider = { path = "../lh-provider" }
+tempfile = "3"
+axum = "0.8"
+reqwest.workspace = true
+lh-client = { path = "../lh-client" }

@@ -1,0 +1,39 @@
+# Built-in look. Plain placeholder values, not a design. Copy this file to
+# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+name = "Glass"
+mode = "dark"          # light or dark
+
+[colors]                        # "#rgb", "#rrggbb" or "#rrggbbaa" (the last two digits are opacity)
+background = "#18223666"
+surface = "#ffffff1a"       # panels and bubbles
+sunken = "#00000033"          # input fields
+text = "#f2f6ff"
+muted = "#aab6c8"
+accent = "#6aa6ff"
+accent_text = "#071427"
+button = "#ffffff2a"
+button_hover = "#ffffff48"
+border = "#ffffff33"
+danger = "#ff7b6e"
+
+[background]
+kind = "gradient"             # solid, gradient or image
+from = "#18223666"
+to = "#0c101c88"
+angle = 135
+# image = "wallpaper.png"        # relative to this file; used when kind = "image"
+image_opacity = 0.6
+
+[shape]
+roundness = 20                  # corner radius of panels, in pixels
+match_window = false             # true: take the window's own radius when the desktop reports it
+                                 # (Hyprland does); controls inside panels follow the same curve
+
+[effects]
+blur = true                     # ask the desktop to blur what is behind the window
+shadow_blur = 30
+shadow_y = 10
+shadow_color = "#00000070"
+
+[animation]
+duration_ms = 220           # 0 turns hover and press animation off

@@ -15,6 +15,7 @@ path = "src/bin/lastharness.rs"
 
 [dependencies]
 lh-provider = { path = "../lh-provider" }
+lh-client = { path = "../lh-client" }
 lh-config = { path = "../lh-config" }
 lh-secrets = { path = "../lh-secrets" }
 tokio = { workspace = true, features = ["sync", "fs"] }

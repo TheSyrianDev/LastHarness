@@ -269,6 +269,11 @@ const MIGRATIONS: &[&str] = &[r#"
       last_seen integer not null default 0,
       revoked integer not null default 0
     );
+"#, r#"
+    -- What a stored chat needs to be opened again: the model it last used, how it was started, a short title.
+    alter table conversations add column model text;
+    alter table conversations add column mode text;
+    alter table conversations add column title text;
 "#];
 
 pub struct Store {

@@ -1,0 +1,39 @@
+# Built-in look. Plain placeholder values, not a design. Copy this file to
+# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+name = "Frutiger Aero"
+mode = "light"          # light or dark
+
+[colors]                        # "#rgb", "#rrggbb" or "#rrggbbaa" (the last two digits are opacity)
+background = "#bfe9ff"
+surface = "#ffffffb3"       # panels and bubbles
+sunken = "#e3f4ff"          # input fields
+text = "#10304a"
+muted = "#46688a"
+accent = "#1aa0e8"
+accent_text = "#ffffff"
+button = "#9fdcff"
+button_hover = "#c6ecff"
+border = "#ffffffcc"
+danger = "#d9453a"
+
+[background]
+kind = "gradient"             # solid, gradient or image
+from = "#bfe9ff"
+to = "#d9f7c8"
+angle = 160
+# image = "wallpaper.png"        # relative to this file; used when kind = "image"
+image_opacity = 0.6
+
+[shape]
+roundness = 16                  # corner radius of panels, in pixels
+match_window = false             # true: take the window's own radius when the desktop reports it
+                                 # (Hyprland does); controls inside panels follow the same curve
+
+[effects]
+blur = false                     # ask the desktop to blur what is behind the window
+shadow_blur = 20
+shadow_y = 6
+shadow_color = "#1a6fa044"
+
+[animation]
+duration_ms = 240           # 0 turns hover and press animation off

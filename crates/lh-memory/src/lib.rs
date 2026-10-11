@@ -13,7 +13,7 @@ mod repo;
 mod vectors;
 pub mod text;
 
-pub use conversations::MessageHit;
+pub use conversations::{ConversationInfo, MessageHit};
 pub use maintenance::{contradiction_prompt, parse_contradiction, similarity, Finding, FindingKind, STALE_DAYS};
 pub use proposals::{parse_review, Kind, NewProposal, Parsed, Proposal, ProposalEdit, REVIEW_PROMPT};
 pub use context::{excerpt, visible, Destination, Note, PageRef, RecallConfig, Recalled};
