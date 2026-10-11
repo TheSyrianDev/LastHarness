@@ -23,3 +23,16 @@ Written by the build session. The pass was cut short by a usage limit. Done: the
 - **Release build:** `cargo build --release --workspace` works (about 1 minute). Sizes before the last changes: `lhd` 24 MB, `lh` and `lastharness` 10 MB each.
 - **Not yet done:** `/pair/start` can be flooded by anyone on the network (5 waiting requests); a "pairing window opened on the machine" would stop that. MCP stdio servers still inherit the core's environment. The proxy ban may bother users behind a proxy. The classifier is a list, not a shell parser; unknown programs ask, which is the safe side, but the lists should be reviewed again. The leak check is by word runs, so a paraphrase of a sensitive note is not caught. Activity-log redaction is pattern based.
 - 298 tests pass; the prompt-size test is unchanged and green.
+
+## Soak test results (added by the planning session from /tmp/claude-1000/soak/out.json)
+
+Model LFM2.5-2.6B-fast, 60 chat turns through the real core (`lhd`), then one department run, then 60 seconds idle. Total 1069 s.
+
+- **Memory (PSS) of lhd:** 11.5 MB at start, 14.4 MB at turn 0, 15.5 MB at turn 59 (growth of about 1 MB over 60 turns), 15.9 MB right after the department run, 15.5 MB at the end. No leak signs in this run.
+- **Compaction:** 6 compactions, no errors. Largest prompt 2301 tokens.
+- **Time to first token:** median 3.0 s, worst 24.3 s (the worst is likely a model load or swap; not investigated).
+- **Idle:** 60 s watched, 13 threads, 1.17 voluntary context switches per second, 0 CPU seconds used. Near-zero, but not exactly zero.
+- **Problems the run shows:**
+  - The department run ended with status `timeout` on this 2.6B model. Not investigated; may be the model being too weak for planning or a real timeout bug.
+  - 8 of 60 turns returned empty answers.
+  - `cached_tokens_last` was 0, so prefix-cache hits were not confirmed in this run.
