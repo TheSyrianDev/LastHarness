@@ -194,3 +194,7 @@ The user chose four built-in looks, each with a light and a dark version: Calm (
 The user chose three parts: a slim chat list on the left, the chat in the centre, and a right panel for departments, memory and settings. Every part must be expandable and hideable. A department view can be widened, or opened as its own page from the sidebar, and the chat keeps running while it is open. Things the agent opens (web views, artifacts and similar) show in the side panel and can be expanded or popped out as a separate window.
 
 Open: the user rejected web-view shells for the app itself, so how agent-opened web content and artifacts are drawn inside a GPUI app is not decided.
+
+## 2026-10-11: Web content in the app, Servo test
+
+Agent output is shown in our own native viewers first (markdown, code, images, tables, diagrams). The user asked for a non-Chromium web view and chose to test Servo (Rust engine, on crates.io as v0.1.0 since April 2026, not 1.0, breaking changes expected monthly, half-yearly LTS line). Gecko has no supported desktop embedding and Ladybird is pre-alpha, so neither is an option now. Whether Servo ships, and as an optional add-on, waits for the test.
