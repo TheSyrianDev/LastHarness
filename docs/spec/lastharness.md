@@ -106,6 +106,8 @@ Idle CPU wake-ups and RAM are measured, not assumed.
 
 Every front end drives the core through one authenticated local API. The browser UI is served by the core on the machine's address. Nothing in the API is front-end-specific. Transport: plain HTTP on localhost, with server-sent events (SSE) for streaming.
 
+**Command names.** The terminal app starts with `lastharness` or with the short form `lh`; both run the same program. `lh` clashes with a Debian Live wrapper and the `lh` directory-lister crate, so the short name is a convenience a user can skip. Checked by web search only; the name check before release must cover package databases.
+
 ### 4.4 Context management — Decided
 
 When a conversation nears the model's context limit, the core **auto-compacts** it. The context length at which compaction starts is a setting the user can adjust. Summaries are appended, so the conversation prefix stays identical and the server's prefix cache is kept (§6.3).
