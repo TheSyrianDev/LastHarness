@@ -213,7 +213,7 @@ async fn main() {
     let mcp = (!no_team).then(|| lh_core::McpRuntime::open(default_store_path().parent().map(|p| p.join("mcp.json")).unwrap_or_else(|| std::path::PathBuf::from("mcp.json"))));
     let web_store = store.clone();
     let channel_store = store.clone();
-    let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2, team, mcp, ask_all, config: Some(config_path) };
+    let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false, use_proxy: cfg.get_bool("web.use_proxy") }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2, team, mcp, ask_all, config: Some(config_path) };
 
     let token = auth::new_token();
     let path = token_file.unwrap_or_else(auth::default_token_path);

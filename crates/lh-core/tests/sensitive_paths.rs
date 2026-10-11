@@ -114,7 +114,7 @@ async fn rig(replies: Vec<Response>, trust: Trust, searxng: Option<String>, comp
         maintain_when_idle: false,
         memory: Some(MemoryRuntime { memory, embedder: Arc::new(AnyEmbedder::Off), trust, cfg: RecallConfig::default() }),
         image_model: None,
-        web: lh_tools::WebConfig { searxng_url: searxng, allow_private: true },
+        web: lh_tools::WebConfig { searxng_url: searxng, allow_private: true, use_proxy: false },
         idle_after: Duration::ZERO,
         compact_at,
         store: store.clone(),

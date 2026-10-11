@@ -64,6 +64,7 @@ pub const SCHEMA: &[Def] = &[
     d("team.unavailable", Kind::Choice(&["stop", "fallback"]), "stop", true, "When a model is missing: stop and tell you, or try the type's fallback list"),
     d("media.image_model", Kind::Text, "", false, "Model for making images. Empty switches image making off"),
     d("web.listen", Kind::Text, "", false, "Address for the browser UI over HTTPS, for example 127.0.0.1:7843. Empty switches it off. Use this machine's network address to reach it from a phone; every device must be paired first"),
+    d("web.use_proxy", Kind::Bool, "false", false, "Let web fetch go through the proxy named in the environment. Off by default, because a proxy looks names up itself and the check against private addresses cannot see where it goes"),
     d("web.searxng", Kind::Text, "", false, "Address of a SearXNG server for web search. Empty switches search off"),
     d("spending.mode", Kind::Choice(&["none", "caps", "estimate"]), "estimate", false, "none: only record. caps: refuse past a limit. estimate: ask before an expensive call"),
     d("spending.approve_over_usd", Kind::OptFloat, "0.25", false, "In estimate mode, ask when one call is expected to cost more than this (US dollars)"),

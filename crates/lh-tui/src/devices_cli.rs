@@ -4,13 +4,18 @@ use serde_json::{json, Value};
 
 use crate::client::{Client, Result};
 
-pub const HELP: &str = "lh devices                    paired devices and any waiting to pair
+pub const HELP: &str = "lh devices                    paired devices and any waiting to pair\nlh devices pair [minutes]     open pairing for a few minutes (a browser cannot ask before this)
 lh devices accept <PIN>       pair the device that is showing this PIN
 lh devices remove <id>        unpair a device; it must pair again to come back";
 
 pub async fn run(c: &Client, args: &[String]) -> Result<String> {
     match args.first().map(String::as_str) {
         Some("help" | "--help" | "-h") => Ok(HELP.into()),
+        Some("pair") => {
+            let m: u64 = args.get(1).and_then(|m| m.parse().ok()).unwrap_or(5);
+            let v = c.call("POST", "/v1/devices/open", Some(json!({"minutes": m}))).await?;
+            Ok(format!("Pairing is open for {} minutes. On the other device, open the address and press Pair; then type here: lh devices accept <PIN>", v["open_for_minutes"]))
+        }
         Some("accept") => {
             let pin = args.get(1).ok_or("give the PIN the device is showing: lh devices accept <PIN>")?;
             let v = c.call("POST", "/v1/devices/accept", Some(json!({"pin": pin}))).await?;

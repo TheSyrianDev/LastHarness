@@ -46,6 +46,10 @@ pub enum Transport {
         command: String,
         #[serde(default)]
         args: Vec<String>,
+        /// Variables the server is given, as `NAME = "env:VAR"` (read from the core's environment when it
+        /// starts) or a plain value. It gets nothing else from the core's environment but a few harmless ones.
+        #[serde(default)]
+        env: std::collections::BTreeMap<String, String>,
     },
     Http {
         url: String,
@@ -59,7 +63,7 @@ impl Transport {
     /// The exact command line or link, as shown when the user is asked to approve.
     pub fn display(&self) -> String {
         match self {
-            Transport::Stdio { command, args } => std::iter::once(command.as_str()).chain(args.iter().map(String::as_str)).collect::<Vec<_>>().join(" "),
+            Transport::Stdio { command, args, .. } => std::iter::once(command.as_str()).chain(args.iter().map(String::as_str)).collect::<Vec<_>>().join(" "),
             Transport::Http { url, .. } => url.clone(),
         }
     }
@@ -114,9 +118,18 @@ impl Connection {
     /// Start or reach the server, shake hands and list its tools.
     pub async fn connect(name: &str, transport: Transport) -> Result<Arc<Connection>> {
         let link = match &transport {
-            Transport::Stdio { command, args } => {
+            Transport::Stdio { command, args, env } => {
+                let mut given: Vec<(String, String)> = std::env::vars().filter(|(k, _)| matches!(k.as_str(), "PATH" | "HOME" | "USER" | "LANG" | "TERM" | "TZ" | "TMPDIR") || k.starts_with("LC_")).collect();
+                for (k, v) in env {
+                    match v.strip_prefix("env:") {
+                        Some(var) => given.push((k.clone(), std::env::var(var).map_err(|_| msg(format!("the environment variable {var}, which {k} should be read from, is not set")))?)),
+                        None => given.push((k.clone(), v.clone())),
+                    }
+                }
                 let mut child = tokio::process::Command::new(command)
                     .args(args)
+                    .env_clear()
+                    .envs(given)
                     .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::null())

@@ -60,6 +60,8 @@ struct Pairing {
 }
 
 pub struct Web {
+    /// Pairing requests are taken only while the user has opened a window on this machine.
+    open_until: Mutex<Option<Instant>>,
     store: Arc<Store>,
     pairing: Mutex<Pairing>,
     challenges: Mutex<HashMap<String, (String, Instant)>>,
@@ -113,7 +115,7 @@ pub fn proof_for(pin: &str, jwk: &Value) -> Option<String> {
 
 impl Web {
     pub fn new(store: Arc<Store>, fingerprint: String) -> Arc<Self> {
-        Arc::new(Self { store, pairing: Mutex::default(), challenges: Mutex::default(), sessions: Mutex::default(), fingerprint })
+        Arc::new(Self { open_until: Mutex::new(None), store, pairing: Mutex::default(), challenges: Mutex::default(), sessions: Mutex::default(), fingerprint })
     }
 
     fn device_key(&self, id: &str) -> Option<Value> {
@@ -152,7 +154,24 @@ impl Web {
         n > 0
     }
 
+    /// Start taking pairing requests for a while. Without this, `/pair/start` refuses everyone, so a stranger
+    /// on the network cannot fill the waiting list or make noise.
+    pub fn open_pairing(&self, for_how_long: Duration) {
+        *self.open_until.lock().unwrap() = Some(Instant::now() + for_how_long);
+    }
+
+    pub fn close_pairing(&self) {
+        *self.open_until.lock().unwrap() = None;
+    }
+
+    pub fn pairing_open(&self) -> bool {
+        self.open_until.lock().unwrap().is_some_and(|t| t > Instant::now())
+    }
+
     fn start(&self, name: &str, jwk: Value, proof: &str) -> Result<String, (StatusCode, &'static str)> {
+        if !self.pairing_open() {
+            return Err((StatusCode::FORBIDDEN, "pairing is not open. On the machine, run: lh devices pair"));
+        }
         if canonical_key(&jwk).is_none() || verifying_key(&jwk).is_none() {
             return Err((StatusCode::BAD_REQUEST, "the key must be a P-256 public key"));
         }
@@ -372,7 +391,7 @@ pub fn public_routes(web: Arc<Web>) -> Router {
 /// What a paired browser may reach. Everything that can run programs, move files out of the machine or
 /// change who is trusted stays on the machine's own terminal.
 pub fn device_may(method: &Method, path: &str) -> bool {
-    const DENIED: &[&str] = &["/v1/mcp", "/v1/channels", "/v1/export", "/v1/import", "/v1/trust", "/v1/team/plugins", "/v1/memory/export", "/v1/memory/import", "/v1/devices/pending", "/v1/devices/accept", "/v1/devices/fingerprint"];
+    const DENIED: &[&str] = &["/v1/mcp", "/v1/channels", "/v1/export", "/v1/import", "/v1/trust", "/v1/team/plugins", "/v1/memory/export", "/v1/memory/import", "/v1/devices/pending", "/v1/devices/accept", "/v1/devices/open", "/v1/devices/fingerprint"];
     if DENIED.iter().any(|d| path == *d || path.starts_with(&format!("{d}/"))) {
         return false;
     }
@@ -414,6 +433,14 @@ pub fn local_routes(web: Arc<Web>) -> Router {
     Router::new()
         .route("/v1/devices", get(|State(w): State<Arc<Web>>| async move { Json(json!({"devices": w.devices()})) }))
         .route("/v1/devices/pending", get(|State(w): State<Arc<Web>>| async move { Json(json!({"pending": w.pending(), "fingerprint": w.fingerprint})) }))
+        .route(
+            "/v1/devices/open",
+            post(|State(w): State<Arc<Web>>, body: Option<Json<Value>>| async move {
+                let minutes = body.and_then(|b| b.0["minutes"].as_u64()).unwrap_or(5).clamp(1, 30);
+                w.open_pairing(Duration::from_secs(minutes * 60));
+                Json(json!({"open_for_minutes": minutes}))
+            }),
+        )
         .route("/v1/devices/fingerprint", get(|State(w): State<Arc<Web>>| async move { Json(json!({"fingerprint": w.fingerprint})) }))
         .route(
             "/v1/devices/accept",

@@ -18,6 +18,9 @@ pub struct WebConfig {
     pub searxng_url: Option<String>,
     /// Allow fetching local and private addresses. Off by default; tests turn it on.
     pub allow_private: bool,
+    /// Use the proxy named in the environment. Off by default: a proxy looks the name up itself, so the
+    /// private-address check could not see where it really goes.
+    pub use_proxy: bool,
 }
 
 const MAX_BODY: usize = 1024 * 1024;
@@ -86,10 +89,11 @@ pub async fn fetch(cfg: &WebConfig, url: &str) -> Result<String, ToolError> {
         if !cfg.allow_private && addrs.iter().any(|a| !is_public(a.ip())) {
             return Err(fail(format!("{host} is on this machine or a private network. Fetching such addresses is blocked.")));
         }
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .no_proxy() // a proxy would resolve the name itself and could be led to a private address
-            .timeout(TIMEOUT)
+        let mut builder = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).timeout(TIMEOUT);
+        if !cfg.use_proxy {
+            builder = builder.no_proxy();
+        }
+        let client = builder
             .resolve_to_addrs(&host, &addrs)
             .user_agent("LastHarness/0 (agent fetch)")
             .build()
@@ -260,7 +264,7 @@ mod tests {
         for u in ["https://example.com/?key=sk-abcdefghijklmnopqrstuvwx", "https://example.com/?card=4111111111111111", "https://example.com/?iban=DE89370400440532013000"] {
             assert!(fetch(&WebConfig::default(), u).await.unwrap_err().to_string().contains("Nothing was sent"), "{u}");
         }
-        let cfg = WebConfig { searxng_url: Some("http://127.0.0.1:9".into()), allow_private: true };
+        let cfg = WebConfig { searxng_url: Some("http://127.0.0.1:9".into()), allow_private: true, use_proxy: false };
         assert!(search(&cfg, "my password is hunter2", 3).await.unwrap_err().to_string().contains("Nothing was sent"));
         // an ordinary question about health is the user's own to ask
         assert!(!search(&cfg, "diabetes symptoms", 3).await.unwrap_err().to_string().contains("Nothing was sent"));

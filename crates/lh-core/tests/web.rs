@@ -58,6 +58,7 @@ async fn rig() -> Rig {
     let state = AppState::new(Models, settings);
     let tls = web::load_or_create_tls(&dir.path().join("web"), &[]).unwrap();
     let w = Web::new(store, tls.fingerprint.clone());
+    w.open_pairing(Duration::from_secs(300));
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let https = format!("https://127.0.0.1:{}", l.local_addr().unwrap().port());
     tokio::spawn(web::serve_tls(l, web_router(state.clone(), w.clone()), tls.acceptor));
@@ -317,4 +318,21 @@ async fn a_browser_cannot_open_a_project_at_the_root_or_in_a_hidden_folder_and_r
     // the machine's own terminal is not limited
     let local = r.http.post(format!("{}/v1/sessions", r.local)).bearer_auth(&r.token).json(&json!({"model": "m", "project_dir": "/tmp"})).send().await.unwrap();
     assert_eq!(local.status(), 200);
+}
+
+#[tokio::test]
+async fn nobody_can_ask_to_pair_until_the_user_opens_a_window_on_the_machine() {
+    let r = rig().await;
+    r.web.close_pairing();
+    let b = Browser::new();
+    let body = json!({"name": "x", "public_key": b.jwk, "proof": web::proof_for("121212", &b.jwk).unwrap()});
+    let resp = r.http.post(format!("{}/pair/start", r.https)).json(&body).send().await.unwrap();
+    assert_eq!(resp.status(), 403);
+    assert!(resp.json::<Value>().await.unwrap()["error"].as_str().unwrap().contains("lh devices pair"));
+    assert!(r.web.pending().is_empty(), "nothing waits");
+    // the window opens from the machine only
+    assert_eq!(r.http.post(format!("{}/v1/devices/open", r.https)).json(&json!({})).send().await.unwrap().status(), 401);
+    let open = r.http.post(format!("{}/v1/devices/open", r.local)).bearer_auth(&r.token).json(&json!({"minutes": 2})).send().await.unwrap();
+    assert_eq!(open.status(), 200);
+    assert_eq!(r.http.post(format!("{}/pair/start", r.https)).json(&body).send().await.unwrap().status(), 201);
 }

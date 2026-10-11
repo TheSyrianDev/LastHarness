@@ -16,7 +16,7 @@ fn mock_path() -> String {
 
 #[tokio::test]
 async fn a_local_server_is_started_listed_and_called() {
-    let t = Transport::Stdio { command: "python3".into(), args: vec!["-I".into(), mock_path()] };
+    let t = Transport::Stdio { command: "python3".into(), args: vec!["-I".into(), mock_path()], env: Default::default() };
     assert!(t.display().starts_with("python3 -I ") && t.display().ends_with("mock_server.py"), "the exact command is shown for approval");
     let c = Connection::connect("mock", t).await.unwrap();
     assert_eq!(c.tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["echo", "boom"], "both pages of the tool list");
@@ -37,9 +37,9 @@ async fn a_local_server_is_started_listed_and_called() {
 
 #[tokio::test]
 async fn a_program_that_cannot_start_or_does_not_speak_mcp_gives_a_clear_error() {
-    let e = Connection::connect("x", Transport::Stdio { command: "/no/such/program".into(), args: vec![] }).await.unwrap_err();
+    let e = Connection::connect("x", Transport::Stdio { command: "/no/such/program".into(), args: vec![], env: Default::default() }).await.unwrap_err();
     assert!(e.to_string().contains("cannot start `/no/such/program`"), "{e}");
-    let e = Connection::connect("x", Transport::Stdio { command: "true".into(), args: vec![] }).await.unwrap_err();
+    let e = Connection::connect("x", Transport::Stdio { command: "true".into(), args: vec![], env: Default::default() }).await.unwrap_err();
     assert!(e.to_string().contains("ended before it answered"), "{e}");
 }
 
@@ -106,4 +106,31 @@ async fn a_key_error_is_reported_as_one() {
 fn names_are_safe_for_models() {
     assert_eq!(qualified_name("my server", "do.it"), "mcp__my_server__do_it");
     assert!(qualified_name("s", &"x".repeat(100)).len() <= 64);
+}
+
+#[tokio::test]
+async fn a_local_server_gets_only_the_variables_it_was_given() {
+    std::env::set_var("LH_TEST_CORE_SECRET", "core-secret-value");
+    std::env::set_var("LH_TEST_SERVER_KEY", "its-own-key");
+    let d = tempfile::tempdir().unwrap();
+    let script = d.path().join("env_server.py");
+    std::fs::write(&script, r#"
+import json, os, sys
+for line in sys.stdin:
+    m = json.loads(line); i = m.get("id"); meth = m.get("method")
+    if meth == "initialize": print(json.dumps({"jsonrpc": "2.0", "id": i, "result": {"protocolVersion": "2025-06-18", "capabilities": {}}}), flush=True)
+    elif meth == "tools/list": print(json.dumps({"jsonrpc": "2.0", "id": i, "result": {"tools": [{"name": "env", "inputSchema": {"type": "object"}}]}}), flush=True)
+    elif meth == "tools/call": print(json.dumps({"jsonrpc": "2.0", "id": i, "result": {"content": [{"type": "text", "text": json.dumps(dict(os.environ))}]}}), flush=True)
+"#).unwrap();
+    let mut env = std::collections::BTreeMap::new();
+    env.insert("SERVER_KEY".to_string(), "env:LH_TEST_SERVER_KEY".to_string());
+    env.insert("PLAIN".to_string(), "value".to_string());
+    let c = Connection::connect("e", Transport::Stdio { command: "python3".into(), args: vec!["-I".into(), script.display().to_string()], env }).await.unwrap();
+    let seen = c.call("env", json!({})).await.unwrap();
+    assert!(!seen.contains("core-secret-value") && !seen.contains("LH_TEST_CORE_SECRET"), "{seen}");
+    assert!(seen.contains("its-own-key") && seen.contains("\"PLAIN\": \"value\""), "{seen}");
+    let mut missing = std::collections::BTreeMap::new();
+    missing.insert("K".to_string(), "env:LH_TEST_NOT_SET_ANYWHERE".to_string());
+    let e = Connection::connect("e", Transport::Stdio { command: "python3".into(), args: vec![], env: missing }).await.unwrap_err().to_string();
+    assert!(e.contains("is not set"), "{e}");
 }

@@ -19,6 +19,8 @@ ap.add_argument("--port", type=int, default=7890)
 ap.add_argument("--compact-at", type=int, default=3500)
 ap.add_argument("--idle-after", type=int, default=20)
 ap.add_argument("--idle-watch", type=int, default=60)
+ap.add_argument("--dept-timeout", type=int, default=600)
+ap.add_argument("--max-tokens", type=int, default=400)
 a = ap.parse_args()
 
 tmp = tempfile.mkdtemp(prefix="lh-soak-")
@@ -95,7 +97,7 @@ out["rss_kb"] = {"start": rss_kb(proc.pid)}
 t0 = time.time()
 
 # ---- one long conversation ----
-sid = call("POST", "/v1/sessions", {"model": a.model, "mode": "chat", "max_tokens": 400})["id"]
+sid = call("POST", "/v1/sessions", {"model": a.model, "mode": "chat", "max_tokens": a.max_tokens})["id"]
 topics = ["the water cycle", "how bread rises", "why the sky is blue", "how a bicycle stays upright", "what causes tides", "how vaccines work",
           "how a compass works", "why cats purr", "how glass is made", "what a prime number is"]
 stats = {"turns_ok": 0, "errors": [], "compactions": 0, "empty": 0, "max_prompt_tokens": 0, "cached_tokens_last": 0, "first_token_s": []}
@@ -146,7 +148,7 @@ call("PUT", "/v1/team/departments/pets", {"text": "---\nname: pets\ndescription:
 run = call("POST", "/v1/team/runs", {"department": "pets", "goal": "Explain in two plain sentences why dogs wag their tails. No files, no web."})["id"]
 ts = time.time()
 status = "timeout"
-while time.time() - ts < 600:
+while time.time() - ts < a.dept_timeout:
     r = call("GET", f"/v1/team/runs/{run}")
     if r["finished"]:
         o = [e for e in r["events"] if e["type"] == "outcome"][-1]
@@ -155,7 +157,8 @@ while time.time() - ts < 600:
         break
     time.sleep(3)
 else:
-    out["department"] = {"status": "timeout"}
+    r = call("GET", f"/v1/team/runs/{run}")
+    out["department"] = {"status": "timeout", "events": [(e.get("type"), (e.get("note") or e.get("summary") or e.get("report") or e.get("verdict") or "")[:120]) for e in r["events"]][-12:]}
 out["pss_kb"]["after_department"] = pss_kb(proc.pid)
 
 # ---- idle ----

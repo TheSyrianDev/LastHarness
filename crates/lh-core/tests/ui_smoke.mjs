@@ -44,6 +44,7 @@ await send('Storage.clearDataForOrigin', { origin: https, storageTypes: 'all' })
 await send('Page.navigate', { url: https + '/' });
 
 await until("document.querySelector('#view-title')?.textContent === 'Pair this browser'", 'the pairing view');
+await fetch(`${local}/v1/devices/open`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: '{}' });
 await js("[...document.querySelectorAll('button')].find((b) => b.textContent === 'Pair this browser').click()");
 const pin = (await until("document.querySelector('#pin')?.textContent", 'a PIN')).replace(/\s/g, '');
 if (!/^\d{6}$/.test(pin)) throw new Error('bad PIN ' + pin);

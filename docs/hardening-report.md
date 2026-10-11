@@ -36,3 +36,19 @@ Model LFM2.5-2.6B-fast, 60 chat turns through the real core (`lhd`), then one de
   - The department run ended with status `timeout` on this 2.6B model. Not investigated; may be the model being too weak for planning or a real timeout bug.
   - 8 of 60 turns returned empty answers.
   - `cached_tokens_last` was 0, so prefix-cache hits were not confirmed in this run.
+
+## Follow-up (second pass)
+
+**Soak findings explained**
+- **Department timeout:** not a core bug. Re-run on Qwen3.6-35B-A3B-NanoPlus-fast: status `done` in 444 s, 13 events, a real answer. The 2.6B model could not finish planning inside the 10-minute cap of the script. Memory (PSS) on that run: 11.7 MB at start, 9.1 MB after the run, 9.8 MB at the end; idle 1.2 context switches per second, 0 CPU seconds.
+- **Empty answers (8 of 60):** the soak script's 400-token limit was used up while LFM2.5 was still thinking (direct calls: every probe stopped at 400 tokens with empty or near-empty content). The core reports that case as "ran out of tokens". `soak.py` now has `--max-tokens`.
+- **`cached_tokens_last` = 0:** the server itself reports `cache_n: 0` for LFM2.5 even when two requests share a 440-token prefix (a recurrent hybrid model cannot reuse a prefix in llama.cpp). On Qwen3.6 the second request reports 593 cached tokens. The core passes the server's number through correctly; no test added, since it depends on the model.
+
+**Remaining items from the first pass**
+- **Pairing flood:** `/pair/start` now refuses everyone until the user runs `lh devices pair [minutes]` on the machine (default 5, at most 30). Test: `nobody_can_ask_to_pair_until_the_user_opens_a_window_on_the_machine`.
+- **MCP environment:** a local server gets only PATH, HOME, USER, LANG, TERM, TZ, TMPDIR and LC_*, plus the `env` map in its config (`NAME = "env:VAR"` or a plain value). Test: `a_local_server_gets_only_the_variables_it_was_given`. `lh mcp add` has no flag for `env` yet; it is set in `mcp.json`.
+- **Proxy:** still off by default; new setting `web.use_proxy` for users behind a proxy.
+
+**Final release sizes** (`cargo build --release --workspace`, 47 s incremental): `lhd` 22.9 MB (16.8 MB stripped), `lh` and `lastharness` 9.8 MB each.
+
+300 tests pass, clippy clean, prompt-size test green.
