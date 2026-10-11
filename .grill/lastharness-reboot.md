@@ -184,3 +184,7 @@ Open risks for GPUI: screen reader (AccessKit is in Zed's repository but not in 
 ## 2026-10-11: Theme file format
 
 The user chose TOML for theme files: plain text, editable and shareable. A theme sets colours, background, corner roundness, blur, shadows and animation. Built-in themes ship with the app and users can write their own. The browser page may also accept an extra CSS file later (not decided).
+
+## 2026-10-11: Built-in themes
+
+The user chose four built-in looks, each with a light and a dark version: Calm (plain default), Matte (flat, solid colours), Glass (translucent with blur, like Liquid Glass and Glassmorphism) and Frutiger Aero (glossy, bright, soft gradients). Glass depends on GPUI blur, which is not tested yet.
