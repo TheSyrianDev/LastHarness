@@ -19,6 +19,7 @@ A department-led, local-first, endpoint-agnostic AI harness with a memory that l
 - **Decisions are the user's.** Do not record a proposal as a decision. If something is undecided, ask one question at a time, with a recommended answer worded so that "yes" accepts it. Keep the spec, roadmap, digest and decision log in step when a decision lands.
 - **Spikes are throwaway.** Milestone 0 experiments live under `spikes/`, answer a question, and are not product code. Report each result in plain language and wait for the user before moving on.
 - **Check facts, do not assume.** When unsure how something works (MCP, Agent Skills, Omarchy, a model's behaviour), read the source or test it, and say what was verified.
+- **Keep the system prompt small.** A large system prompt slows time to first token on local models. Every feature that wants to add text to the system prompt must justify it, prefer on-demand loading (tools, skills, memory recall) over always-on text, and keep the measured size within the budget test. Report the size in each milestone report. Never trim silently and never grow silently.
 - **Tone.** Calm, plain language, short. No em-dash asides. The user is learning along the way and is allowed to be unsure.
 
 ## Environment

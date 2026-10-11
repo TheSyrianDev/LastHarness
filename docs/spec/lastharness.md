@@ -106,6 +106,8 @@ Idle CPU wake-ups and RAM are measured, not assumed.
 
 Every front end drives the core through one authenticated local API. The browser UI is served by the core on the machine's address. Nothing in the API is front-end-specific. Transport: plain HTTP on localhost, with server-sent events (SSE) for streaming.
 
+**Small system prompt.** The system prompt stays small for the life of the project, because a large one slows time to first token on local models. Always-on text is the short base prompt, a few lines per enabled tool, and the learned and about-you blocks. Everything else loads on demand. A test enforces a size budget, and each milestone reports the measured size.
+
 **Command names.** The terminal app starts with `lastharness` or with the short form `lh`; both run the same program. `lh` clashes with a Debian Live wrapper and the `lh` directory-lister crate, so the short name is a convenience a user can skip. Checked by web search only; the name check before release must cover package databases.
 
 ### 4.4 Context management — Decided
