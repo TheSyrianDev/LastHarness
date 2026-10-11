@@ -71,13 +71,17 @@ impl Server {
 }
 
 fn start_at(dir: &std::path::Path, replies: Vec<Response>, trust: Trust) -> Server {
+    start_priced(dir, replies, trust, vec![])
+}
+
+fn start_priced(dir: &std::path::Path, replies: Vec<Response>, trust: Trust, prices: Vec<lh_spend::Price>) -> Server {
     let store = Arc::new(Store::open(&dir.join("lh.db")).unwrap());
     let mem = Arc::new(Memory::open(store.clone(), dir.join("memory")).unwrap());
     let mut r = replies;
     r.reverse();
     let seen: Arc<Mutex<Vec<ChatRequest>>> = Default::default();
     let model = Script { replies: Mutex::new(r), seen: seen.clone() };
-    let spend = lh_spend::SpendMeter::new(store.clone(), lh_spend::Config::default(), "test", true);
+    let spend = lh_spend::SpendMeter::new(store.clone(), lh_spend::Config { prices, ..Default::default() }, "test", true);
     let settings = Settings {
         provider_name: None,
         learn: None,
@@ -243,4 +247,29 @@ async fn a_chat_that_repeats_a_sensitive_note_never_goes_to_a_cloud_model() {
     plain.turn(&id2, "Tell me a joke about clouds.").await;
     let ok = plain.json(plain.post(&format!("/v1/chats/{id2}/resume"), json!({"model": "cloud-model", "confirm": true}))).await;
     assert_eq!(ok["live"], true);
+}
+
+#[tokio::test]
+async fn the_cloud_warning_gives_a_cost_only_when_the_model_has_a_listed_price() {
+    let dir = tempfile::tempdir().unwrap();
+    let id = {
+        let s = start_at(dir.path(), vec![text("Hi")], Trust::Local);
+        let id = s.session(json!({})).await;
+        s.turn(&id, "Tell me about clouds").await;
+        id
+    };
+    let price = lh_spend::Price { model: "priced-*".into(), input: 3.0, output: 15.0, cached_input: None, image: None };
+    let cloud = start_priced(dir.path(), vec![], Trust::AnyCloud, vec![price]);
+    let w = cloud.json(cloud.post(&format!("/v1/chats/{id}/resume"), json!({"model": "priced-big"}))).await;
+    let tokens = w["warning"]["context_tokens"].as_u64().unwrap();
+    assert_eq!(w["warning"]["estimated_cost_micro_usd"].as_i64().unwrap(), (tokens * 3) as i64, "tokens times dollars per million");
+    let msg = w["warning"]["message"].as_str().unwrap();
+    assert!(msg.contains("about $0.00") && msg.contains("$3 per million input tokens"), "{msg}");
+    let w = cloud.json(cloud.post(&format!("/v1/chats/{id}/resume"), json!({"model": "unlisted"}))).await;
+    assert!(w["warning"]["estimated_cost_micro_usd"].is_null());
+    assert!(w["warning"]["message"].as_str().unwrap().contains("No price is listed"));
+    // a local endpoint never talks about money
+    let local = start_priced(dir.path(), vec![], Trust::Local, vec![lh_spend::Price { model: "*".into(), input: 3.0, output: 3.0, cached_input: None, image: None }]);
+    let w = local.json(local.post(&format!("/v1/chats/{id}/resume"), json!({"model": "any"}))).await;
+    assert!(w["warning"]["estimated_cost_micro_usd"].is_null() && !w["warning"]["message"].as_str().unwrap().contains('$'));
 }

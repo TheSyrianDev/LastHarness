@@ -31,6 +31,11 @@ impl SpendMeter {
         Self { shared: Arc::new(Shared { store, cfg, provider: provider.into(), local }), session: String::new() }
     }
 
+    /// What one input token of `model` costs in micro-USD, if the user listed a price for it. Cost is tokens times this.
+    pub fn input_price(&self, model: &str) -> Option<f64> {
+        self.shared.cfg.price_of(model).map(|p| p.input).filter(|p| *p > 0.0)
+    }
+
     pub fn for_session(&self, id: impl Into<String>) -> Self {
         Self { shared: self.shared.clone(), session: id.into() }
     }

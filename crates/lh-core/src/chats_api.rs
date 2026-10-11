@@ -88,13 +88,18 @@ struct Resume {
     confirm: bool,
 }
 
-fn warning(cloud: bool, same_model: bool, tokens: u64) -> Value {
+/// `price` is micro-USD per input token (that is, dollars per million tokens) when the user listed one for the model.
+fn warning(cloud: bool, same_model: bool, tokens: u64, price: Option<f64>) -> Value {
+    let cost = price.filter(|_| cloud).map(|p| (tokens as f64 * p).round() as i64);
     let message = if cloud {
-        format!("This sends the whole chat again to the cloud model, about {tokens} tokens of context, and that spends credits.")
+        match (cost, price) {
+            (Some(c), Some(p)) => format!("This sends the whole chat again to the cloud model, about {tokens} tokens of context, and that spends credits: about {} at your listed price of ${p} per million input tokens.", lh_spend::dollars(c)),
+            _ => format!("This sends the whole chat again to the cloud model, about {tokens} tokens of context, and that spends credits. No price is listed for this model, so the cost is not estimated."),
+        }
     } else {
         format!("The first reply will be slow: the model has to read the whole chat again, about {tokens} tokens of context.")
     };
-    json!({"kind": if cloud { "cloud" } else { "local" }, "same_model": same_model, "context_tokens": tokens, "estimated": true, "message": message})
+    json!({"kind": if cloud { "cloud" } else { "local" }, "same_model": same_model, "context_tokens": tokens, "estimated": true, "estimated_cost_micro_usd": cost, "price_per_million_usd": price.filter(|_| cloud), "message": message})
 }
 
 async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>, Json(b): Json<Resume>) -> Result<Json<Value>, ApiError> {
@@ -113,7 +118,7 @@ async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
     }
     let tokens = estimate_tokens(c.chars);
     if !b.confirm {
-        return Ok(Json(json!({"needs_confirmation": true, "warning": warning(cloud, same_model, tokens), "context_tokens": tokens, "model": model})));
+        return Ok(Json(json!({"needs_confirmation": true, "warning": warning(cloud, same_model, tokens, st.settings.spend.input_price(&model)), "context_tokens": tokens, "model": model})));
     }
     // The privacy guard: what leaves the machine is checked the same way as any outbound text.
     if cloud {
