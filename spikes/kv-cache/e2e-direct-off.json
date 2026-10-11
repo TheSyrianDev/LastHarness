@@ -1,0 +1,31 @@
+{
+ "variant": "off",
+ "A_first": {
+  "first_token_s": 2.57,
+  "total_s": 4.67,
+  "prompt_tokens": 7059,
+  "cached_tokens": 0,
+  "answer": "Noted"
+ },
+ "B_first": {
+  "first_token_s": 0.09,
+  "total_s": 2.59,
+  "prompt_tokens": 96,
+  "cached_tokens": 0,
+  "answer": ""
+ },
+ "files": [],
+ "file_modes": [],
+ "resume": {
+  "context_tokens": 7303
+ },
+ "A_after_restart": {
+  "first_token_s": 2.59,
+  "total_s": 3.31,
+  "prompt_tokens": 7090,
+  "cached_tokens": 0,
+  "answer": "0"
+ },
+ "log": [],
+ "files_after_delete": []
+}

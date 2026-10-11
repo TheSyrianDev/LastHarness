@@ -53,11 +53,15 @@ pub struct Session {
     next_ask: AtomicU64,
     /// Where the running turn sends its events; department tools use it to ask the user.
     pub turn_events: Mutex<Option<mpsc::WeakUnboundedSender<(String, Value)>>>,
+    /// Held while the model's KV cache is being saved or restored, so a turn never starts in the middle of it.
+    pub kv_gate: Arc<tokio::sync::Mutex<()>>,
+    /// The chat was opened again from storage: put its saved KV cache back before the first turn.
+    pub kv_restore: AtomicBool,
 }
 
 impl Session {
     pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet, parts: SystemParts) -> Self {
-        Self { parts, identity_stale: AtomicBool::new(true), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None) }
+        Self { parts, identity_stale: AtomicBool::new(true), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None), kv_gate: Arc::new(tokio::sync::Mutex::new(())), kv_restore: AtomicBool::new(false) }
     }
 
     pub fn try_start(&self) -> bool {

@@ -150,3 +150,8 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **Cloud resume shows tokens only,** not a price, because the core has no price list. Recommended: show a price when the endpoint reports one.
 - **Binary size** is 64 MiB (46 MiB stripped). Recommended: turn on `strip` and thin LTO for release builds when packaging starts.
 - **Chats list newest first;** the order does not change when a chat gets a new message. Recommended: move a chat to the top when it is used.
+
+## Milestone 8 leftovers (build session)
+
+- **KV cache and slotkeeper.** The per-chat cache works on a plain llama-server (0.12 s instead of 2.6 s for a 7k chat, measured) and does nothing for entries that run through the router's slotkeeper (57.5 s against 57.9 s on Qwen3.6), because slotkeeper restores its own snapshot into the slot and prefills again on each request. Recommended: set `kvcache.dir` only for entries with plain llama-server; or let the planning session decide whether slotkeeper should keep one session file per conversation (that tool lives in `~/AI/rig`, outside this repository).
+- **The app's own window frame** is left as it is. Reason: on Hyprland and other compositors that round windows themselves, a frame drawn by the app would be rounded twice and fight tiling; on macOS and Windows the system draws the frame. Only desktops that give square windows and no radius would gain, and none of those is on this machine to check. Recommended: keep `match_window` for desktops that report a radius (Hyprland) and the theme's radius elsewhere.

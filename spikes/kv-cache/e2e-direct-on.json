@@ -1,0 +1,61 @@
+{
+ "variant": "on",
+ "A_first": {
+  "first_token_s": 2.57,
+  "total_s": 3.96,
+  "prompt_tokens": 7059,
+  "cached_tokens": 0,
+  "answer": "Noted"
+ },
+ "B_first": {
+  "first_token_s": 0.16,
+  "total_s": 2.63,
+  "prompt_tokens": 96,
+  "cached_tokens": 0,
+  "answer": ""
+ },
+ "files": [
+  "lh-s1-1dca30ee.bin",
+  "lh-s2-1dca30ee.bin"
+ ],
+ "file_modes": [
+  "0o600",
+  "0o600"
+ ],
+ "resume": {
+  "context_tokens": 7303
+ },
+ "A_after_restart": {
+  "first_token_s": 0.12,
+  "total_s": 0.83,
+  "prompt_tokens": 7090,
+  "cached_tokens": 7055,
+  "answer": "0"
+ },
+ "log": [
+  [
+   "kv_cache_restored",
+   {
+    "secs": 0.05500608682632446,
+    "tokens": 7164
+   }
+  ],
+  [
+   "kv_cache_saved",
+   {
+    "bytes": 5560296,
+    "secs": 0.003913878928869963,
+    "tokens": 295
+   }
+  ],
+  [
+   "kv_cache_saved",
+   {
+    "bytes": 118572940,
+    "secs": 0.06492169946432114,
+    "tokens": 7164
+   }
+  ]
+ ],
+ "files_after_delete": []
+}

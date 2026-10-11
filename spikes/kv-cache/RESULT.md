@@ -43,3 +43,20 @@ The router already runs a wrapper called slotkeeper in front of the Qwen entries
 - The cap matters: 400 MiB for a 32k chat on this model, so ten long chats are 4 GB. The proposed 5 GB cap with oldest-first removal fits.
 - Privacy as decided: file mode 0600, delete with the chat, skip incognito, never for cloud models. The folder under `~/AI/cache` belongs to the router, not to LastHarness; the core would need its own folder passed with `--slot-save-path`, or the router's folder with names the core owns. The core cannot read the model command line, so it needs the model's slot-save folder from the router or from its own setting.
 - Open for the build: how the core finds the slot-save folder, and how it behaves with a router that has no slots (cloud, LM Studio, Ollama): the feature must simply stay off.
+
+## In the product (2026-10-11, after the build)
+
+The core now saves and restores a local chat's cache by itself (`crates/lh-core/src/kv_cache.rs`, settings `kvcache.enabled`, `kvcache.dir`, `kvcache.max_gb`). Checked end to end with the real `lhd`:
+
+| Server | First reply after the core and the server were restarted, 7,090-token chat | Cache |
+|---|---|---|
+| Plain llama-server, LFM2.5-2.6B | 2.59 s (reads all 7,090 tokens) | off |
+| Plain llama-server, LFM2.5-2.6B | 0.12 s (7,055 tokens reused) | on: file 118 MB, restore 0.06 s, mode 0600, removed when the chat was deleted |
+| llama-swap with the router's slotkeeper, Qwen3.6-35B, 4,195-token chat | 57.9 s | off |
+| llama-swap with the router's slotkeeper, Qwen3.6-35B, 4,195-token chat | 57.5 s | on: saved and restored fine (111 MB, 0.14 s), but **no gain** |
+
+Why there is no gain behind slotkeeper: on every chat request slotkeeper first puts its own state into the slot (it restores a prefix snapshot, then prefills the whole prompt again to keep its single "session" file), so a slot the core restored is overwritten before the model sees the request. Slotkeeper keeps one conversation warm; that is what the core's per-chat files would add, but only a server that leaves the slot alone can use them.
+
+What to do with that (a recommendation): leave `kvcache.dir` empty for router entries that run through slotkeeper (the feature is then off and costs nothing), and set it for entries that run plain llama-server. Or teach slotkeeper to keep one session file per conversation, which gives the same result inside the router; that tool lives in `~/AI/rig` and is not part of this repository.
+
+Other things the end-to-end run showed: a restore request is what makes llama-swap load a model that is not loaded (15 s for Qwen here), so the restore time in the log includes the load; the file lands in a per-model folder below `kvcache.dir` and the core finds it there; the activity log has sizes and times only.

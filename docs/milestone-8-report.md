@@ -66,6 +66,18 @@ Whole workspace: all 361 tests pass (`cargo test --workspace -- --skip real_embe
 
 Enter sends and Shift+Enter makes a new line; delete asks twice; a chat is plain, assistant, project or private, chosen before the first message; opening a stored chat shows it at once and asks only when continuing; "Open in panel" is a button, not automatic; the memory and settings panels change what is safe to change in place and show the command for the rest; the tray has Quit only; the window's roundness comes from the theme (the app does not draw its own window frame).
 
+## Leftovers done after the first commit
+
+- **`show` tool.** The assistant can open text, a file or an image beside the chat. Core tool `show` (only in assistant and project sessions, read-only, no question): a title and either content or a path inside the session's folder, optionally a kind (markdown, code, text, image). The core reads the file under the folder rules (private places are refused, at most 400 KB, images pass as an absolute path) and sends a `show` event; the desktop app opens it in the side panel, the terminal prints it. Prompt cost: one line, about 17 tokens; the worst case with every tool line, now counted including the core's own, is 283 of 300.
+- **Cost in the cloud resume warning.** With a price listed in the spending settings for the model, the warning says "about $X at your listed price of $P per million input tokens"; without, it says that no price is listed. Local endpoints never mention money.
+- **KV cache saved per local chat.** See below.
+
+### Saving the model's work on a chat (KV cache)
+
+After each turn of a local, stored chat the core asks the local server to save its slot to a file named for the chat and the model (`lh-<chat>-<model hash>.bin`); a chat opened again from storage gets the file back before its first turn. Measurements are in `spikes/kv-cache/RESULT.md` (a 32k chat: six minutes to read again, 0.2 seconds to restore, 404 MiB on disk). Rules, all tested against a fake llama-swap: never for private chats (they have no stored conversation), never for a cloud endpoint, one file per chat (replaced on each turn), mode 0600, the whole folder kept under a cap (default 5 GB, oldest first), files deleted with the chat (closing a session alone does not delete them), restored only for the same model (the name carries the model), and the chat's resume warning says "The model's work on this chat was saved, so it should carry on quickly" when that is the case. If the server cannot save slots (cloud, LM Studio, Ollama, no save folder) or saves somewhere the core was not told about, the feature switches itself off for that run and says why in the activity log; a chat is never hurt by it. The activity log records sizes and times only.
+
+It is controlled by three settings: `kvcache.enabled` (default on), `kvcache.dir` (the folder the server saves into; empty keeps the feature off, because a file the core cannot find is a file it cannot protect or remove) and `kvcache.max_gb` (default 5). With llama-swap the folder is the one above the per-model folders; the core finds its files below it.
+
 ## What is not done
 
 See `.grill/parked.md`, section Milestone 8 (build session). Main points: agent-opened content is only opened by a button (the core has no "show this" tool yet, so nothing opens by itself); no web pages in the app (Servo waits); saving the model's KV cache per chat is parked, with measurements in `spikes/kv-cache/RESULT.md`; Orca was not run; drawing the app's own window frame for matching roundness on desktops that do not report a radius; showing the cost of a cloud resume (the core has no price list yet, so the warning gives tokens only); Windows, macOS and mobile are later milestones.

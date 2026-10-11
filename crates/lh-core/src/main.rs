@@ -220,7 +220,11 @@ async fn main() {
     auth::write_token(&path, &token).unwrap_or_else(|e| fail(format!("cannot write the token file {}: {e}", path.display())));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| fail(format!("cannot listen on {addr}: {e}")));
     let port = listener.local_addr().unwrap().port();
+    let kv = cfg.get_bool("kvcache.enabled").then(|| cfg.get_opt("kvcache.dir")).flatten().map(|dir| lh_core::kv_cache::KvCache::new(&provider, api_key.clone(), std::path::PathBuf::from(dir), cfg.get_num("kvcache.max_gb").unwrap_or(5)));
     let state = AppState::new(Provider::new(provider, api_key), settings);
+    if let Some(kv) = kv {
+        let _ = state.kv.set(std::sync::Arc::new(kv));
+    }
     // the browser's door: off unless an address is given
     let web_listen = web_listen.or_else(|| cfg.get_opt("web.listen"));
     let web = match web_listen {

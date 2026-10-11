@@ -1,0 +1,45 @@
+{
+ "variant": "off",
+ "A_first": {
+  "first_token_s": 42.3,
+  "total_s": 42.5,
+  "usage": {
+   "cached_tokens": 4156,
+   "completion_tokens": 4,
+   "prompt_tokens": 4159,
+   "type": "usage"
+  },
+  "answer": "Noted."
+ },
+ "B_first": {
+  "first_token_s": 0.9,
+  "total_s": 1.0,
+  "usage": {
+   "cached_tokens": 268,
+   "completion_tokens": 4,
+   "prompt_tokens": 271,
+   "type": "usage"
+  },
+  "answer": "Hello world!"
+ },
+ "files_after": [],
+ "log": [],
+ "resume": {
+  "session": "s1",
+  "context_tokens": 3226,
+  "live": false
+ },
+ "A_after_restart": {
+  "first_token_s": 57.9,
+  "total_s": 58.0,
+  "usage": {
+   "cached_tokens": 4192,
+   "completion_tokens": 2,
+   "prompt_tokens": 4195,
+   "type": "usage"
+  },
+  "answer": "0"
+ },
+ "log2": [],
+ "files_after_delete": []
+}

@@ -27,6 +27,7 @@ pub mod idle;
 pub mod channels;
 mod chats_api;
 mod export_api;
+pub mod kv_cache;
 mod learn_api;
 mod mcp_api;
 mod memory_api;
@@ -105,10 +106,19 @@ pub struct AppState<M> {
     sessions: Mutex<HashMap<String, Arc<Session>>>,
     next: AtomicU64,
     pub idle: Arc<idle::Idle>,
+    /// Saving the KV cache per local chat; set once at start when the user has set it up.
+    pub kv: std::sync::OnceLock<Arc<kv_cache::KvCache>>,
 }
 
 impl<M: Model + 'static> AppState<M> {
     /// Builds the state and starts the idle manager. Must be called inside a Tokio runtime.
+    /// The KV cache saver, if it is set up and allowed for this session: a local endpoint, a stored (not private) chat.
+    pub(crate) fn kv_for(&self, s: &Session) -> Option<Arc<kv_cache::KvCache>> {
+        let kv = self.kv.get()?;
+        let local = self.settings.memory.as_ref().is_some_and(|m| m.trust == lh_memory::Trust::Local);
+        (local && !s.incognito && s.conv.is_some() && !kv.is_off()).then(|| kv.clone())
+    }
+
     pub fn new(model: M, settings: Settings) -> Arc<Self> {
         let model = Arc::new(model);
         let idle = idle::Idle::new(settings.idle_after);
@@ -137,7 +147,7 @@ impl<M: Model + 'static> AppState<M> {
         }
         tokio::spawn(idle.clone().run());
         let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
-        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle })
+        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: std::sync::OnceLock::new() })
     }
 
     pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
@@ -620,6 +630,21 @@ async fn start_turn<M: Model + 'static>(
             // cancelled turn never leaves a tool call without its result.
             let mut work = s.req.lock().await.clone();
             let model_id = work.model.clone();
+            // a chat opened again from storage gets its saved KV cache back first; a save from the last turn finishes first
+            if let Some(kv) = st2.kv_for(&s) {
+                let _gate = s.kv_gate.lock().await;
+                if s.kv_restore.swap(false, Ordering::SeqCst) {
+                    let (conv, t0) = (s.conv.clone().unwrap_or_default(), std::time::Instant::now());
+                    match kv.restore(&conv, &model_id).await {
+                        Ok(tokens) => {
+                            let _ = store.log("kv_cache_restored", &id, "assistant", &json!({"tokens": tokens, "secs": t0.elapsed().as_secs_f32()}));
+                        }
+                        Err(why) => {
+                            let _ = store.log("kv_cache_skipped", &id, "assistant", &json!({"why": why}));
+                        }
+                    }
+                }
+            }
             let stale = s.identity_stale.load(Ordering::SeqCst);
             if stale {
                 build_system(&st2, &s, &mut work.messages, &model_id).await;
@@ -678,6 +703,22 @@ async fn start_turn<M: Model + 'static>(
                     *s.req.lock().await = work;
                     if stale {
                         s.identity_stale.store(false, Ordering::SeqCst);
+                    }
+                    // save the model's work on this chat, so it can be opened again without reading it all over
+                    if let (Some(kv), Some(conv)) = (st2.kv_for(&s), s.conv.clone()) {
+                        let (gate, model, store, sid) = (s.kv_gate.clone().lock_owned().await, model_id.clone(), store.clone(), id.clone());
+                        tokio::spawn(async move {
+                            let _gate = gate;
+                            let t0 = std::time::Instant::now();
+                            match kv.save(&conv, &model).await {
+                                Ok(sv) => {
+                                    let _ = store.log("kv_cache_saved", &sid, "assistant", &json!({"bytes": sv.bytes, "tokens": sv.tokens, "secs": t0.elapsed().as_secs_f32()}));
+                                }
+                                Err(why) => {
+                                    let _ = store.log("kv_cache_problem", &sid, "assistant", &json!({"why": why}));
+                                }
+                            }
+                        });
                     }
                     if let (Some(lr), false) = (&st2.settings.learn, s.incognito) {
                         let _ = lr.learn.scan_messages(&id, s.project.as_deref(), std::slice::from_ref(&b.text));

@@ -1,0 +1,89 @@
+{
+ "variant": "on",
+ "A_first": {
+  "first_token_s": 62.2,
+  "total_s": 62.3,
+  "usage": {
+   "cached_tokens": 4156,
+   "completion_tokens": 4,
+   "prompt_tokens": 4159,
+   "type": "usage"
+  },
+  "answer": "Noted."
+ },
+ "B_first": {
+  "first_token_s": 0.9,
+  "total_s": 1.1,
+  "usage": {
+   "cached_tokens": 268,
+   "completion_tokens": 4,
+   "prompt_tokens": 271,
+   "type": "usage"
+  },
+  "answer": "Hello world!"
+ },
+ "files_after": [
+  "lh-s1-f5c11941.bin",
+  "lh-s2-f5c11941.bin"
+ ],
+ "log": [
+  [
+   "kv_cache_saved",
+   {
+    "bytes": 68853496,
+    "secs": 0.03087196871638298,
+    "tokens": 274
+   }
+  ],
+  [
+   "kv_cache_saved",
+   {
+    "bytes": 111263800,
+    "secs": 0.1356850415468216,
+    "tokens": 4162
+   }
+  ]
+ ],
+ "resume": {
+  "session": "s1",
+  "context_tokens": 3226,
+  "live": false
+ },
+ "A_after_restart": {
+  "first_token_s": 57.5,
+  "total_s": 57.6,
+  "usage": {
+   "cached_tokens": 4192,
+   "completion_tokens": 2,
+   "prompt_tokens": 4195,
+   "type": "usage"
+  },
+  "answer": "0"
+ },
+ "log2": [
+  [
+   "kv_cache_restored",
+   {
+    "secs": 15.3541259765625,
+    "tokens": 4162
+   }
+  ],
+  [
+   "kv_cache_saved",
+   {
+    "bytes": 68853496,
+    "secs": 0.03087196871638298,
+    "tokens": 274
+   }
+  ],
+  [
+   "kv_cache_saved",
+   {
+    "bytes": 111263800,
+    "secs": 0.1356850415468216,
+    "tokens": 4162
+   }
+  ]
+ ],
+ "files_after_delete": []
+}

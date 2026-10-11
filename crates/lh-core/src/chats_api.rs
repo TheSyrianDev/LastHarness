@@ -72,6 +72,10 @@ async fn remove<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
     let rt = memory(&st)?;
     let live = st.sessions.lock().unwrap().remove(&id).is_some();
     let stored = rt.memory.delete_conversation(&id).map_err(internal)?;
+    // the model's saved work on this chat is private data too, so it goes with the chat
+    if let Some(kv) = st.kv.get() {
+        kv.forget(&id);
+    }
     if !live && !stored {
         return Err(ApiError(StatusCode::NOT_FOUND, "no such chat".into()));
     }
@@ -89,17 +93,24 @@ struct Resume {
 }
 
 /// `price` is micro-USD per input token (that is, dollars per million tokens) when the user listed one for the model.
-fn warning(cloud: bool, same_model: bool, tokens: u64, price: Option<f64>) -> Value {
+fn warning(cloud: bool, same_model: bool, tokens: u64, price: Option<f64>, cache_saved: bool) -> Value {
     let cost = price.filter(|_| cloud).map(|p| (tokens as f64 * p).round() as i64);
     let message = if cloud {
         match (cost, price) {
             (Some(c), Some(p)) => format!("This sends the whole chat again to the cloud model, about {tokens} tokens of context, and that spends credits: about {} at your listed price of ${p} per million input tokens.", lh_spend::dollars(c)),
             _ => format!("This sends the whole chat again to the cloud model, about {tokens} tokens of context, and that spends credits. No price is listed for this model, so the cost is not estimated."),
         }
+    } else if cache_saved {
+        format!("The model's work on this chat was saved, so it should carry on quickly. The chat is about {tokens} tokens of context.")
     } else {
         format!("The first reply will be slow: the model has to read the whole chat again, about {tokens} tokens of context.")
     };
-    json!({"kind": if cloud { "cloud" } else { "local" }, "same_model": same_model, "context_tokens": tokens, "estimated": true, "estimated_cost_micro_usd": cost, "price_per_million_usd": price.filter(|_| cloud), "message": message})
+    json!({"kind": if cloud { "cloud" } else { "local" }, "same_model": same_model, "context_tokens": tokens, "estimated": true, "estimated_cost_micro_usd": cost, "cache_saved": cache_saved, "price_per_million_usd": price.filter(|_| cloud), "message": message})
+}
+
+/// Is there a saved KV cache for this chat and model that a local endpoint can use?
+fn saved_cache<M>(st: &AppState<M>, chat: &str, model: &str, cloud: bool) -> bool {
+    !cloud && st.kv.get().is_some_and(|kv| !kv.is_off() && kv.find(&crate::kv_cache::KvCache::file_name(chat, model)).is_some())
 }
 
 async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>, Json(b): Json<Resume>) -> Result<Json<Value>, ApiError> {
@@ -118,7 +129,7 @@ async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
     }
     let tokens = estimate_tokens(c.chars);
     if !b.confirm {
-        return Ok(Json(json!({"needs_confirmation": true, "warning": warning(cloud, same_model, tokens, st.settings.spend.input_price(&model)), "context_tokens": tokens, "model": model})));
+        return Ok(Json(json!({"needs_confirmation": true, "warning": warning(cloud, same_model, tokens, st.settings.spend.input_price(&model), saved_cache(&st, &id, &model, cloud)), "context_tokens": tokens, "model": model})));
     }
     // The privacy guard: what leaves the machine is checked the same way as any outbound text.
     if cloud {
@@ -155,6 +166,10 @@ async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
     let session = st.sessions.lock().unwrap().get(&id).cloned().ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, "the session was not created".into()))?;
     let n = messages.len();
     session.req.lock().await.messages.extend(messages);
+    // the saved KV cache is put back before the first turn (it is skipped if it is for another model)
+    if st.kv_for(&session).is_some() {
+        session.kv_restore.store(true, Ordering::SeqCst);
+    }
     let _ = rt.memory.set_conversation_model(&id, &model);
     let _ = st.settings.store.log("chat_resumed", &id, "user", &json!({"model": model, "messages": n, "cloud": cloud}));
     Ok(Json(json!({"session": id, "context_tokens": tokens, "resumed_messages": n, "model": model, "live": false})))
