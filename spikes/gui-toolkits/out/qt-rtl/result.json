@@ -1,0 +1,30 @@
+{
+ "window": {
+  "class": "org.qt-project.qml",
+  "title": "gt-qt",
+  "size": [
+   1886,
+   1026
+  ],
+  "xwayland": false
+ },
+ "start_pss_mb": 130.2,
+ "idle": {
+  "cpu_pct": 0.53,
+  "switches_per_s": 176.3,
+  "pss_mb": 130.3,
+  "pss_peak_mb": 130.3
+ },
+ "streaming": {
+  "cpu_pct": 1.58,
+  "switches_per_s": 255.4,
+  "pss_mb": 132.2,
+  "pss_peak_mb": 132.2
+ },
+ "after": {
+  "cpu_pct": 2.09,
+  "switches_per_s": 362.0,
+  "pss_mb": 132.3,
+  "pss_peak_mb": 132.3
+ }
+}

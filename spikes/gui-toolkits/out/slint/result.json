@@ -1,0 +1,30 @@
+{
+ "window": {
+  "class": "",
+  "title": "gt-slint",
+  "size": [
+   1880,
+   1026
+  ],
+  "xwayland": false
+ },
+ "start_pss_mb": 73.1,
+ "idle": {
+  "cpu_pct": 0.13,
+  "switches_per_s": 8.9,
+  "pss_mb": 73.1,
+  "pss_peak_mb": 73.1
+ },
+ "streaming": {
+  "cpu_pct": 2.16,
+  "switches_per_s": 63.7,
+  "pss_mb": 74.1,
+  "pss_peak_mb": 74.1
+ },
+ "after": {
+  "cpu_pct": 3.79,
+  "switches_per_s": 79.5,
+  "pss_mb": 74.7,
+  "pss_peak_mb": 74.7
+ }
+}

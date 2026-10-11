@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;height:100%;background:#1b2230;color:#fff;font:12px sans-serif;overflow:hidden}canvas{display:block}</style>
+<div id="s" style="position:absolute;left:6px;top:6px">loading</div>
+<script src="three.min.js"></script>
+<script>window.onerror=function(m){document.getElementById("s").textContent="error: "+m}</script>
+<script>
+const r = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+r.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(r.domElement); document.getElementById('s').textContent='three r'+THREE.REVISION+' webgl: '+r.getContext().getParameter(r.getContext().VERSION);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+cam.position.z = 6;
+const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1.2, 0.4, 220, 32),
+  new THREE.MeshStandardMaterial({ color: 0x6fa8ff, metalness: 0.6, roughness: 0.25 }));
+scene.add(knot);
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const l = new THREE.PointLight(0xffffff, 1.2); l.position.set(4, 4, 6); scene.add(l);
+function size() { r.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
+addEventListener("resize", size); size();
+(function loop() { knot.rotation.x += 0.01; knot.rotation.y += 0.014; r.render(scene, cam); requestAnimationFrame(loop); })();
+</script>

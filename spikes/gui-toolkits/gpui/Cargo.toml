@@ -1,0 +1,19 @@
+[package]
+name = "gt-gpui"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+gpui = "0.2.2"
+gpui-component = "0.5.1"
+gui-common = { path = "../common" }
+futures = "0.3"
+anyhow = "1"
+
+[profile.release]
+opt-level = 3
+
+[workspace]
+
+[patch.crates-io]
+xattr = { path = "vendor-xattr" }

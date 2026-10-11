@@ -1,0 +1,16 @@
+[package]
+name = "gt-slint"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+slint = "1.18"
+gui-common = { path = "../common" }
+
+[build-dependencies]
+slint-build = "1.18"
+
+[profile.release]
+opt-level = 3
+
+[workspace]

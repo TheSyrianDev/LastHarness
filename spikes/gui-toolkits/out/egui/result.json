@@ -1,0 +1,30 @@
+{
+ "window": {
+  "class": "gt-egui",
+  "title": "gt-egui",
+  "size": [
+   1880,
+   1026
+  ],
+  "xwayland": false
+ },
+ "start_pss_mb": 118.5,
+ "idle": {
+  "cpu_pct": 1.86,
+  "switches_per_s": 346.7,
+  "pss_mb": 121.1,
+  "pss_peak_mb": 121.1
+ },
+ "streaming": {
+  "cpu_pct": 2.41,
+  "switches_per_s": 444.4,
+  "pss_mb": 121.8,
+  "pss_peak_mb": 121.8
+ },
+ "after": {
+  "cpu_pct": 2.39,
+  "switches_per_s": 440.2,
+  "pss_mb": 122.1,
+  "pss_peak_mb": 122.1
+ }
+}

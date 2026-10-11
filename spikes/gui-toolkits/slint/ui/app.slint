@@ -1,0 +1,41 @@
+import { Button, LineEdit, StandardListView, ScrollView } from "std-widgets.slint";
+
+export component App inherits Window {
+    title: "gt-slint";
+    preferred-width: 900px;
+    preferred-height: 600px;
+    in property <[StandardListViewItem]> models;
+    in property <string> chat;
+    out property <int> selected: 0;
+    callback send(string);
+    in-out property <string> text;
+
+    HorizontalLayout {
+        VerticalLayout {
+            width: 200px;
+            Text { text: "Models"; font-weight: 700; }
+            list := StandardListView {
+                model: root.models;
+                current-item-changed(i) => { root.selected = i; }
+            }
+        }
+        VerticalLayout {
+            sv := ScrollView {
+                content-height: t.preferred-height;
+                t := Text { text: root.chat; wrap: word-wrap; width: sv.visible-width; }
+            }
+            HorizontalLayout {
+                input := LineEdit {
+                    placeholder-text: "Message";
+                    accessible-label: "Message";
+                    text <=> root.text;
+                    accepted(s) => { root.send(s); self.text = ""; }
+                }
+                Button { text: "Send"; clicked => { root.send(input.text); input.text = ""; } }
+            }
+        }
+    }
+    function scroll-end() { sv.content-y = min(0px, sv.visible-height - t.preferred-height); }
+    changed chat => { scroll-end(); }
+    init => { input.focus(); }
+}

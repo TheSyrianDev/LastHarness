@@ -1,0 +1,13 @@
+[package]
+name = "gt-iced"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.14" }
+gui-common = { path = "../common" }
+
+[profile.release]
+opt-level = 3
+
+[workspace]

@@ -1,0 +1,30 @@
+{
+ "window": {
+  "class": "",
+  "title": "",
+  "size": [
+   1880,
+   1026
+  ],
+  "xwayland": false
+ },
+ "start_pss_mb": 59.5,
+ "idle": {
+  "cpu_pct": 0.6,
+  "switches_per_s": 71.0,
+  "pss_mb": 59.5,
+  "pss_peak_mb": 59.5
+ },
+ "streaming": {
+  "cpu_pct": 2.16,
+  "switches_per_s": 105.1,
+  "pss_mb": 61.8,
+  "pss_peak_mb": 61.8
+ },
+ "after": {
+  "cpu_pct": 2.4,
+  "switches_per_s": 104.0,
+  "pss_mb": 63.5,
+  "pss_peak_mb": 63.5
+ }
+}

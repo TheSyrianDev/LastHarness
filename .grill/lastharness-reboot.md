@@ -174,3 +174,9 @@ The user approved the toolkit test week (Slint, egui, iced, GPUI; Arabic text, s
 ## 2026-10-11: GUI feel and themes
 
 The user agreed the app should feel calm and quiet by default: lots of space, one accent colour, chat as the main thing, departments and memory in a hideable side panel. The user also wants full theme support: colours, backgrounds, button animations, and whole looks such as Liquid Glass, Glassmorphism, Frutiger Aero and Matte. The toolkit test now also checks blur, translucency, gradients, animation, runtime theme files and background media. Whether themes are loaded from data files is open until the test results are in.
+
+## 2026-10-11: GUI toolkit chosen: GPUI
+
+The toolkit test ran on Slint, egui, iced, GPUI and Qt Quick (results in `spikes/gui-toolkits/RESULT.md`). The user chose GPUI. Idle memory: GPUI 60 MB, Slint 73 MB, egui 118 MB, Qt 130 MB. The user rejected web-view shells (Tauri, Qt WebEngine) and closed or paid UI engines. Themes therefore cannot use real CSS in the native app; the theme file format stays open for the design talks.
+
+Open risks for GPUI: screen reader (AccessKit is in Zed's repository but not in the crates.io release), right-to-left layout (the app must mirror it itself), no Android or iOS support, the pinned gpui-component needs a local patch for an old dependency, and the theming tests (blur, gradients, live theme file, tray icon) were not done. The base prompt now says LastHarness is built by LastSoftware.

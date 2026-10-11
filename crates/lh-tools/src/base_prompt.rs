@@ -112,7 +112,7 @@ pub fn ymd(days: i64) -> String {
 }
 
 pub fn base_prompt(c: &BaseContext) -> String {
-    let mut s = format!("{} You work in LastHarness, a local-first harness for one person's computer. Be brief; say what you did and checked.\nToday: {}. ", identity_line(&c.identity), c.date);
+    let mut s = format!("{} You work in LastHarness, a local-first harness for one person's computer, built by LastSoftware. Be brief; say what you did and checked.\nToday: {}. ", identity_line(&c.identity), c.date);
     let folder = c.folder.map(|p| p.display().to_string()).unwrap_or_default();
     s.push_str(&match c.kind {
         SessionKind::Chat => "Mode: chat, no tools.\n".to_string(),

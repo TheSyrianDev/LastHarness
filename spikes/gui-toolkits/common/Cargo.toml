@@ -1,0 +1,11 @@
+[package]
+name = "gui-common"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+ureq = { version = "3", default-features = false, features = ["json"] }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+
+[workspace]

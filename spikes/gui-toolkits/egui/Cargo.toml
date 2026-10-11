@@ -1,0 +1,13 @@
+[package]
+name = "gt-egui"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+eframe = "0.36"
+gui-common = { path = "../common" }
+
+[profile.release]
+opt-level = 3
+
+[workspace]
