@@ -39,12 +39,22 @@ impl StoredChat {
     }
 }
 
+/// How a new session is made (ignored when the chat already has one).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SessionStart {
+    /// `chat`, `assistant` or `project`.
+    pub mode: String,
+    pub project_dir: Option<String>,
+    /// Nothing is remembered or stored.
+    pub incognito: bool,
+}
+
 /// What the window asks the core to do. `chat` is the window's own key for a chat.
 #[derive(Debug)]
 pub enum Cmd {
     /// Ask for the model list and the stored chats.
     Refresh,
-    Send { chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String },
+    Send { chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String, start: SessionStart },
     Stop { chat: u64, session: Option<String> },
     Answer { session: String, ask: String, yes: bool },
     Delete { chat: u64, id: Option<String>, stored: bool },
@@ -188,9 +198,9 @@ async fn run(cfg: Config, mut rx: mpsc::UnboundedReceiver<Cmd>, out: Out) {
                 let (c, o, cfg2) = (client.clone(), out.clone(), cfg.clone());
                 tokio::spawn(async move { refresh(&cfg2, c, o).await });
             }
-            Cmd::Send { chat, session, session_model, model, text } => {
+            Cmd::Send { chat, session, session_model, model, text, start } => {
                 let (c, o) = (client.clone(), out.clone());
-                let (task, handle) = futures_util::future::abortable(send(c, o.clone(), chat, session, session_model, model, text));
+                let (task, handle) = futures_util::future::abortable(send(c, o.clone(), chat, session, session_model, model, text, start));
                 turns.insert(chat, handle);
                 tokio::spawn(async move {
                     if task.await.is_err() {
@@ -360,7 +370,8 @@ async fn refresh(cfg: &Config, client: Arc<Client>, out: Out) {
     }
 }
 
-async fn send(client: Arc<Client>, out: Out, chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String) {
+#[allow(clippy::too_many_arguments)]
+async fn send(client: Arc<Client>, out: Out, chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String, start: SessionStart) {
     let fail = |message: String| {
         out.send(Ev::Failed { chat, message });
         out.send(Ev::StreamEnded { chat });
@@ -375,7 +386,7 @@ async fn send(client: Arc<Client>, out: Out, chat: u64, session: Option<String>,
             }
             id
         }
-        None => match client.create_session_chat(&model).await {
+        None => match client.create_session_for(&model, &start).await {
             Ok(id) => {
                 out.send(Ev::SessionReady { chat, session: id.clone(), model: model.clone() });
                 id
@@ -402,13 +413,17 @@ async fn send(client: Arc<Client>, out: Out, chat: u64, session: Option<String>,
     out.send(Ev::StreamEnded { chat });
 }
 
-/// `create_session` for a plain chat (no folder, no tools) lives here so the shared client stays general.
-trait ChatSession {
-    async fn create_session_chat(&self, model: &str) -> Result<String, String>;
+/// Session creation with the mode the chat was started in.
+trait StartSession {
+    async fn create_session_for(&self, model: &str, start: &SessionStart) -> Result<String, String>;
 }
-impl ChatSession for Client {
-    async fn create_session_chat(&self, model: &str) -> Result<String, String> {
-        let v = self.call("POST", "/v1/sessions", Some(json!({"model": model, "mode": "chat"}))).await?;
+impl StartSession for Client {
+    async fn create_session_for(&self, model: &str, start: &SessionStart) -> Result<String, String> {
+        let mut body = json!({"model": model, "mode": if start.mode.is_empty() { "chat" } else { start.mode.as_str() }, "incognito": start.incognito});
+        if let Some(d) = &start.project_dir {
+            body["project_dir"] = json!(d);
+        }
+        let v = self.call("POST", "/v1/sessions", Some(body)).await?;
         v["id"].as_str().map(str::to_string).ok_or_else(|| "the core sent no session id".into())
     }
 }

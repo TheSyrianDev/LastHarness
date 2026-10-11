@@ -164,7 +164,21 @@ impl App {
         if !self.connected {
             return col.child(self.note("The core is not running, so memory cannot be shown.")).into_any_element();
         }
-        if self.panels.pages.is_empty() {
+        // suggestions come first: they are waiting for an answer
+        for pr in self.panels.proposals.clone() {
+            let (a, b, id) = (pr.id, pr.id, pr.id);
+            let yes = self.button(format!("prop-yes-{id}"), "Remember this", Kind::Primary, cx, move |app, _, cx| app.memory_action(format!("/v1/memory/proposals/{a}/accept"), Some(serde_json::json!({})), cx));
+            let no = self.button(format!("prop-no-{id}"), "Not this", Kind::Normal, cx, move |app, _, cx| app.memory_action(format!("/v1/memory/proposals/{b}/reject"), Some(serde_json::json!({})), cx));
+            col = col.child(
+                div().flex().flex_col().gap_1().p_2().rounded(p.inner).border_1().border_color(p.accent).text_color(p.text)
+                    .child(div().text_xs().text_color(p.accent).child(format!("Suggestion ({})", pr.kind)))
+                    .child(div().child(pr.title.clone()))
+                    .child(div().text_sm().text_color(p.muted).child(pr.text.clone()))
+                    .when(!pr.evidence.is_empty(), |d| d.child(div().text_xs().text_color(p.muted).child(format!("You said: {}", pr.evidence))))
+                    .child(div().flex().gap_2().child(yes).child(no)),
+            );
+        }
+        if self.panels.pages.is_empty() && self.panels.proposals.is_empty() {
             col = col.child(self.note("Nothing is remembered yet. What the assistant learns about you shows up here, and you can edit or remove it."));
         }
         for (i, pg) in self.panels.pages.clone().into_iter().enumerate() {
@@ -179,11 +193,17 @@ impl App {
                 let c = Content::detect(&pg.title, &pg.body);
                 self.button(format!("mem-open-{i}"), "Open in panel", Kind::Ghost, cx, move |a, _, cx| a.open_content(c.clone(), cx))
             };
+            let (pid1, pid2, pid3) = (pg.id.clone(), pg.id.clone(), pg.id.clone());
+            let pinned = pg.pinned;
+            let sensitive = pg.privacy == "sensitive";
+            let pin = self.button(format!("mem-pin-{i}"), if pinned { "Unpin" } else { "Pin" }, Kind::Ghost, cx, move |a, _, cx| a.memory_action(format!("/v1/memory/pages/{pid1}/pin"), Some(serde_json::json!({"pinned": !pinned})), cx));
+            let priv_btn = self.button(format!("mem-priv-{i}"), if sensitive { "Make normal" } else { "Make sensitive" }, Kind::Ghost, cx, move |a, _, cx| a.memory_action(format!("/v1/memory/pages/{pid2}/privacy"), Some(serde_json::json!({"privacy": if sensitive { "normal" } else { "sensitive" }})), cx));
+            let archive = self.button(format!("mem-arch-{i}"), "Archive", Kind::Ghost, cx, move |a, _, cx| a.memory_action(format!("/v1/memory/pages/{pid3}/archive"), None, cx));
             col = col.child(
                 div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
                     .child(div().flex().items_center().gap_2().child(div().flex_1().child(format!("{}{}", if pg.pinned { "📌 " } else { "" }, pg.title))).child(toggle))
                     .child(div().text_xs().text_color(p.muted).child(format!("{} · {}{}", pg.layer, pg.privacy, if pg.gist.is_empty() { String::new() } else { format!(" · {}", pg.gist) })))
-                    .when(open, |d| d.child(TextView::markdown(SharedString::from(format!("page{i}")), pg.body.clone())).child(div().flex().child(show))),
+                    .when(open, |d| d.child(TextView::markdown(SharedString::from(format!("page{i}")), pg.body.clone())).child(div().flex().flex_wrap().gap_1().child(show).child(pin).child(priv_btn).child(archive))),
             );
         }
         col.into_any_element()

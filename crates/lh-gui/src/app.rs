@@ -5,14 +5,14 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use gpui::*;
-use gpui_component::input::{InputEvent, TextareaState};
+use gpui_component::input::{InputEvent, InputState, TextareaState};
 use lh_client::ServerEvent;
 use serde_json::Value;
 
-use lh_gui::api::{futures_channel, Backend, Cmd, Ev, StoredChat};
+use lh_gui::api::{futures_channel, Backend, Cmd, Ev, SessionStart, StoredChat};
 use lh_gui::config::Config;
 use lh_gui::layout::{Layout, Page, Panel};
-use lh_gui::model::{Block, Chats, NEW_TITLE};
+use lh_gui::model::{Block, Chats, Mode, NEW_TITLE};
 use lh_gui::models::ModelList;
 use lh_gui::prefs::Prefs;
 use lh_gui::rtl::{self, Direction};
@@ -35,6 +35,7 @@ pub struct PanelData {
     pub runs: HashMap<String, Run>,
     pub run_order: Vec<String>,
     pub pages: Vec<MemoryPage>,
+    pub proposals: Vec<Proposal>,
     pub settings: Vec<Setting>,
     pub memory_error: Option<String>,
     pub settings_error: Option<String>,
@@ -48,6 +49,16 @@ pub struct Department {
     pub description: String,
     pub lead: String,
     pub members: Vec<String>,
+}
+
+/// Something the assistant suggests remembering, waiting for the user.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Proposal {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub text: String,
+    pub evidence: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -95,6 +106,8 @@ pub struct App {
     pub locale: String,
     pub panels: PanelData,
     pub goal: Entity<TextareaState>,
+    /// The folder for a chat in project mode.
+    pub project_input: Entity<InputState>,
     pub dept_pick: Option<String>,
     /// The model name each session was last told to use (to know when a send must switch it).
     pub core_models: HashMap<u64, String>,
@@ -113,6 +126,9 @@ fn stored_to_chat(chats: &mut Chats, models: &ModelList, s: &StoredChat) {
         None => {
             if s.messages > 0 {
                 chats.add_stored(&s.id, &s.title, &model);
+                if let Some(c) = chats.by_session(&s.id) {
+                    c.mode = Mode::parse(&s.mode);
+                }
             }
         }
     }
@@ -167,6 +183,7 @@ impl App {
 
         let composer = cx.new(|cx| TextareaState::new(window, cx).auto_grow(1, 8).placeholder("Message"));
         composer.update(cx, |s, cx| s.focus(window, cx));
+        let project_input = cx.new(|cx| InputState::new(window, cx).placeholder("/path/to/the/project folder"));
         let goal = cx.new(|cx| TextareaState::new(window, cx).auto_grow(2, 6).placeholder("What should the department do?"));
         cx.subscribe_in(&composer, window, |this: &mut App, _, ev: &InputEvent, window, cx| {
             // Enter sends; Shift+Enter makes a new line (the editor has already handled the newline case)
@@ -206,6 +223,7 @@ impl App {
             locale,
             panels: PanelData::default(),
             goal,
+            project_input,
             dept_pick: None,
             core_models: HashMap::new(),
             content: vec![],
@@ -257,6 +275,27 @@ impl App {
     }
 
     // ---- chat actions -------------------------------------------------------------------------
+
+    pub fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        if let Some(c) = self.chats.current_mut() {
+            if c.session.is_none() && c.blocks.is_empty() {
+                c.mode = mode;
+                if mode != Mode::Chat {
+                    c.incognito = false; // a chat that works on the computer is kept, so it can be resumed
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    pub fn toggle_private(&mut self, cx: &mut Context<Self>) {
+        if let Some(c) = self.chats.current_mut() {
+            if c.session.is_none() && c.blocks.is_empty() && c.mode == Mode::Chat {
+                c.incognito = !c.incognito;
+            }
+        }
+        cx.notify();
+    }
 
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
         let model = self.chats.current().map(|c| c.model.clone()).filter(|m| !m.is_empty()).or_else(|| self.models.names().first().cloned()).unwrap_or_default();
@@ -352,6 +391,13 @@ impl App {
             self.banner = Some("There is no model to talk to yet. Is the core running and does it have a model?".into());
             return cx.notify();
         }
+        let folder = self.project_input.read(cx).value().trim().to_string();
+        let start = SessionStart { mode: c.mode.as_str().into(), project_dir: (c.mode == Mode::Project).then_some(folder.clone()), incognito: c.incognito };
+        if c.session.is_none() && c.mode == Mode::Project && !std::path::Path::new(&folder).is_dir() {
+            self.banner = Some("A project chat needs a folder that exists. Type its path above the message box.".into());
+            return cx.notify();
+        }
+        self.banner = None;
         self.composer.update(cx, |s, cx| s.set_value("", window, cx));
         let (key, session, model) = (c.key, c.session.clone(), self.models.id_for(&c.model));
         // the model the core last had for this session, as an id; unknown after a restart (then nothing is switched)
@@ -359,7 +405,7 @@ impl App {
         if let Some(c) = self.chats.by_key(key) {
             c.push_user(&text);
         }
-        self.backend.send(Cmd::Send { chat: key, session, session_model, model, text });
+        self.backend.send(Cmd::Send { chat: key, session, session_model, model, text, start });
         self.scroll_to_end();
         self.persist();
         cx.notify();
@@ -508,7 +554,7 @@ impl App {
     // ---- side panels --------------------------------------------------------------------------
 
     pub fn load_panels(&mut self) {
-        for (tag, path) in [("departments", "/v1/team/departments"), ("memory", "/v1/memory/pages"), ("settings", "/v1/settings"), ("runs", "/v1/team/runs")] {
+        for (tag, path) in [("departments", "/v1/team/departments"), ("memory", "/v1/memory/pages"), ("proposals", "/v1/memory/proposals"), ("settings", "/v1/settings"), ("runs", "/v1/team/runs")] {
             self.backend.send(Cmd::Call { tag: tag.into(), method: "GET".into(), path: path.into(), body: None });
         }
     }
@@ -526,6 +572,16 @@ impl App {
                 p.pages = v["pages"].as_array().map(|a| a.iter().filter(|x| x["archived"] != true).map(|x| MemoryPage { id: x["id"].as_str().unwrap_or("").into(), layer: x["layer"].as_str().unwrap_or("").into(), title: x["title"].as_str().unwrap_or("").into(), gist: x["gist"].as_str().unwrap_or("").into(), body: x["body"].as_str().unwrap_or("").into(), privacy: x["privacy"].as_str().unwrap_or("").into(), pinned: x["pinned"] == true }).collect()).unwrap_or_default();
             }
             ("memory", Err(e)) => p.memory_error = Some(e),
+            ("proposals", Ok(v)) => {
+                p.proposals = v["proposals"].as_array().map(|a| a.iter().filter(|x| x["status"].as_str().unwrap_or("pending") == "pending").map(|x| Proposal { id: x["id"].as_i64().unwrap_or(0), kind: x["kind"].as_str().unwrap_or("").into(), title: x["title"].as_str().unwrap_or("").into(), text: x["text"].as_str().unwrap_or("").into(), evidence: x["evidence"].as_str().unwrap_or("").into() }).collect()).unwrap_or_default();
+            }
+            ("proposals", Err(_)) => p.proposals.clear(),
+            ("memory-action", Ok(_)) => {
+                for (tag, path) in [("memory", "/v1/memory/pages"), ("proposals", "/v1/memory/proposals")] {
+                    self.backend.send(Cmd::Call { tag: tag.into(), method: "GET".into(), path: path.into(), body: None });
+                }
+            }
+            ("memory-action", Err(e)) => p.memory_error = Some(e),
             ("settings", Ok(v)) => {
                 p.settings_error = None;
                 p.settings = v["settings"].as_array().map(|a| a.iter().map(|x| Setting { key: x["key"].as_str().unwrap_or("").into(), group: x["group"].as_str().unwrap_or("").into(), value: match &x["value"] { Value::String(s) => s.clone(), other => other.to_string() }, help: x["help"].as_str().unwrap_or("").into(), kind: lh_gui::settings::Kind::from_json(&x["kind"]) }).collect()).unwrap_or_default();
@@ -586,6 +642,12 @@ impl App {
         if let Some(r) = self.panels.runs.get_mut(run) {
             r.answered(q.id());
         }
+        cx.notify();
+    }
+
+    /// A change to memory (accept, reject, archive, pin, privacy); the lists are read again afterwards.
+    pub fn memory_action(&mut self, path: String, body: Option<Value>, cx: &mut Context<Self>) {
+        self.backend.send(Cmd::Call { tag: "memory-action".into(), method: "POST".into(), path, body });
         cx.notify();
     }
 

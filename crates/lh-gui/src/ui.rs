@@ -3,16 +3,16 @@
 
 use gpui::prelude::*;
 use gpui::*;
-use gpui_component::input::Textarea;
+use gpui_component::input::{Input, Textarea};
 use gpui_component::text::TextView;
 
 use crate::app::{App, Pending};
 use lh_gui::layout::{Page, Panel};
-use lh_gui::model::Block;
+use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::mix;
 
-actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand]);
+actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent]);
 
 /// The keys for every action; also how the app is driven without a mouse.
 pub fn bind_keys(cx: &mut gpui::App) {
@@ -27,6 +27,10 @@ pub fn bind_keys(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-t", NextTheme, None),
         KeyBinding::new("ctrl-shift-r", CycleDirection, None),
         KeyBinding::new("ctrl-.", StopTurn, None),
+        KeyBinding::new("ctrl-enter", ConfirmResume, None),
+        KeyBinding::new("escape", Dismiss, None),
+        KeyBinding::new("ctrl-shift-l", OpenLastReply, None),
+        KeyBinding::new("ctrl-shift-p", PopOutContent, None),
         KeyBinding::new("ctrl-pagedown", NextChat, None),
         KeyBinding::new("ctrl-pageup", PrevChat, None),
     ]);
@@ -56,7 +60,12 @@ impl App {
         let el = div()
             .id(id.clone())
             .role(Role::Button)
-            .aria_label(label.clone())
+            .aria_label(SharedString::from(match label.as_ref() {
+                "×" => "Delete chat",
+                "−" => "Make narrower",
+                "+" => "Make wider",
+                other => other,
+            }.to_string()))
             .px_3()
             .py_1p5()
             .rounded(p.inner)
@@ -164,6 +173,16 @@ impl App {
         let new = self.button("new-chat", if rtl { "محادثة جديدة" } else { "New chat" }, Kind::Primary, cx, |a, _, cx| a.new_chat(cx));
         let mut rows: Vec<AnyElement> = vec![];
         let active = self.chats.active;
+        // a department's page opens from here, and the chat keeps running while it is open
+        let on_page = self.page().clone();
+        let depts: Vec<AnyElement> = self.panels.departments.clone().into_iter().map(|d| {
+            let name = d.name.clone();
+            let waiting = self.panels.runs.values().any(|r| r.dept == d.name && r.is_waiting());
+            let working = self.panels.runs.values().any(|r| r.dept == d.name && !r.finished);
+            let label = format!("{}{}", d.name, if waiting { "  ● waiting for you" } else if working { "  … working" } else { "" });
+            let open = on_page == Page::Department(d.name.clone());
+            self.button(format!("side-dept-{name}"), label, if open { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.open_department(&name, cx))
+        }).collect();
         for (i, c) in self.chats.list.clone().into_iter().enumerate() {
             let key = c.key;
             let on = i == active;
@@ -199,6 +218,7 @@ impl App {
             .bg(p.surface)
             .shadow(p.shadow.clone())
             .child(new)
+            .children((!depts.is_empty()).then(|| div().flex().flex_col().gap_0p5().child(div().text_xs().text_color(p.muted).px_2().child(if rtl { "الأقسام" } else { "Departments" })).children(depts)))
             .child(div().id("chat-list").role(Role::List).aria_label("Chats").flex_1().flex().flex_col().gap_0p5().overflow_y_scroll().children(rows))
             .into_any_element()
     }
@@ -266,7 +286,7 @@ impl App {
         div().flex().flex_col().gap_2().p_3().rounded(p.radius).bg(p.surface).border_1().border_color(p.accent).text_color(p.text)
             .id("resume-warning").role(Role::Group).aria_label("Continue this chat")
             .child(div().child(title)).child(div().text_sm().text_color(p.muted).child(msg))
-            .when(!pending.warning.is_null(), |d| d.child(div().flex().gap_2().child(ok).child(no)))
+            .when(!pending.warning.is_null(), |d| d.child(div().flex().gap_2().child(ok).child(no)).child(div().text_xs().text_color(p.muted).child("Ctrl+Enter continues, Escape cancels.")))
             .into_any_element()
     }
 
@@ -297,6 +317,26 @@ impl App {
             stack.push(self.pending_card(&pen, cx));
         } else if chat.dormant {
             stack.push(div().text_sm().text_color(p.muted).child("This chat is stored. Choosing it asks before the model reads it again.").into_any_element());
+        }
+        // before the first message the chat can still be given its kind
+        if chat.session.is_none() && chat.blocks.is_empty() && !chat.dormant {
+            let kinds: Vec<AnyElement> = [(Mode::Chat, if rtl { "محادثة" } else { "Chat" }), (Mode::Assistant, if rtl { "مساعد" } else { "Assistant" }), (Mode::Project, if rtl { "مشروع" } else { "Project" })]
+                .into_iter()
+                .map(|(m, label)| self.button(format!("mode-{label}"), label, if chat.mode == m { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| a.set_mode(m, cx)))
+                .collect();
+            let hint = match chat.mode {
+                Mode::Chat => if chat.incognito { "Private chat: nothing is remembered or stored." } else { "Plain conversation, no tools." },
+                Mode::Assistant => "Works from your home folder. It asks before it changes anything.",
+                Mode::Project => "Works inside one folder. It asks before it changes anything.",
+            };
+            let private = (chat.mode == Mode::Chat).then(|| self.button("mode-private", if chat.incognito { "Private: on" } else { "Private: off" }, if chat.incognito { Kind::Primary } else { Kind::Ghost }, cx, |a, _, cx| a.toggle_private(cx)));
+            stack.push(
+                div().flex().flex_col().gap_2().p_3().rounded(p.radius).bg(p.surface).shadow(p.shadow.clone()).text_color(p.text)
+                    .id("chat-kind").role(Role::Group).aria_label("Kind of chat")
+                    .child(div().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().children(kinds).children(private))
+                    .child(div().text_sm().text_color(p.muted).child(hint))
+                    .when(chat.mode == Mode::Project, |d| d.child(Input::new(&self.project_input))).into_any_element(),
+            );
         }
         let action = self.button("send", if chat.busy { if rtl { "إيقاف" } else { "Stop" } } else if rtl { "إرسال" } else { "Send" }, if chat.busy { Kind::Danger } else { Kind::Primary }, cx, |a, w, cx| a.send(w, cx));
         let composer = div().flex().when(rtl, |d| d.flex_row_reverse()).items_end().gap_2().p_2().rounded(p.radius).bg(p.surface).shadow(p.shadow.clone())
@@ -355,6 +395,39 @@ impl Render for App {
                 cx.notify();
             }))
             .on_action(cx.listener(|a, _: &StopTurn, _, cx| a.stop(cx)))
+            .on_action(cx.listener(|a, _: &ConfirmResume, _, cx| {
+                if a.pending.as_ref().is_some_and(|p| !p.warning.is_null()) {
+                    a.confirm_resume(cx);
+                }
+            }))
+            .on_action(cx.listener(|a, _: &OpenLastReply, _, cx| {
+                // the newest reply or tool result of this chat, in the side panel
+                let found = a.chats.current().and_then(|c| c.blocks.iter().rev().find_map(|b| match b {
+                    Block::Assistant { text, .. } if !text.is_empty() => Some(crate::panels::Content::detect(&c.title, text)),
+                    Block::Tool { name, result: Some(r), .. } => Some(crate::panels::Content::detect(name, r)),
+                    _ => None,
+                }));
+                if let Some(c) = found {
+                    a.open_content(c, cx);
+                }
+            }))
+            .on_action(cx.listener(|a, _: &PopOutContent, _, cx| {
+                if let Some(c) = a.content.get(a.content_index).cloned() {
+                    a.pop_out(c, cx);
+                }
+            }))
+            .on_action(cx.listener(|a, _: &Dismiss, _, cx| {
+                // Escape closes whatever is open on top: a menu, then the question about continuing a chat
+                if a.model_menu || a.theme_menu {
+                    a.model_menu = false;
+                    a.theme_menu = false;
+                } else if a.pending.is_some() {
+                    a.pending = None;
+                } else if a.confirm_delete.is_some() {
+                    a.confirm_delete = None;
+                }
+                cx.notify();
+            }))
             .on_action(cx.listener(|a, _: &NextChat, _, cx| {
                 let i = (a.chats.active + 1).min(a.chats.list.len().saturating_sub(1));
                 if let Some(k) = a.chats.list.get(i).map(|c| c.key) {

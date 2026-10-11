@@ -132,3 +132,21 @@ Things that need the user. Agents add to this list instead of asking while the u
 - **KV-cache save: automatic or manual?** Unanswered. Recommended answer: save automatically when a local chat is left idle, with a 5 GB cap for all saved caches (oldest removed first), and a setting to turn it off.
 - **Does the cloud-model warning show an estimated cost?** Unanswered. Recommended answer: show the cost when the price of the model is known, otherwise show only the number of tokens that will be sent again.
 - **Control roundness follows the window roundness, on every desktop (user, 2026-10-11).** Spike result: on Hyprland the window radius can be read (`hyprctl getoption decoration:rounding`, 15 here), and panels use it while controls inside use that radius minus their padding (7 here), so the curves stay parallel. Other desktops have no such setting to read. Recommended answer for the app: the app draws its own window shape (client-side decorations on a transparent window), so the window radius is the theme's own number and always matches; where the compositor draws the frame (Hyprland), a theme can say `match_window = true` to take the compositor's value instead. Built-in looks would set the radius per theme (Calm small, Matte medium, Glass and Frutiger Aero large).
+
+## Milestone 8, build session (desktop app)
+
+Each item says what the app does now and the answer I recommend. A "yes" accepts it.
+
+- **Keyboard sends.** Enter sends the message and Shift+Enter makes a new line. Recommended: keep.
+- **Deleting a chat asks twice** (the button turns into "Delete?"). A stored chat is removed for good, including its search entries. Recommended: keep; a trash with undo can come later.
+- **Chat kinds.** Before the first message a chat is plain (no tools), an assistant (home folder) or a project (one folder), and plain chats can be private (nothing remembered). After the first message the kind is fixed. Recommended: keep.
+- **Opening a stored chat** shows its history at once and asks only when you continue. Recommended: keep.
+- **"Open in panel" is a button.** The agent cannot open things by itself yet, because the core has no tool for it. Recommended: add a `show` tool later that returns a title, a kind and the content, and let the app open it in the panel.
+- **The Memory panel** changes pages (pin, sensitive or normal, archive) and answers suggestions, but does not edit text. Recommended: editing text stays in the terminal until the design talks decide how it should look.
+- **Settings** change in place only when they are on or off, a choice or a number in a range; the rest are shown with the command to change them (`lh settings`). Provider and spending settings stay terminal-only as before. Recommended: keep.
+- **The tray** has Quit only. Recommended: add Show when the toolkit can raise the window from the tray's thread.
+- **Roundness.** The app uses the theme's own radius; `match_window = true` takes the window's radius where the desktop says it (Hyprland). Recommended (see the earlier item): draw the app's own window frame on desktops that report nothing.
+- **Colours of the text box** follow the theme, but the toolkit's own text input has a fixed focus ring colour. Recommended: leave for the design talks.
+- **Cloud resume shows tokens only,** not a price, because the core has no price list. Recommended: show a price when the endpoint reports one.
+- **Binary size** is 64 MiB (46 MiB stripped). Recommended: turn on `strip` and thin LTO for release builds when packaging starts.
+- **Chats list newest first;** the order does not change when a chat gets a new message. Recommended: move a chat to the top when it is used.

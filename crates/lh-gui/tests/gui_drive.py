@@ -13,6 +13,7 @@ ap.add_argument("--type", dest="text", default="")
 ap.add_argument("--send", action="store_true")
 ap.add_argument("--wait", type=float, default=0, help="seconds to wait after sending")
 ap.add_argument("--steps", default="", help="semicolon list: key:ctrl+t, type:text, enter, wait:2, shot:name, mem")
+ap.add_argument("--page", default="", help="seed one memory page: TITLE|TEXT")
 ap.add_argument("--provider", default="http://localhost:9292/v1")
 ap.add_argument("--port", type=int, default=7851)
 a = ap.parse_args()
@@ -26,6 +27,12 @@ lhd = subprocess.Popen([f"{root}/target/release/lhd", "--provider", a.provider, 
 for _ in range(100):
     if os.path.exists(tmp + "/token"): break
     time.sleep(0.1)
+if a.page:
+    import urllib.request
+    title, text = a.page.split("|", 1)
+    tok = open(tmp + "/token").read().strip()
+    rq = urllib.request.Request(f"http://127.0.0.1:{a.port}/v1/memory/pages", data=json.dumps({"layer": "facts", "title": title, "text": text, "gist": text[:40]}).encode(), headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"})
+    urllib.request.urlopen(rq).read()
 prefs = tmp + "/gui.toml"
 if a.theme or a.rtl:
     open(prefs, "w").write((f'theme = "{a.theme}"\n' if a.theme else "") + ('direction = "rtl"\n' if a.rtl else ""))
@@ -51,10 +58,16 @@ try:
         else: res["typed"] = "window was not focused; nothing typed"
     if a.steps:
         subprocess.run(["hyprctl", "dispatch", "focuswindow", f"pid:{app.pid}"], capture_output=True); time.sleep(0.4)
+        def focused():
+            for _ in range(8):
+                act = json.loads(subprocess.check_output(["hyprctl", "activewindow", "-j"]))
+                if act.get("pid") == app.pid: return act
+                subprocess.run(["hyprctl", "dispatch", "focuswindow", f"pid:{app.pid}"], capture_output=True); time.sleep(0.5)
+            return act
         for step in a.steps.split(";"):
             step = step.strip()
-            act = json.loads(subprocess.check_output(["hyprctl", "activewindow", "-j"]))
-            if act.get("pid") != app.pid and not step.startswith(("wait", "shot", "mem")):
+            act = focused()
+            if act.get("pid") != app.pid and not step.startswith(("wait", "shot", "mem", "windows", "cpu")):
                 res["stopped"] = f"window not focused at step {step!r}"; break
             if step.startswith("key:"):
                 mods = step[4:].split("+"); key = mods.pop()
@@ -66,7 +79,15 @@ try:
             elif step.startswith("type:"): subprocess.run(["wtype", step[5:]]); time.sleep(0.4)
             elif step == "enter": subprocess.run(["wtype", "-k", "Return"]); time.sleep(0.5)
             elif step.startswith("wait:"): time.sleep(float(step[5:]))
+            elif step.startswith("theme:"):
+                fn, body = step[6:].split("|", 1)
+                os.makedirs(tmp + "/themes", exist_ok=True); open(f"{tmp}/themes/{fn}", "w").write(body.replace("\\n", "\n"))
             elif step.startswith("shot:"): shot(w, step[5:])
+            elif step.startswith("shotall:"): subprocess.run(["grim", f"{out}/{a.name}-{step[8:]}.png"])
+            elif step == "windows": res["windows"] = [c["class"] for c in json.loads(subprocess.check_output(["hyprctl", "clients", "-j"])) if c["pid"] == app.pid]
+            elif step == "cpu":
+                f = lambda: (lambda x: (int(x[11]) + int(x[12])) / os.sysconf("SC_CLK_TCK"))(open(f"/proc/{app.pid}/stat").read().rsplit(")", 1)[1].split())
+                c0, t0 = f(), time.time(); time.sleep(10); res.setdefault("cpu_pct_10s", []).append(round(100 * (f() - c0) / (time.time() - t0), 2))
             elif step == "mem": res.setdefault("mem", []).append(pss(app.pid))
     res["pss_mb_after"] = pss(app.pid)
     print(json.dumps(res))

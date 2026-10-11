@@ -136,7 +136,7 @@ async fn it_connects_lists_the_models_and_streams_an_answer() {
     assert_eq!(models, ["alpha-balanced", "alpha-max", "beta", "big", "mid"]);
     assert!(matches!(evs.last(), Some(Ev::Chats(c)) if c.is_empty()));
 
-    w.backend.send(Cmd::Send { chat: 7, session: None, session_model: None, model: "alpha-balanced".into(), text: "hi".into() });
+    w.backend.send(Cmd::Send { chat: 7, session: None, session_model: None, model: "alpha-balanced".into(), text: "hi".into(), start: Default::default() });
     let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
     assert!(matches!(&evs[0], Ev::SessionReady { chat: 7, model, .. } if model == "alpha-balanced"));
     assert_eq!(joined_text(&evs), "Hello there");
@@ -168,14 +168,14 @@ async fn an_unreachable_core_is_reported_not_hidden() {
 async fn stop_ends_the_turn_in_the_middle_and_the_chat_can_go_on() {
     let core = fresh(vec![text("First answer, a long one"), text("Second")], Duration::from_millis(1500), false);
     let mut w = Window::open(&core.cfg);
-    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "beta".into(), text: "go".into() });
+    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "beta".into(), text: "go".into(), start: Default::default() });
     let evs = w.until(|e| matches!(e, Ev::Server { event: lh_client::ServerEvent::Text(_), .. })).await;
     let session = evs.iter().find_map(|e| if let Ev::SessionReady { session, .. } = e { Some(session.clone()) } else { None }).unwrap();
     w.backend.send(Cmd::Stop { chat: 1, session: Some(session.clone()) });
     w.until(|e| matches!(e, Ev::StreamEnded { chat: 1 })).await;
     // the core frees the session once the connection drops; the next turn may be refused for a moment
     tokio::time::sleep(Duration::from_millis(300)).await;
-    w.backend.send(Cmd::Send { chat: 1, session: Some(session), session_model: Some("beta".into()), model: "beta".into(), text: "again".into() });
+    w.backend.send(Cmd::Send { chat: 1, session: Some(session), session_model: Some("beta".into()), model: "beta".into(), text: "again".into(), start: Default::default() });
     let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
     assert!(!evs.iter().any(|e| matches!(e, Ev::Failed { .. })), "{evs:?}");
     assert!(joined_text(&evs).starts_with("Sec"), "the second answer streamed: {evs:?}");
@@ -185,10 +185,10 @@ async fn stop_ends_the_turn_in_the_middle_and_the_chat_can_go_on() {
 async fn switching_the_model_inside_a_chat_tells_the_core() {
     let core = fresh(vec![text("one"), text("two")], Duration::ZERO, false);
     let mut w = Window::open(&core.cfg);
-    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "alpha-balanced".into(), text: "a".into() });
+    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "alpha-balanced".into(), text: "a".into(), start: Default::default() });
     let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
     let session = evs.iter().find_map(|e| if let Ev::SessionReady { session, .. } = e { Some(session.clone()) } else { None }).unwrap();
-    w.backend.send(Cmd::Send { chat: 1, session: Some(session.clone()), session_model: Some("alpha-balanced".into()), model: "beta".into(), text: "b".into() });
+    w.backend.send(Cmd::Send { chat: 1, session: Some(session.clone()), session_model: Some("alpha-balanced".into()), model: "beta".into(), text: "b".into(), start: Default::default() });
     let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
     assert!(matches!(&evs[0], Ev::SessionReady { model, .. } if model == "beta"), "{evs:?}");
     w.backend.send(Cmd::Refresh);
@@ -202,7 +202,7 @@ async fn a_stored_chat_is_loaded_resumed_after_a_warning_and_deleted() {
     let d = tempfile::tempdir().unwrap();
     let first = start(d.path(), vec![text("It is blue.")], Duration::ZERO, false);
     let mut w = Window::open(&first.cfg);
-    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "alpha-balanced".into(), text: "What colour is the sky?".into() });
+    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "alpha-balanced".into(), text: "What colour is the sky?".into(), start: Default::default() });
     let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
     let id = evs.iter().find_map(|e| if let Ev::SessionReady { session, .. } = e { Some(session.clone()) } else { None }).unwrap();
     drop(w);
@@ -228,7 +228,7 @@ async fn a_stored_chat_is_loaded_resumed_after_a_warning_and_deleted() {
     w.backend.send(Cmd::Resume { chat: 5, id: id.clone(), model: Some("beta".into()), confirm: true });
     let evs = w.until(|e| matches!(e, Ev::Resumed { .. })).await;
     assert!(matches!(evs.last(), Some(Ev::Resumed { session, model, .. }) if *session == id && model == "beta"));
-    w.backend.send(Cmd::Send { chat: 5, session: Some(id.clone()), session_model: None, model: "beta".into(), text: "why?".into() });
+    w.backend.send(Cmd::Send { chat: 5, session: Some(id.clone()), session_model: None, model: "beta".into(), text: "why?".into(), start: Default::default() });
     let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
     assert_eq!(joined_text(&evs), "Scattering.");
     // delete it for good
@@ -282,4 +282,68 @@ async fn a_department_run_is_followed_questions_are_answered_and_the_page_model_
     assert_eq!(r.outcome, Some(Outcome::Done { result: "Three facts about cats were found.".into(), parked: 0 }));
     assert_eq!(r.progress(), (1, 1));
     assert_eq!(r.steps[0].title, "Find facts");
+}
+
+#[tokio::test]
+async fn a_private_chat_is_not_stored_and_a_project_chat_remembers_its_kind() {
+    let core = fresh(vec![text("secret reply"), text("project reply")], Duration::ZERO, false);
+    let mut w = Window::open(&core.cfg);
+    let private = lh_gui::api::SessionStart { mode: "chat".into(), project_dir: None, incognito: true };
+    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "beta".into(), text: "private words".into(), start: private });
+    w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
+    w.backend.send(Cmd::Refresh);
+    let evs = w.until(|e| matches!(e, Ev::Chats(_))).await;
+    assert!(matches!(evs.last(), Some(Ev::Chats(c)) if c.is_empty()), "an incognito chat leaves nothing to list");
+
+    let folder = tempfile::tempdir().unwrap();
+    let project = lh_gui::api::SessionStart { mode: "project".into(), project_dir: Some(folder.path().to_string_lossy().into()), incognito: false };
+    w.backend.send(Cmd::Send { chat: 2, session: None, session_model: None, model: "beta".into(), text: "work here".into(), start: project });
+    let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
+    assert_eq!(joined_text(&evs), "project reply");
+    w.backend.send(Cmd::Refresh);
+    let evs = w.until(|e| matches!(e, Ev::Chats(_))).await;
+    let Some(Ev::Chats(list)) = evs.last() else { panic!() };
+    assert_eq!((list.len(), list[0].mode.as_str()), (1, "project"));
+}
+
+#[tokio::test]
+async fn a_tool_that_needs_permission_asks_and_goes_ahead_when_the_user_says_yes() {
+    let folder = tempfile::tempdir().unwrap();
+    let write = Response {
+        tool_calls: vec![lh_provider::ToolCall { id: "c1".into(), name: "write_file".into(), arguments: json!({"path": "note.txt", "content": "hello"}).to_string(), repaired: false }],
+        finish: Some(FinishReason::ToolCalls),
+        ..Default::default()
+    };
+    let core = fresh(vec![write, text("Saved the note.")], Duration::ZERO, false);
+    let mut w = Window::open(&core.cfg);
+    let start = lh_gui::api::SessionStart { mode: "project".into(), project_dir: Some(folder.path().to_string_lossy().into()), incognito: false };
+    w.backend.send(Cmd::Send { chat: 1, session: None, session_model: None, model: "beta".into(), text: "save a note".into(), start });
+    let mut chat = lh_gui::model::Chat::new(1, "beta");
+    chat.push_user("save a note");
+    let mut session = String::new();
+    loop {
+        match w.next().await {
+            Ev::SessionReady { session: s, .. } => session = s,
+            Ev::Server { event, .. } => {
+                chat.apply(&event);
+                if let Some(a) = chat.asks.first().cloned() {
+                    assert_eq!(a.tool, "write_file");
+                    assert!(!file_exists(folder.path()), "nothing is written before the answer");
+                    w.backend.send(Cmd::Answer { session: session.clone(), ask: a.id.clone(), yes: true });
+                    chat.answer(&a.id);
+                }
+            }
+            Ev::StreamEnded { .. } => break,
+            Ev::Failed { message, .. } => panic!("{message}"),
+            _ => {}
+        }
+    }
+    assert!(file_exists(folder.path()), "the file was written after yes");
+    assert!(!chat.busy);
+    assert!(chat.blocks.iter().any(|b| matches!(b, lh_gui::model::Block::Tool { name, result: Some(_), .. } if name == "write_file")));
+    assert!(chat.blocks.iter().any(|b| matches!(b, lh_gui::model::Block::Assistant { text, .. } if text == "Saved the note.")));
+}
+
+fn file_exists(dir: &std::path::Path) -> bool {
+    dir.join("note.txt").exists()
 }

@@ -22,6 +22,34 @@ pub struct Ask {
     pub worker: String,
 }
 
+/// How a chat works with the computer. A chat without tools only talks; an assistant works from the home
+/// folder and a project works inside one folder. Both ask before anything that matters.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Mode {
+    #[default]
+    Chat,
+    Assistant,
+    Project,
+}
+
+impl Mode {
+    pub fn parse(s: &str) -> Mode {
+        match s {
+            "assistant" => Mode::Assistant,
+            "project" => Mode::Project,
+            _ => Mode::Chat,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Mode::Chat => "chat",
+            Mode::Assistant => "assistant",
+            Mode::Project => "project",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Chat {
     /// Local key, stable for the life of the app; the session id comes later and can change.
@@ -36,6 +64,9 @@ pub struct Chat {
     /// Opened from the stored list and not yet loaded in the core.
     pub dormant: bool,
     pub incognito: bool,
+    pub mode: Mode,
+    /// The project folder, for a chat in project mode.
+    pub project: String,
     turn_had_text: bool,
 }
 
@@ -43,7 +74,7 @@ pub const NEW_TITLE: &str = "New chat";
 
 impl Chat {
     pub fn new(key: u64, model: &str) -> Chat {
-        Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, turn_had_text: false }
+        Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), turn_had_text: false }
     }
 
     /// A chat that is only a name in the list until the user opens it.
@@ -226,6 +257,15 @@ mod tests {
         assert!(!c.busy);
         c.push_user("again");
         assert_eq!(c.title, "Hello there, friend", "the title is set once");
+    }
+
+    #[test]
+    fn modes_read_and_write_the_names_the_core_uses() {
+        for m in [Mode::Chat, Mode::Assistant, Mode::Project] {
+            assert_eq!(Mode::parse(m.as_str()), m);
+        }
+        assert_eq!(Mode::parse("something else"), Mode::Chat);
+        assert_eq!(Chat::new(1, "m").mode, Mode::Chat);
     }
 
     #[test]

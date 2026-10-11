@@ -11,7 +11,7 @@ It is not on GitHub or any hosted service yet, and it is Linux only so far.
 cargo build --release
 ```
 
-This makes three programs in `target/release/`: `lhd` (the core), `lh` and `lastharness` (the same terminal client under two names).
+This makes four programs in `target/release/`: `lhd` (the core), `lh` and `lastharness` (the same terminal client under two names) and `lastharness-gui` (the desktop app). The desktop app takes a few minutes to build the first time; `cargo build --release -p lh-core -p lh-tui` builds only the core and the terminal.
 
 ## First run
 
@@ -19,7 +19,10 @@ This makes three programs in `target/release/`: `lhd` (the core), `lh` and `last
 target/release/lh setup        # twelve plain questions; Enter accepts each default
 target/release/lhd             # start the core (it reads the settings file)
 target/release/lh              # chat
+target/release/lastharness-gui # or the desktop app (needs the core running)
 ```
+
+The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastharness/themes/` (the eight built-in ones are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat; the keys for everything else are in `docs/milestone-8-report.md`.
 
 To start the core at every login: `lh service preview`, then `lh service install` (a systemd user service; no sudo; closing the terminal never stops the core).
 
@@ -49,7 +52,7 @@ The browser page is served over HTTPS when `web.listen` is set (for example `lh 
 
 ## Not built yet
 
-- A native desktop app, a phone app, a tray icon, themes and any visual design. The browser page is plain on purpose.
+- A phone app, and any final visual design (no logo, name styling or brand colours yet). The browser page and the desktop app's default look are plain on purpose.
 - macOS and Windows; installers; signed updates; crash reports are only prepared, not sent.
 - The hosted relay, subscription and memory sync.
 - Agents choosing or loading models and proposing new providers (the core talks to one endpoint).
