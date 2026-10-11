@@ -1,0 +1,285 @@
+{
+ "results": {
+  "keyword (BM25)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    4,
+    10,
+    0.26880952380952383
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    4,
+    10,
+    0.32552308802308805
+   ],
+   "cross": [
+    2,
+    4,
+    0.4
+   ]
+  },
+  "eg2-q4 (embedding only)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    9,
+    10,
+    0.6866666666666668
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    8,
+    10,
+    0.711111111111111
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "eg2-q4 (hybrid: BM25 + embedding)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    7,
+    10,
+    0.49825757575757573
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    8,
+    10,
+    0.6294444444444445
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "eg2-q6 (embedding only)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    9,
+    10,
+    0.6976190476190476
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    9,
+    10,
+    0.7277777777777776
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "eg2-q6 (hybrid: BM25 + embedding)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    7,
+    10,
+    0.5044934640522876
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    8,
+    10,
+    0.5877777777777777
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "nomic2-q4 (embedding only)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    9,
+    10,
+    0.7065591397849462
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    10,
+    10,
+    0.6499999999999999
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "nomic2-q4 (hybrid: BM25 + embedding)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    7,
+    10,
+    0.49842782665363305
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    8,
+    10,
+    0.5722222222222222
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "nomic2-q8 (embedding only)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    9,
+    10,
+    0.7075
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    10,
+    10,
+    0.7416666666666666
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  },
+  "nomic2-q8 (hybrid: BM25 + embedding)": {
+   "lexical-en": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-en": [
+    7,
+    10,
+    0.49936868686868685
+   ],
+   "lexical-ar": [
+    6,
+    6,
+    1.0
+   ],
+   "paraphrase-ar": [
+    8,
+    10,
+    0.5722222222222222
+   ],
+   "cross": [
+    4,
+    4,
+    1.0
+   ]
+  }
+ },
+ "perf": {
+  "eg2-q4": {
+   "file_mb": 167,
+   "dim": 768,
+   "load_s": 1.6,
+   "ram_mb_after_load": 495,
+   "ram_mb_after_embedding": 637,
+   "docs_per_s": 29.8,
+   "query_ms": 16.3
+  },
+  "eg2-q6": {
+   "file_mb": 237,
+   "dim": 768,
+   "load_s": 1.6,
+   "ram_mb_after_load": 501,
+   "ram_mb_after_embedding": 644,
+   "docs_per_s": 22.5,
+   "query_ms": 24.6
+  },
+  "nomic2-q4": {
+   "file_mb": 328,
+   "dim": 768,
+   "load_s": 1.4,
+   "ram_mb_after_load": 721,
+   "ram_mb_after_embedding": 864,
+   "docs_per_s": 31.6,
+   "query_ms": 14.7
+  },
+  "nomic2-q8": {
+   "file_mb": 488,
+   "dim": 768,
+   "load_s": 1.6,
+   "ram_mb_after_load": 776,
+   "ram_mb_after_embedding": 924,
+   "docs_per_s": 23.5,
+   "query_ms": 18.8
+  }
+ }
+}

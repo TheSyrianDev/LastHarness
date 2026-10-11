@@ -113,6 +113,10 @@ class BM25:
 MODELS = {
  "embeddinggemma-2":  ("embeddinggemma-2-Q8_0.gguf",  "task: search result | query: ", "title: none | text: "),
  "embeddinggemma-1":  ("embeddinggemma-300M-Q8_0.gguf","task: search result | query: ", "title: none | text: "),
+ "eg2-q4":  ("embeddinggemma-2-UD-Q4_K_XL.gguf", "task: search result | query: ", "title: none | text: "),
+ "eg2-q6":  ("embeddinggemma-2-UD-Q6_K_XL.gguf", "task: search result | query: ", "title: none | text: "),
+ "nomic2-q4": ("nomic-embed-text-v2-moe.Q4_K_M.gguf", "search_query: ", "search_document: "),
+ "nomic2-q8": ("nomic-embed-text-v2-moe.Q8_0.gguf", "search_query: ", "search_document: "),
  "bge-m3":            ("bge-m3-Q8_0.gguf",            "", ""),
  "multilingual-e5-small": ("e5b/multilingual-e5-small-Q8_0.gguf", "query: ", "passage: "),
 }

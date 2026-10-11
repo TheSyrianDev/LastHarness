@@ -54,3 +54,23 @@ EmbeddingGemma 2 text-only fits the spec's first choice: Apache-2.0, 295 MB, 768
 - The memory numbers come from a llama.cpp server with the CUDA libraries loaded. A built-in embedder (for example through a Rust crate) needs a separate RAM measurement when Milestone 2 starts.
 - EmbeddingGemma 2 was tested through the `ggml-org` GGUF, which is a text-only 295 MB file with a separate vision and audio projector file that was not downloaded.
 - Models are in `models/` and ignored by git.
+
+## Addendum: smaller quantizations and Nomic Embed Text v2 (same test, CPU only, GPU hidden)
+
+Same 230 texts and 34 questions. Embedding only, top-5 hits (paraphrase EN / paraphrase AR / cross-language):
+
+| Model and file | Size | RAM after load | One query | Paraphrase EN | Paraphrase AR | Cross |
+|---|---|---|---|---|---|---|
+| EmbeddingGemma 2 Q8 (earlier run) | 295 MB | 767 MB | 21 ms | 9/10 | 9/10 | 4/4 |
+| EmbeddingGemma 2 UD-Q6_K_XL | 237 MB | 501 MB | 25 ms | 9/10 | 9/10 | 4/4 |
+| EmbeddingGemma 2 UD-Q4_K_XL | 167 MB | 495 MB | 16 ms | 9/10 | 8/10 | 4/4 |
+| Nomic Embed Text v2 Q4_K_M | 328 MB | 721 MB | 15 ms | 9/10 | 10/10 | 4/4 |
+| Nomic Embed Text v2 Q8_0 | 488 MB | 776 MB | 19 ms | 9/10 | 10/10 | 4/4 |
+
+- The quantization barely matters. EmbeddingGemma 2 lost one Arabic paraphrase at Q4 and nothing at Q6.
+- Nomic v2 matched or beat EmbeddingGemma 2 by one Arabic question, at a larger size and more RAM. One question out of ten is inside the noise of this test.
+- The hybrid (BM25 plus embedding) was again worse than embedding only on every model. Same note as before: the fusion needs tuning.
+- Not run: Needle 3. It needs the Cactus engine and a Python package, not llama.cpp, and its card lists no languages. Installing an outside package for a long shot was not worth it here.
+- Same limits as before: tiny test set, Arabic written by the model, native reader needed.
+
+Reading: nothing here forces a change. EmbeddingGemma 2 at Q6 (237 MB) or Q4 (167 MB) is the small option; Nomic v2 Q4 is a close alternative with a better Arabic score. This is a recommendation, not a decision.
