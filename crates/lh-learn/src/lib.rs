@@ -10,7 +10,7 @@ mod proposals;
 mod rules;
 mod signals;
 mod skills;
-mod yaml;
+pub mod yaml;
 mod style;
 
 pub use assemble::{compose_system, render_learned, Learned};
@@ -48,7 +48,8 @@ impl Learn {
     }
 }
 
-pub(crate) fn new_id(prefix: &str) -> String {
+/// A short random id with a prefix, such as `r_1a2b3c4d`.
+pub fn new_id(prefix: &str) -> String {
     let mut b = [0u8; 4];
     getrandom::fill(&mut b).expect("the OS random source is unavailable");
     format!("{prefix}_{}", b.iter().map(|x| format!("{x:02x}")).collect::<String>())

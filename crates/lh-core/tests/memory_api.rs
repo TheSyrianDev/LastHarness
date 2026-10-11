@@ -84,6 +84,7 @@ fn start_at(dir: &std::path::Path, replies: Vec<Response>, trust: Trust, project
     let model = Script { replies: Mutex::new(r), seen: seen.clone() };
     let spend = lh_spend::SpendMeter::new(store.clone(), lh_spend::Config::default(), "test", true);
     let settings = Settings {
+        provider_name: None,
         learn: None,
         maintain_when_idle: false,
         memory: Some(MemoryRuntime { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), trust, cfg: RecallConfig::default() }),
@@ -124,7 +125,7 @@ async fn about_you_and_matching_notes_reach_the_model_once_and_what_was_sent_is_
 
     let seen = s.seen.lock().unwrap().clone();
     let sys = seen[0].messages[0].content.clone().unwrap();
-    assert!(sys.starts_with("Be helpful.") && sys.contains("What you know about the user") && sys.contains("- Prefers plain words"), "{sys}");
+    assert!(sys.starts_with("You are m. You work in LastHarness") && sys.contains("Be helpful.") && sys.contains("What you know about the user") && sys.contains("- Prefers plain words"), "{sys}");
     let first_user = seen[0].messages.last().unwrap().content.clone().unwrap();
     assert!(first_user.contains("Flight to Berlin on 14 June") && first_user.ends_with("tell me about Berlin"), "{first_user}");
     let second_user = seen[1].messages.last().unwrap().content.clone().unwrap();
@@ -174,7 +175,7 @@ async fn incognito_sessions_neither_read_nor_write_memory() {
     let seen = s.seen.lock().unwrap()[0].clone();
     let all = format!("{:?}", seen.messages);
     assert!(!all.contains("What you know") && !all.contains("Flight to Berlin"), "{all}");
-    assert_eq!(seen.messages.len(), 1);
+    assert_eq!(seen.messages.len(), 2, "the base prompt and the user's message, nothing from memory");
     assert!(s.mem.search_conversations("Berlin", 5).unwrap().is_empty(), "nothing stored");
     assert!(s.mem.messages(&id).unwrap().is_empty());
     assert!(s.json(s.get("/v1/memory/sent")).await["sent"].as_array().unwrap().is_empty());

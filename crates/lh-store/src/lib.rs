@@ -240,6 +240,24 @@ const MIGRATIONS: &[&str] = &[r#"
 "#, r#"
     -- remembers that a group of similar signals was already put to the model, so it is not asked again
     alter table signals add column asked integer not null default 0;
+"#, r#"
+    -- Model types: a role asks for a kind of model (frontier, mid-tier, fastest, or one the user made)
+    -- and the type says which model that means today. The three stock types start without a model.
+    create table model_types(
+      name text primary key,
+      model text,                          -- null until the user (or onboarding) assigns one
+      fallbacks text not null default '[]',-- JSON list of model names, tried in order when `model` is unavailable
+      stock integer not null default 0,
+      position integer not null default 0
+    );
+    insert into model_types(name, stock, position) values ('frontier', 1, 1), ('mid-tier', 1, 2), ('fastest', 1, 3);
+
+    -- Plain settings the user can change: parallelism, autonomy level, what to do when a model is missing.
+    create table settings(
+      key text primary key,
+      value text not null,
+      updated integer not null default 0
+    );
 "#];
 
 pub struct Store {

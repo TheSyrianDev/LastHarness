@@ -87,6 +87,7 @@ fn start(replies: Vec<Response>, trust: Trust, mode: LearnMode) -> Server {
     r.reverse();
     let seen: Arc<Mutex<Vec<ChatRequest>>> = Default::default();
     let settings = Settings {
+        provider_name: None,
         learn: Some(LearnRuntime { learn: learn.clone(), trust, mode, threshold: 3, skill_min_calls: 3 }),
         maintain_when_idle: false,
         memory: None,
@@ -124,7 +125,9 @@ async fn rules_style_and_skills_follow_the_users_own_prompt_and_cloud_models_get
         let id = s.session(json!({"system": "You are the user's assistant."})).await;
         s.turn(&id, "hello").await;
         let sys = s.systems()[0].clone();
-        assert!(sys.starts_with("You are the user's assistant."), "the user's own prompt is first and untouched: {sys}");
+        assert!(sys.starts_with("You are m. You work in LastHarness"), "the built-in base prompt is first: {sys}");
+        let at = |t: &str| sys.find(t).unwrap_or_else(|| panic!("{t:?} missing in {sys}"));
+        assert!(at("Sensitive notes never go to a cloud model.") < at("You are the user's assistant.") && at("You are the user's assistant.") < at("Rules the user has set"), "base, then the user's own words untouched, then what was learned: {sys}");
         assert!(sys.contains("- Always add links after research.") && sys.contains("How to talk to this user:\nTerse. Plain words.") && sys.contains("- release-notes: Write release notes."), "{sys}");
         assert_eq!(sys.contains("Dr. Amal"), !cloud, "a sensitive rule reaches only a local model ({trust:?})");
         let tools: Vec<String> = s.seen.lock().unwrap()[0].tools.iter().map(|t| t.name.clone()).collect();

@@ -12,7 +12,23 @@ use tokio::sync::{mpsc, oneshot};
 /// How long a question waits for a human. No answer counts as no.
 pub const ASK_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// What the system message is made of. It is assembled on the first turn, when the model is loaded and
+/// its name and size can be read, and again only if the user switches model.
+pub struct SystemParts {
+    pub kind: lh_tools::SessionKind,
+    pub folder: Option<std::path::PathBuf>,
+    pub permissions: lh_tools::Mode,
+    pub sudo_enabled: bool,
+    pub guidelines: Vec<String>,
+    pub client_block: String,
+    pub learned_block: String,
+    pub about: String,
+}
+
 pub struct Session {
+    pub parts: SystemParts,
+    /// True until the system message has been built for the current model.
+    pub identity_stale: AtomicBool,
     pub req: tokio::sync::Mutex<ChatRequest>,
     pub perms: Permissions,
     pub tools: ToolSet,
@@ -38,8 +54,8 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet) -> Self {
-        Self { req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
+    pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet, parts: SystemParts) -> Self {
+        Self { parts, identity_stale: AtomicBool::new(true), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1) }
     }
 
     pub fn try_start(&self) -> bool {

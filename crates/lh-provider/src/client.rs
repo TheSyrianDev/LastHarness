@@ -113,11 +113,29 @@ impl Provider {
                 break;
             }
         }
+        // The parameter count comes from the model list of the server that runs the model.
+        if !found.source.is_empty() {
+            let list = if found.source == "llama-swap" { format!("{root}/upstream/{model}/v1/models") } else { format!("{root}/v1/models") };
+            if let Ok(r) = self.auth(self.http().get(list).timeout(Duration::from_secs(60))).send().await {
+                if let Ok(v) = r.json::<Value>().await {
+                    found.parameters = v["data"][0]["meta"]["n_params"].as_u64().filter(|n| *n > 0);
+                }
+            }
+        }
         // Only a real answer is remembered; an unknown result is tried again next time.
         if !found.source.is_empty() {
             self.probed.lock().unwrap().insert(model.to_string(), found.clone());
         }
         found
+    }
+
+    /// The name of the service behind the endpoint, if it says (llama-swap reports itself as the owner
+    /// of its models). `None` when it does not; nothing is guessed from the address.
+    pub async fn service_name(&self) -> Option<String> {
+        let v = self.get("/models").await.ok()?;
+        let owner = v["data"][0]["owned_by"].as_str()?.trim();
+        // generic owners say nothing about the service
+        (!owner.is_empty() && !matches!(owner, "organization" | "organization-owner" | "system" | "user")).then(|| owner.to_string())
     }
 
     /// One request, one reply, no streaming.

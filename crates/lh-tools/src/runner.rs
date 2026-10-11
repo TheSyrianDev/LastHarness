@@ -2,11 +2,16 @@ use lh_provider::{Capabilities, ChatRequest, Error, Event, FinishReason, Generat
 use serde_json::Value;
 
 use crate::tools::Undo;
-use crate::{Answer, AskRequest, Asker, Decision, Permissions, Tool, ToolSet};
+use crate::{Action, Answer, AskRequest, Asker, Decision, Permissions, Tool, ToolSet};
 
 /// Anything that can answer a chat request. `Provider` is the real one; tests use a script.
 pub trait Model: Send + Sync {
     fn complete(&self, req: &ChatRequest, on_event: &mut (dyn FnMut(Event) + Send)) -> impl std::future::Future<Output = Result<Response, Error>> + Send;
+
+    /// What service this endpoint says it is (for the first line of the prompt), if it says.
+    fn provider_name(&self) -> impl std::future::Future<Output = Option<String>> + Send {
+        async { None }
+    }
 
     /// Make images. Endpoints that cannot say so with an error.
     fn generate_images(&self, _model: &str, _prompt: &str, _size: Option<&str>, _n: u32) -> impl std::future::Future<Output = Result<Vec<GeneratedImage>, Error>> + Send {
@@ -38,6 +43,10 @@ impl Model for Provider {
 
     async fn capabilities(&self, model: &str) -> Capabilities {
         Provider::capabilities(self, model).await
+    }
+
+    async fn provider_name(&self) -> Option<String> {
+        Provider::service_name(self).await
     }
 
     async fn generate_images(&self, model: &str, prompt: &str, size: Option<&str>, n: u32) -> Result<Vec<GeneratedImage>, Error> {
@@ -194,23 +203,31 @@ async fn execute<M: Model, T: Meter, A: Asker>(
     emit: &mut (dyn FnMut(TurnEvent) + Send),
 ) -> (String, Option<Undo>) {
     let fail = |m: String| (m, None);
-    let Some(tool) = tools.get(name) else { return fail(format!("Error: the tool `{name}` is not available.")) };
+    let builtin = tools.get(name);
+    let extra = if builtin.is_none() { tools.extra(name) } else { None };
+    if builtin.is_none() && extra.is_none() {
+        return fail(format!("Error: the tool `{name}` is not available."));
+    }
     let args = match args {
         Ok(v) => v,
         Err(e) => return fail(format!("Error: the arguments are not valid JSON ({e}).")),
     };
-    let action = match tool.action(&args, perms.root()) {
-        Ok(a) => a,
-        Err(e) => return fail(format!("Error: {e}")),
+    let action = match (builtin, extra) {
+        (Some(tool), _) => match tool.action(&args, perms.root()) {
+            Ok(a) => a,
+            Err(e) => return fail(format!("Error: {e}")),
+        },
+        (None, Some(x)) => Action::Extra { name: name.to_string(), what: x.describe(&args), risk: x.risk() },
+        (None, None) => unreachable!(),
     };
-    let mut decision = |outcome: Outcome| emit(TurnEvent::Decision { id: id.into(), tool: tool.name().into(), action: format!("{action:?}"), outcome });
+    let mut decision = |outcome: Outcome| emit(TurnEvent::Decision { id: id.into(), tool: name.into(), action: format!("{action:?}"), outcome });
     match perms.decide(&action) {
         Decision::Deny(why) => {
             decision(Outcome::Denied(why.clone()));
             return fail(format!("Denied: {why}"));
         }
         Decision::Ask { reason, session_grant } => {
-            let req = AskRequest { tool: tool.name(), what: format!("{action:?}"), reason, worker: &opts.worker };
+            let req = AskRequest { tool: name, what: format!("{action:?}"), reason, worker: &opts.worker };
             match asker.ask(&req).await {
                 Answer::No => {
                     decision(Outcome::Declined);
@@ -226,6 +243,13 @@ async fn execute<M: Model, T: Meter, A: Asker>(
         }
         Decision::Allow => decision(Outcome::Allowed),
     }
+    if let Some(x) = extra {
+        return match x.run(args).await {
+            Ok(text) => (text, None),
+            Err(e) => fail(format!("Error: {e}")),
+        };
+    }
+    let tool = builtin.expect("checked above");
     if tool == Tool::GenerateImage {
         return generate_image(model, meter, asker, opts, tools, perms.root(), &args).await;
     }

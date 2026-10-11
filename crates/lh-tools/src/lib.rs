@@ -1,6 +1,7 @@
 //! Tools an agent can call, the permission rules that guard them, and the loop that runs a turn.
 //! Tools are deny-by-default: a role only gets the tools it is given.
 
+mod base_prompt;
 mod command;
 mod compact;
 mod memory_tools;
@@ -10,10 +11,11 @@ mod tools;
 mod web;
 
 
+pub use base_prompt::{base_prompt, display_name, estimate_tokens as estimate_text_tokens, format_params, identity_line, today, ymd, BaseContext, Identity, SessionKind, CAP_TOKENS, TARGET_TOKENS};
 pub use command::{classify, Class};
 pub use memory_tools::MemoryHandle;
-pub use compact::{compact_if_needed, estimate_tokens, CompactError, CompactOptions, Compacted};
+pub use compact::{compact_if_needed, SUMMARY_MARKER, estimate_tokens, CompactError, CompactOptions, Compacted};
 pub use perm::{Action, Answer, AskRequest, Asker, Decision, Mode, Permissions};
 pub use runner::{run_turn, Meter, MeterVerdict, Model, NoMeter, Outcome, TurnEnd, TurnEvent, TurnOptions};
 pub use web::{html_to_text, is_public, WebConfig};
-pub use tools::{default_tools, Tool, ToolError, ToolOutput, ToolSet, Undo};
+pub use tools::{default_tools, BoxFut, ExtraTool, Risk, Tool, ToolError, ToolOutput, ToolSet, Undo};

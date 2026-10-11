@@ -7,6 +7,7 @@
 //! DELETE /v1/sessions/{id}
 //! POST   /v1/sessions/{id}/turns            {text}  -> SSE: reasoning, text, tool_start, ask, tool_result,
 //!                                                          usage, finish, done | step_limit | refused | error
+//! POST   /v1/sessions/{id}/model            {model}  switch model (the prompt is rebuilt; a cold read follows)
 //! POST   /v1/sessions/{id}/answers/{ask}    {answer: "yes"|"no"}
 //! POST   /v1/sessions/{id}/cancel
 //! GET    /v1/activity?limit=&kind=          -> {entries: [...]}  newest first
@@ -52,6 +53,9 @@ use tokio::sync::mpsc;
 use session::{ApiAsker, Session};
 
 pub struct Settings {
+    /// Name of the service behind the endpoint for the first line of the prompt. When unset, what the
+    /// server reports is used, and if it reports nothing the part is left out.
+    pub provider_name: Option<String>,
     /// Learning: rules, style, skills. `None` switches it off.
     pub learn: Option<LearnRuntime>,
     /// Run the memory maintenance pass (it only makes suggestions) when the core goes idle.
@@ -135,6 +139,7 @@ pub fn router<M: Model + 'static>(state: Arc<AppState<M>>, token: String, port: 
         .route("/v1/sessions", post(create_session::<M>))
         .route("/v1/sessions/{id}", get(get_session::<M>).delete(delete_session::<M>))
         .route("/v1/sessions/{id}/turns", post(start_turn::<M>))
+        .route("/v1/sessions/{id}/model", post(switch_model::<M>))
         .route("/v1/sessions/{id}/answers/{ask}", post(answer::<M>))
         .route("/v1/sessions/{id}/cancel", post(cancel::<M>))
         .route("/v1/status", get(status::<M>))
@@ -268,22 +273,79 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
             let _ = st.settings.store.log("learned_applied", &id, "assistant", &used);
         }
     }
-    // The system message: the user's own text first and untouched, then what was learned, then memory.
-    let base = match req.messages.first() {
+    // The system message is put together on the first turn (see `build_system`): the built-in base prompt
+    // first, then the client's own text untouched, then what was learned, then memory.
+    let client_block = match req.messages.first() {
         Some(m) if m.role == lh_provider::Role::System => {
-            let t = m.content.clone();
+            let t = m.content.clone().unwrap_or_default();
             req.messages.remove(0);
             t
         }
-        _ => None,
+        _ => String::new(),
     };
-    if let Some(sys) = lh_learn::compose_system(base.as_deref(), &[&learned_block, &about]) {
-        req.messages.insert(0, Message::system(sys));
-    }
-    let mut session = Session::new(req, perms, tools);
+    let kind = match (&b.project_dir, tools_on) {
+        (Some(_), _) => lh_tools::SessionKind::Project,
+        (None, true) => lh_tools::SessionKind::Assistant,
+        (None, false) => lh_tools::SessionKind::Chat,
+    };
+    let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), permissions: perms.mode, sudo_enabled: perms.sudo_enabled, guidelines: tools.guidelines(), client_block, learned_block, about };
+    let mut session = Session::new(req, perms, tools, parts);
     (session.incognito, session.dest, session.conv, session.project) = (b.incognito, dest, conv, project);
     st.sessions.lock().unwrap().insert(id.clone(), Arc::new(session));
     Ok(Json(json!({"id": id, "incognito": b.incognito})))
+}
+
+/// Build (or rebuild) the system message for the model this session uses. Names the model and the
+/// service from what they report, and leaves out what is not reported.
+async fn build_system<M: Model + 'static>(st: &AppState<M>, s: &Session, messages: &mut Vec<Message>, model_id: &str) {
+    let caps = st.model.capabilities(model_id).await;
+    let provider = match &st.settings.provider_name {
+        Some(p) => Some(p.clone()),
+        None => st.model.provider_name().await,
+    };
+    let p = &s.parts;
+    let base = lh_tools::base_prompt(&lh_tools::BaseContext {
+        identity: lh_tools::Identity { model: Some(model_id.to_string()), parameters: caps.parameters, provider },
+        kind: p.kind,
+        folder: p.folder.as_deref(),
+        permissions: p.permissions,
+        sudo_enabled: p.sudo_enabled,
+        date: &lh_tools::today(),
+        guidelines: &p.guidelines,
+    });
+    let Some(mut sys) = lh_learn::compose_system(Some(&base), &[&p.client_block, &p.learned_block, &p.about]) else { return };
+    match messages.first_mut().filter(|m| m.role == lh_provider::Role::System) {
+        Some(old) => {
+            // a summary written by compaction belongs to the conversation, not to the base; keep it
+            if let Some(i) = old.content.as_deref().and_then(|c| c.find(lh_tools::SUMMARY_MARKER)) {
+                sys.push_str(&old.content.as_deref().unwrap_or("")[i..]);
+            }
+            old.content = Some(sys);
+        }
+        None => messages.insert(0, Message::system(sys)),
+    }
+}
+
+#[derive(Deserialize)]
+struct SwitchModel {
+    model: String,
+}
+
+/// The user switches model. The first line of the prompt names the model, so it is rebuilt on the next
+/// turn, and because the start of the prompt changes the server has to read the whole conversation again.
+async fn switch_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>, Json(b): Json<SwitchModel>) -> Result<StatusCode, ApiError> {
+    let s = st.session(&id)?;
+    if !s.try_start() {
+        return Err(ApiError(StatusCode::CONFLICT, "a turn is running in this session".into()));
+    }
+    let mut req = s.req.lock().await;
+    let from = std::mem::replace(&mut req.model, b.model.clone());
+    drop(req);
+    s.known_tokens.store(0, Ordering::SeqCst);
+    s.identity_stale.store(true, Ordering::SeqCst);
+    s.finish_turn();
+    let _ = st.settings.store.log("model_switched", &id, "user", &json!({"from": from, "to": b.model, "note": "the first line of the prompt changes, so the server reads the whole conversation again (a cold prefix) on the next turn"}));
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn session_tools(s: &Settings, tools_on: bool) -> lh_tools::ToolSet {
@@ -440,6 +502,11 @@ async fn start_turn<M: Model + 'static>(
             // Work on a copy; the session history only changes if the whole turn succeeds, so a
             // cancelled turn never leaves a tool call without its result.
             let mut work = s.req.lock().await.clone();
+            let model_id = work.model.clone();
+            let stale = s.identity_stale.load(Ordering::SeqCst);
+            if stale {
+                build_system(&st2, &s, &mut work.messages, &model_id).await;
+            }
             let mut user_text = b.text.clone();
             if let (Some(rt), Some(dest), false) = (&st2.settings.memory, &s.dest, s.incognito) {
                 // notes that match this message, from the keyword search and, if set up, the embedding search
@@ -491,6 +558,9 @@ async fn start_turn<M: Model + 'static>(
                         s.known_tokens.store(u.prompt_tokens + u.completion_tokens, Ordering::SeqCst);
                     }
                     *s.req.lock().await = work;
+                    if stale {
+                        s.identity_stale.store(false, Ordering::SeqCst);
+                    }
                     if let (Some(lr), false) = (&st2.settings.learn, s.incognito) {
                         let _ = lr.learn.scan_messages(&id, s.project.as_deref(), std::slice::from_ref(&b.text));
                     }
@@ -505,6 +575,9 @@ async fn start_turn<M: Model + 'static>(
                 Ok(TurnEnd::Refused(why)) => ("refused".into(), json!({"type":"refused","message":why})),
                 Ok(TurnEnd::StepLimit) => {
                     *s.req.lock().await = work;
+                    if stale {
+                        s.identity_stale.store(false, Ordering::SeqCst);
+                    }
                     ("step_limit".into(), json!({"type":"step_limit"}))
                 }
                 Err(e) => ("error".into(), json!({"type":"error","message":e.explain(),"detail":e.to_string(),"retryable":e.is_retryable()})),

@@ -23,6 +23,7 @@ async fn core() -> (tempfile::TempDir, Arc<Learn>, Client) {
     let store = Arc::new(Store::open(&d.path().join("lh.db")).unwrap());
     let learn = Arc::new(Learn::new(store.clone()).with_skills_dir(d.path().join("skills")));
     let settings = Settings {
+        provider_name: None,
         learn: Some(LearnRuntime { learn: learn.clone(), trust: Trust::Local, mode: LearnMode::Propose, threshold: 3, skill_min_calls: 5 }),
         maintain_when_idle: false,
         memory: None,

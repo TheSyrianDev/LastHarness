@@ -42,7 +42,8 @@ pub enum CompactError {
     Model(#[from] Error),
 }
 
-const MARKER: &str = "\n\n[Summary of the earlier conversation]\n";
+/// Where a summary starts inside the system message.
+pub const SUMMARY_MARKER: &str = "\n\n[Summary of the earlier conversation]\n";
 const ASK: &str = "Pause the task. Write a summary of this conversation so far, for yourself to continue from. Keep every fact, decision, file name, \
 command result and open question that matters for the next steps, and say what was being done last. Plain text, no tool calls, under 400 words.";
 
@@ -91,10 +92,10 @@ pub async fn compact_if_needed<M: Model, T: Meter>(
     }
 
     let mut system: String = req.messages[..lead].iter().filter_map(|m| m.content.as_deref()).collect::<Vec<_>>().join("\n\n");
-    if let Some(i) = system.find(MARKER) {
+    if let Some(i) = system.find(SUMMARY_MARKER) {
         system.truncate(i); // the new summary already includes the old one
     }
-    system.push_str(MARKER);
+    system.push_str(SUMMARY_MARKER);
     system.push_str(summary);
     let summarized = cut - lead;
     let mut messages = vec![Message::system(system)];

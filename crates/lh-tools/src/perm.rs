@@ -14,6 +14,8 @@ pub enum Action {
     Fetch(String),
     /// Reads (`write: false`) or changes (`write: true`) the user's memory. `what` is shown in the prompt.
     Memory { write: bool, what: String },
+    /// A tool defined outside this crate.
+    Extra { name: String, what: String, risk: crate::Risk },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -137,6 +139,9 @@ impl Permissions {
             Action::Fetch(_) => ask("uses the network"),
             Action::Memory { write: false, .. } => Decision::Allow,
             Action::Memory { write: true, .. } => ask("changes what is remembered about you"),
+            Action::Extra { risk: crate::Risk::ReadOnly, .. } => Decision::Allow,
+            Action::Extra { risk: crate::Risk::Writes, .. } => write_once(self, "this tool changes things"),
+            Action::Extra { risk: crate::Risk::Asks, name, .. } => ask(&format!("{name} reaches outside the project")),
             Action::Run(cmd) => self.decide_command(cmd, &write_once),
         }
     }

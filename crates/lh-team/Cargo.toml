@@ -1,0 +1,20 @@
+[package]
+name = "lh-team"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lh-store = { path = "../lh-store" }
+lh-learn = { path = "../lh-learn" }
+lh-memory = { path = "../lh-memory" }
+lh-provider = { path = "../lh-provider" }
+lh-tools = { path = "../lh-tools" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
+futures-util.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
