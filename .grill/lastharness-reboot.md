@@ -188,3 +188,9 @@ The user chose TOML for theme files: plain text, editable and shareable. A theme
 ## 2026-10-11: Built-in themes
 
 The user chose four built-in looks, each with a light and a dark version: Calm (plain default), Matte (flat, solid colours), Glass (translucent with blur, like Liquid Glass and Glassmorphism) and Frutiger Aero (glossy, bright, soft gradients). Glass depends on GPUI blur, which is not tested yet.
+
+## 2026-10-11: Main window layout
+
+The user chose three parts: a slim chat list on the left, the chat in the centre, and a right panel for departments, memory and settings. Every part must be expandable and hideable. A department view can be widened, or opened as its own page from the sidebar, and the chat keeps running while it is open. Things the agent opens (web views, artifacts and similar) show in the side panel and can be expanded or popped out as a separate window.
+
+Open: the user rejected web-view shells for the app itself, so how agent-opened web content and artifacts are drawn inside a GPUI app is not decided.
