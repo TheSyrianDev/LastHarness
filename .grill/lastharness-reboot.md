@@ -170,3 +170,7 @@ A harness for tech-literate power users (Linux users, Office-suite power users, 
 ## 2026-10-11: GUI toolkit test approved
 
 The user approved the toolkit test week (Slint, egui, iced, GPUI; Arabic text, screen reader, memory, size, Wayland, tray, mobile reuse). The build session runs it as a throwaway spike under `spikes/gui-toolkits/`. The look and branding are designed by the user with the planning session in the meantime. Toolkit choice is not decided; it waits for the results.
+
+## 2026-10-11: GUI feel and themes
+
+The user agreed the app should feel calm and quiet by default: lots of space, one accent colour, chat as the main thing, departments and memory in a hideable side panel. The user also wants full theme support: colours, backgrounds, button animations, and whole looks such as Liquid Glass, Glassmorphism, Frutiger Aero and Matte. The toolkit test now also checks blur, translucency, gradients, animation, runtime theme files and background media. Whether themes are loaded from data files is open until the test results are in.
