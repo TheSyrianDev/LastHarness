@@ -15,11 +15,12 @@ use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::{mix, Look, PanelExt};
 
-actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk]);
+actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette]);
 
 /// The keys for every action; also how the app is driven without a mouse.
 pub fn bind_keys(cx: &mut gpui::App) {
     cx.bind_keys([
+        KeyBinding::new("ctrl-k", OpenPalette, None),
         KeyBinding::new("ctrl-n", NewChat, None),
         KeyBinding::new("ctrl-b", ToggleSidebar, None),
         KeyBinding::new("ctrl-shift-d", ShowDepartments, None),
@@ -319,6 +320,88 @@ impl App {
         }
     }
 
+    /// The command palette over everything else: a box to type in and the rows that match.
+    fn palette_view(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let pal = self.palette.clone()?;
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let (entries, idx) = self.palette_rows();
+        let range = pal.visible(idx.len(), 9);
+        let rows: Vec<AnyElement> = range
+            .map(|pos| {
+                let e = entries[idx[pos]].clone();
+                let on = pos == pal.selected;
+                let command = e.command.clone();
+                div()
+                    .id(SharedString::from(format!("palette-row-{pos}")))
+                    .role(Role::ListBoxOption)
+                    .aria_label(format!("{}: {}", e.group, e.title))
+                    .aria_selected(on)
+                    .flex()
+                    .when(rtl, |d| d.flex_row_reverse())
+                    .items_center()
+                    .gap_3()
+                    .px_2()
+                    .py_1p5()
+                    .rounded(p.inner)
+                    .cursor_pointer()
+                    .bg(if on { p.accent.opacity(0.22) } else { hsla(0., 0., 0., 0.) })
+                    .hover(|s| s.bg(p.button))
+                    .on_click(cx.listener(move |a, _, w, cx| a.run_command(command.clone(), w, cx)))
+                    .child(div().w(px(76.)).text_xs().text_color(p.muted).child(e.group))
+                    .child(div().flex_1().overflow_hidden().text_color(p.text).when(rtl, |d| d.text_right()).child(e.title))
+                    .child(div().text_xs().text_color(p.muted).child(e.hint))
+                    .into_any_element()
+            })
+            .collect();
+        let none = idx.is_empty().then(|| div().px_2().py_1p5().text_sm().text_color(p.muted).child(if rtl { "لا شيء يطابق ما كتبت." } else { "Nothing matches what you typed." }));
+        Some(
+            div()
+                .id("palette")
+                .role(Role::Dialog)
+                .aria_label(if rtl { "لوحة الأوامر" } else { "Command palette" })
+                .aria_keyshortcuts("Control+K")
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .flex()
+                .justify_center()
+                .items_start()
+                .pt(px(90.))
+                .bg(hsla(0., 0., 0., 0.28))
+                .on_mouse_down(MouseButton::Left, cx.listener(|a, _, w, cx| a.close_palette(w, cx)))
+                .capture_key_down(cx.listener(|a, ev: &KeyDownEvent, w, cx| {
+                    let ks = &ev.keystroke;
+                    let ctrl = ks.modifiers.control;
+                    match ks.key.as_str() {
+                        "down" => a.palette_step(true),
+                        "up" => a.palette_step(false),
+                        "n" if ctrl => a.palette_step(true),
+                        "p" if ctrl => a.palette_step(false),
+                        "escape" => a.close_palette(w, cx),
+                        _ => return,
+                    }
+                    cx.stop_propagation();
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .w(px(560.))
+                        .max_w_full()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .p_2()
+                        .panel(&p, true)
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(Input::new(&self.palette_input))
+                        .child(div().id("palette-list").role(Role::ListBox).aria_label(if rtl { "الأوامر" } else { "Commands" }).flex().flex_col().gap_0p5().children(rows).children(none)),
+                )
+                .into_any_element(),
+        )
+    }
+
     /// The model's words as plain text in the column, no bubble.
     fn answer_view(&self, key: u64, i: usize, text: &str, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
@@ -540,6 +623,7 @@ impl Render for App {
                 a.set_direction(n);
                 cx.notify();
             }))
+            .on_action(cx.listener(|a, _: &OpenPalette, w, cx| a.toggle_palette(w, cx)))
             .on_action(cx.listener(|a, _: &StopTurn, _, cx| a.stop(cx)))
             .on_action(cx.listener(|a, _: &AllowAsk, _, cx| a.answer_first(true, cx)))
             .on_action(cx.listener(|a, _: &DenyAsk, _, cx| a.answer_first(false, cx)))
@@ -564,9 +648,11 @@ impl Render for App {
                     a.pop_out(c, cx);
                 }
             }))
-            .on_action(cx.listener(|a, _: &Dismiss, _, cx| {
-                // Escape closes whatever is open on top: a menu, then the question about continuing a chat
-                if a.model_menu {
+            .on_action(cx.listener(|a, _: &Dismiss, w, cx| {
+                // Escape closes whatever is open on top: the palette, a menu, then the question about continuing a chat
+                if a.palette.is_some() {
+                    a.close_palette(w, cx);
+                } else if a.model_menu {
                     a.model_menu = false;
                 } else if a.pending.is_some() {
                     a.pending = None;
@@ -589,10 +675,12 @@ impl Render for App {
             }));
         // the rail, the chat list, the chat under its title bar, and the side panel; right to left mirrors the order
         let main = div().relative().flex().flex_col().flex_1().h_full().overflow_hidden().child(top).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle)).children(menus);
+        let palette = self.palette_view(cx);
         root.children(p.image_layer())
             .children(p.motes_layer(self.mote_clock))
             .child(
                 div().size_full().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().p_2().overflow_hidden().child(rail).children(left).child(main).children(right),
             )
+            .children(palette)
     }
 }

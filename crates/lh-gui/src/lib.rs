@@ -8,6 +8,7 @@ pub mod content;
 pub mod layout;
 pub mod model;
 pub mod models;
+pub mod palette;
 pub mod permissions;
 pub mod prefs;
 pub mod rtl;

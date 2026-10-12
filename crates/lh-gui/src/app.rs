@@ -126,6 +126,9 @@ pub struct App {
     pub pending_input: Option<String>,
     /// Questions the person answered "Always for this chat" to.
     pub always: lh_gui::permissions::Always,
+    /// The command palette, while it is open.
+    pub palette: Option<lh_gui::palette::Palette>,
+    pub palette_input: Entity<InputState>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -229,6 +232,19 @@ impl App {
             }
         })
         .detach();
+        let palette_input = cx.new(|cx| InputState::new(window, cx).placeholder("Type a command, a chat, a model or a look"));
+        cx.subscribe_in(&palette_input, window, |this: &mut App, input, ev: &InputEvent, window, cx| match ev {
+            InputEvent::Change => {
+                let q = input.read(cx).value().to_string();
+                if let Some(p) = this.palette.as_mut() {
+                    p.set_query(&q);
+                }
+                cx.notify();
+            }
+            InputEvent::PressEnter { .. } => this.run_selected(window, cx),
+            _ => {}
+        })
+        .detach();
         let locale = rtl::desktop_locale();
         let is_rtl = prefs.direction.is_rtl(&locale);
         let mut chats = Chats::default();
@@ -271,6 +287,8 @@ impl App {
             tree_label: cx.new(|cx| InputState::new(window, cx).placeholder("A name for this line")),
             pending_input: None,
             always: Default::default(),
+            palette: None,
+            palette_input,
         }
     }
 
@@ -493,6 +511,7 @@ impl App {
     pub fn asking(&self, cx: &Context<Self>) -> bool {
         self.page() == &Page::Chat
             && self.chats.current().is_some_and(|c| !c.asks.is_empty())
+            && self.palette.is_none()
             && self.composer.read(cx).value().is_empty()
             && self.tree.prompt != lh_gui::treeview::Prompt::Label
     }
@@ -816,6 +835,85 @@ impl App {
             self.refresh_tree();
         }
         self.persist();
+        cx.notify();
+    }
+
+    // ---- the command palette ------------------------------------------------------------------
+
+    /// Everything the palette lists, from what the app knows now.
+    pub fn palette_snapshot(&self) -> lh_gui::palette::Snapshot {
+        lh_gui::palette::Snapshot {
+            rtl: self.rtl,
+            chats: self.chats.list.iter().map(|c| (c.key, c.title.clone())).collect(),
+            current_chat: self.chats.current().map(|c| c.key),
+            models: self.models.names().to_vec(),
+            current_model: self.chats.current().map(|c| c.model.clone()).unwrap_or_default(),
+            looks: self.themes.themes.iter().map(|t| t.label()).collect(),
+            current_look: self.active_theme,
+            direction: self.prefs.direction,
+        }
+    }
+
+    /// The rows for what is typed now: every entry, and the indexes of those that match, best first.
+    pub fn palette_rows(&self) -> (Vec<lh_gui::palette::Entry>, Vec<usize>) {
+        let entries = lh_gui::palette::entries(&self.palette_snapshot());
+        let query = self.palette.as_ref().map(|p| p.query.clone()).unwrap_or_default();
+        let idx = lh_gui::palette::filter(&entries, &query);
+        (entries, idx)
+    }
+
+    pub fn toggle_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette.is_some() {
+            return self.close_palette(window, cx);
+        }
+        self.palette = Some(Default::default());
+        self.model_menu = false;
+        self.palette_input.update(cx, |s, cx| {
+            s.set_value("", window, cx);
+            s.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    pub fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette.take().is_some() {
+            self.composer.update(cx, |s, cx| s.focus(window, cx));
+            cx.notify();
+        }
+    }
+
+    /// Move the chosen row (the Up and Down keys).
+    pub fn palette_step(&mut self, down: bool) {
+        let len = self.palette_rows().1.len();
+        if let Some(p) = self.palette.as_mut() {
+            p.step(down, len);
+        }
+    }
+
+    pub fn run_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (entries, idx) = self.palette_rows();
+        let Some(selected) = self.palette.as_ref().map(|p| p.selected) else { return };
+        if let Some(e) = idx.get(selected).map(|&i| entries[i].clone()) {
+            self.run_command(e.command, window, cx);
+        }
+    }
+
+    pub fn run_command(&mut self, command: lh_gui::palette::Command, window: &mut Window, cx: &mut Context<Self>) {
+        use lh_gui::palette::Command;
+        self.close_palette(window, cx);
+        match command {
+            Command::NewChat => self.new_chat(cx),
+            Command::Settings => self.show_in_dock(Panel::Settings, cx),
+            Command::ToggleChatList => {
+                self.layout_mut().toggle_left();
+                self.persist();
+            }
+            Command::OpenTab(p) => self.show_in_dock(p, cx),
+            Command::SwitchChat(k) => self.select_chat(k, cx),
+            Command::Model(m) => self.choose_model(&m, cx),
+            Command::Look(i) => self.set_theme(i, window, cx),
+            Command::Direction(d) => self.set_direction(d),
+        }
         cx.notify();
     }
 

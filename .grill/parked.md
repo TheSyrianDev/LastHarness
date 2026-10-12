@@ -182,3 +182,5 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **Thinking counts as a step** in "Worked for 14 s, 3 steps". Recommended: keep, since it is part of the work.
 - **Questions sit under the conversation, not inside the scrolling feed,** so a permission question is never scrolled out of sight. The mock puts the card at the end of the feed. Recommended: keep it fixed under the feed.
 - **The message box is not the mock's field yet** (mode chips, a round send button). That was not among the four approved items. Recommended: do it with the dock and motion slice if wanted.
+- **The palette searches names, not message text.** Recommended answer, taken: names of chats, models, looks and places only. Searching what was said needs the core's search and a result list; add it later if wanted.
+- **The palette has no "recent" section.** With nothing typed it lists places first, then chats in list order. Recommended: leave until the list is long enough to need it.

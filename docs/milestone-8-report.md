@@ -137,6 +137,15 @@ The user approved a calmer window (mock: "LastHarness Redesign"). It is built in
 - Accessibility: the line is a button that says whether it is open; the steps are a list; the card is a group named "Permission question" with the keys Y and N. Right-to-left mirrors the line, the arrow, the card and the bubble.
 - Tests: `transcript.rs` (grouping, order kept, running state, labels in both languages), `permissions.rs`, timing in `model.rs`, the arrow in `chrome.rs`.
 
+**Slice c: the command palette (Ctrl+K).**
+- Ctrl+K opens a box over the window; Ctrl+K or Escape closes it, and so does a click outside. Type a few letters to narrow the list. Up and Down (or Ctrl+N and Ctrl+P) move the choice and Enter runs it; the choice goes round at the ends.
+- It reaches: New chat, Settings, show or hide the chat list, the four side panel tabs, every chat by its title, every model, every look, and the three text directions. The row of the thing in use says "current"; commands with a key show the key.
+- Every word typed must appear in the group or the title, in any case. A word at the start of the title ranks first, then the start of a word, then anywhere, then the group name. Arabic titles are found the same way; the labels and the list mirror in right-to-left.
+- It searches names only, not the text of messages.
+- Accessibility: the box is a dialog named "Command palette"; the rows are options in a list box with the chosen one marked selected. Only nine rows are drawn at a time, always including the chosen one.
+- Nothing is added to the system prompt. The Y and N answer keys are off while the palette is open.
+- Tests: `palette.rs` (everything reachable, current marks, ranking, Arabic, wrap-around, the visible stretch).
+
 ## What is not done
 
 See `.grill/parked.md`, section Milestone 8 (build session). Main points: agent-opened content is only opened by a button (the core has no "show this" tool yet, so nothing opens by itself); no web pages in the app (Servo waits); saving the model's KV cache per chat is parked, with measurements in `spikes/kv-cache/RESULT.md`; Orca was not run; drawing the app's own window frame for matching roundness on desktops that do not report a radius; showing the cost of a cloud resume (the core has no price list yet, so the warning gives tokens only); Windows, macOS and mobile are later milestones.
