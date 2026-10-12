@@ -29,5 +29,5 @@ Everything below was built while you were away (Milestones 1 to 7 and a hardenin
 ## Housekeeping
 
 16. **The Seagate drive.** It was not cleanly unmounted and damaged the backup repository twice. Recommended: unmount it, run `sudo fsck.exfat /dev/sda1`, delete the two `LastHarness.git.corrupt-*` copies, and always unmount before unplugging. Do that (it needs your password, so I cannot)?
-17. **"Clippy".** You once said you gave "clippy as a reference model to embedding models". Nobody knows what that meant (clippy is only the Rust linter the agents run). What did you mean?
+17. **"Clippy".** Closed 2026-10-12. The user read it as CLIP, the image-and-text model, and said the app has nothing to do with it. Clippy is only the Rust linter the agents run. No action.
 18. **Tray icon.** It needs the GUI toolkit decision from item 1, so it is parked until then. Fine?

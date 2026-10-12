@@ -39,7 +39,7 @@ Things that need the user. Agents add to this list instead of asking while the u
 - **Folderless sessions and projects.** Pages of the projects layer attach to the project folder the session was opened in. Folderless sessions have no project.
 - **Maintenance on idle.** `--maintain-when-idle` runs the deterministic checks only (duplicates, broken links, stale pages). The contradiction check needs a local model and is on demand.
 
-- **Question for the user: "clippy".** The user told the coding session they had given "clippy as a reference model to embedding models". Nobody knows what this refers to (clippy is only the Rust linter the agents run). Ask the user what they meant.
+- **Closed 2026-10-12: "clippy".** The user read it as CLIP, the image-and-text model, and said the app has nothing to do with it. Clippy is only the Rust linter the agents run. No action needed.
 
 ## Milestone 3 (added by the build session)
 
