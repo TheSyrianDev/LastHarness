@@ -21,6 +21,7 @@ futures-util.workspace = true
 gpui = { package = "gpui-pre", version = "=0.3.8" }
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
 gpui-component = "0.7.1"
+image = { version = "0.25", default-features = false }
 ksni = { version = "0.3", features = ["blocking"] }
 tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "time", "macros"] }
 

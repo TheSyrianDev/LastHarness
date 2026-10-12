@@ -12,7 +12,7 @@ ap.add_argument("--seconds", type=float, default=6)
 ap.add_argument("--type", dest="text", default="")
 ap.add_argument("--send", action="store_true")
 ap.add_argument("--wait", type=float, default=0, help="seconds to wait after sending")
-ap.add_argument("--steps", default="", help="semicolon list: key:ctrl+t, type:text, enter, wait:2, shot:name, mem")
+ap.add_argument("--steps", default="", help="semicolon list: key:ctrl+t, type:text, enter, wait:2, shot:name, move:X,Y (pointer, window coordinates), mem")
 ap.add_argument("--page", default="", help="seed one memory page: TITLE|TEXT")
 ap.add_argument("--provider", default="http://localhost:9292/v1")
 ap.add_argument("--port", type=int, default=7851)
@@ -82,6 +82,13 @@ try:
             elif step.startswith("theme:"):
                 fn, body = step[6:].split("|", 1)
                 os.makedirs(tmp + "/themes", exist_ok=True); open(f"{tmp}/themes/{fn}", "w").write(body.replace("\\n", "\n"))
+            elif step.startswith("move:"):
+                # X,Y are pixels in the screenshots; the compositor works in scaled units
+                mons = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+                scale = next((m["scale"] for m in mons if m["id"] == w.get("monitor")), 1.0)
+                x, y = (int(v) for v in step[5:].split(","))
+                subprocess.run(["hyprctl", "dispatch", f"hl.dsp.cursor.move({{ x = {w['at'][0] + x / scale}, y = {w['at'][1] + y / scale} }})"], capture_output=True); time.sleep(0.6)
+                res.setdefault("cursor", []).append(subprocess.check_output(["hyprctl", "cursorpos"]).decode().strip())
             elif step.startswith("shot:"): shot(w, step[5:])
             elif step.startswith("shotall:"): subprocess.run(["grim", f"{out}/{a.name}-{step[8:]}.png"])
             elif step == "windows": res["windows"] = [c["class"] for c in json.loads(subprocess.check_output(["hyprctl", "clients", "-j"])) if c["pid"] == app.pid]

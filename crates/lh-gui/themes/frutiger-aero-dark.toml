@@ -1,39 +1,82 @@
-# Built-in look. Plain placeholder values, not a design. Copy this file to
-# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+# Built-in look: Frutiger Aero at night. Deep twilight sky, glass panels at lower opacity, glowing cyan.
+# The sky and meadow are painted by the app from the [scene] table. Copy this file to
+# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs. For a photo of your own set
+# kind = "image" and image = "/home/you/Pictures/night.jpg" in [background].
 name = "Frutiger Aero"
 mode = "dark"          # light or dark
 
 [colors]                        # "#rgb", "#rrggbb" or "#rrggbbaa" (the last two digits are opacity)
-background = "#0b3a5c"
-surface = "#ffffff22"       # panels and bubbles
-sunken = "#00000033"          # input fields
-text = "#eaf8ff"
-muted = "#9fc4de"
-accent = "#4fc3ff"
-accent_text = "#05233a"
-button = "#1d6fa0"
-button_hover = "#2a8fc8"
-border = "#ffffff40"
-danger = "#ff7d70"
+background = "#071258"
+surface = "#0b2a5c88"       # panels and bubbles, when a theme has no [glass]
+sunken = "#030c2e88"        # input fields and replies
+text = "#e8f6ff"
+muted = "#a3c6e0"
+accent = "#3fd9ff"
+accent_text = "#04202e"
+button = "#1c4f86"
+button_hover = "#2a6bb0"
+border = "#ffffff30"
+danger = "#ff8277"
 
 [background]
-kind = "gradient"             # solid, gradient or image
-from = "#0b3a5c"
-to = "#10573a"
-angle = 160
-# image = "wallpaper.png"        # relative to this file; used when kind = "image"
-image_opacity = 0.6
+kind = "scene"                # solid, gradient, image or scene
+
+[scene]                       # the painted landscape; colour lists run top to bottom
+sky = ["#02041a", "#071258", "#14308f", "#2a62c4", "#59a6e0"]
+horizon = 0.64
+haze = "#6fd0ff"
+haze_strength = 0.4
+ground = ["#1a6a58", "#0f4a40", "#082e2c"]
+hills = ["#13584c", "#0d4038"]
+sun_x = 0.14                  # the moon
+sun_y = 0.25
+sun_size = 0.12
+sun_color = "#cfefff"
+flare = true
+clouds = 5
+cloud_light = "#7ea4e0"
+cloud_shade = "#2a3f86"
+flowers = 0
+stars = 140
+seed = 7
 
 [shape]
 roundness = 16                  # corner radius of panels, in pixels
 match_window = false             # true: take the window's own radius when the desktop reports it
                                  # (Hyprland does); controls inside panels follow the same curve
 
+[glass]                          # panels: lighter at the top, a light line inside the edge, a pale line outside
+top = "#8cc4ff44"
+bottom = "#3f7fe020"
+rim = "#c8e8ff5c"
+edge = "#5fd0ff78"
+sheen = 0.12
+
+[gel]                            # buttons: glossy top half, rim light, glow on hover, darker when pressed
+top = "#4a98e6"
+bottom = "#17509e"
+primary_top = "#5fe6ff"
+primary_bottom = "#0a96d6"
+gloss = 0.3
+rim = "#ffffff99"
+edge = "#7fe8ff"
+glow = "#3fe0ffd0"
+press = 0.22
+
+[focus]                          # the border of the panel you are working in
+from = "#3fd9ff"
+to = "#9a7cff"
+width = 2
+
+[motes]                          # bubbles drifting slowly up; 0 turns them off. Off too when animation is 0
+count = 5
+color = "#bfeaff"
+
 [effects]
 blur = false                     # ask the desktop to blur what is behind the window
-shadow_blur = 20
-shadow_y = 6
-shadow_color = "#00000066"
+shadow_blur = 24
+shadow_y = 8
+shadow_color = "#00081a99"
 
 [animation]
-duration_ms = 240           # 0 turns hover and press animation off
+duration_ms = 240           # 0 turns hover, press and bubbles off

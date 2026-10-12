@@ -4039,6 +4039,7 @@ dependencies = [
  "gpui-component",
  "gpui-pre",
  "gpui-pre-platform",
+ "image",
  "ksni",
  "lh-client",
  "lh-core",

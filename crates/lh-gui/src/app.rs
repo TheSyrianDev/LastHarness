@@ -113,6 +113,18 @@ pub struct App {
     pub core_models: HashMap<u64, String>,
     pub content: Vec<crate::panels::Content>,
     pub content_index: usize,
+    /// The panel the person last used; a glass look draws a gradient border round it.
+    pub focus: Focus,
+    /// Seconds the bubbles have drifted; only moves while the look has bubbles.
+    pub mote_clock: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Focus {
+    Sidebar,
+    #[default]
+    Chat,
+    Side,
 }
 
 fn stored_to_chat(chats: &mut Chats, models: &ModelList, s: &StoredChat) {
@@ -140,7 +152,7 @@ impl App {
         let themes = ThemeSet::load(&cfg.themes);
         let active_theme = themes.themes.iter().position(|t| t.label() == prefs.theme).unwrap_or(0);
         let window_radius = theme::window_radius();
-        let pal = Pal::from(&themes.themes[active_theme], window_radius);
+        let pal = Pal::from(&themes.themes[active_theme], window_radius, lh_gui::config::reduce_motion());
         apply_component_theme(&pal, cx);
 
         let (tx, mut rx) = futures_channel::unbounded::<Ev>();
@@ -177,6 +189,22 @@ impl App {
                 if alive.is_err() {
                     break;
                 }
+            }
+        })
+        .detach();
+
+        // bubbles drift at a gentle 10 frames a second, and only while the window is the one in use: slow movement
+        // does not need more, and a window in the background should cost nothing
+        cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| loop {
+            cx.background_executor().timer(Duration::from_millis(100)).await;
+            let alive = this.update_in(cx, |app, window, cx| {
+                if app.pal.motes.is_some() && window.is_window_active() {
+                    app.mote_clock += 0.1;
+                    cx.notify();
+                }
+            });
+            if alive.is_err() {
+                break;
             }
         })
         .detach();
@@ -228,6 +256,8 @@ impl App {
             core_models: HashMap::new(),
             content: vec![],
             content_index: 0,
+            focus: Focus::default(),
+            mote_clock: 0.,
         }
     }
 
@@ -245,9 +275,16 @@ impl App {
         let _ = self.prefs.save(&self.cfg.prefs);
     }
 
+    pub fn focus_on(&mut self, f: Focus, cx: &mut Context<Self>) {
+        if self.focus != f {
+            self.focus = f;
+            cx.notify();
+        }
+    }
+
     pub fn refresh_pal(&mut self, cx: &mut Context<Self>) {
         self.window_radius = theme::window_radius();
-        self.pal = Pal::from(&self.themes.themes[self.active_theme], self.window_radius);
+        self.pal = Pal::from(&self.themes.themes[self.active_theme], self.window_radius, lh_gui::config::reduce_motion());
         apply_component_theme(&self.pal, cx);
     }
 

@@ -6,11 +6,11 @@ use gpui::*;
 use gpui_component::input::{Input, Textarea};
 use gpui_component::text::TextView;
 
-use crate::app::{App, Pending};
+use crate::app::{App, Focus, Pending};
 use lh_gui::layout::{Page, Panel};
 use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
-use crate::style::mix;
+use crate::style::{mix, Look, PanelExt};
 
 actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent]);
 
@@ -57,37 +57,48 @@ impl App {
         };
         let hovered = self.hover.as_ref() == Some(&id);
         let key = id.clone();
-        let el = div()
-            .id(id.clone())
-            .role(Role::Button)
-            .aria_label(SharedString::from(match label.as_ref() {
-                "×" => "Delete chat",
-                "−" => "Make narrower",
-                "+" => "Make wider",
-                other => other,
-            }.to_string()))
-            .px_3()
-            .py_1p5()
-            .rounded(p.inner)
-            .text_color(fg)
-            .cursor_pointer()
-            .bg(if hovered { hover } else { base })
-            .on_hover(cx.listener(move |this, h: &bool, _, cx| {
-                this.hover_ever = true;
-                if *h {
-                    this.hover = Some(key.clone());
-                } else if this.hover.as_ref() == Some(&key) {
-                    this.hover = None;
-                }
-                cx.notify();
-            }))
-            .on_click(cx.listener(move |this, _, window, cx| on_click(this, window, cx)))
-            .child(label);
-        if self.pal.anim.is_zero() || !self.hover_ever {
+        let aria = SharedString::from(match label.as_ref() {
+            "×" => "Delete chat",
+            "−" => "Make narrower",
+            "+" => "Make wider",
+            other => other,
+        }.to_string());
+        let on_hover = cx.listener(move |this, h: &bool, _, cx| {
+            this.hover_ever = true;
+            if *h {
+                this.hover = Some(key.clone());
+            } else if this.hover.as_ref() == Some(&key) {
+                this.hover = None;
+            }
+            cx.notify();
+        });
+        let animate = !self.pal.anim.is_zero() && self.hover_ever;
+        let anim_key = SharedString::from(format!("{id}-{hovered}"));
+        let on_click = cx.listener(move |this, _, window, cx| on_click(this, window, cx));
+        let base_el = div().id(id.clone()).role(Role::Button).aria_label(aria).px_3().py_1p5().rounded(p.inner).text_color(fg).cursor_pointer().on_hover(on_hover).on_click(on_click);
+
+        // gel: a glossy skin under the label, a rim light, a glow under the pointer and a dark veil while pressed
+        if let Some(g) = &p.gel {
+            let (rest, over) = g.looks(p.danger, kind == Kind::Ghost, kind == Kind::Primary, kind == Kind::Danger);
+            let (from, to) = if hovered { (rest, over) } else { (over, rest) };
+            let (radius, press) = (p.inner, g.press);
+            let group = SharedString::from(format!("gel-{id}"));
+            let skin = g.skin(radius, if hovered { over } else { rest });
+            let skin = if animate {
+                let g2 = g.clone();
+                skin.with_animation(anim_key, Animation::new(self.pal.anim).with_easing(ease_in_out), move |_, d| g2.skin(radius, Look::mix(from, to, d))).into_any_element()
+            } else {
+                skin.into_any_element()
+            };
+            let veil = div().id(SharedString::from(format!("veil-{id}"))).absolute().top_0().left_0().size_full().rounded(radius).group_active(group.clone(), move |s| s.bg(hsla(0.6, 0.6, 0.1, press)));
+            return base_el.relative().group(group).child(skin).child(veil).child(label).into_any_element();
+        }
+        let el = base_el.bg(if hovered { hover } else { base }).child(label);
+        if !animate {
             return el.into_any_element();
         }
         let (from, to) = if hovered { (base, hover) } else { (hover, base) };
-        el.with_animation(SharedString::from(format!("{id}-{hovered}")), Animation::new(self.pal.anim).with_easing(ease_in_out), move |el, d| el.bg(mix(from, to, d))).into_any_element()
+        el.with_animation(anim_key, Animation::new(self.pal.anim).with_easing(ease_in_out), move |el, d| el.bg(mix(from, to, d))).into_any_element()
     }
 
     fn top_bar(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -134,6 +145,8 @@ impl App {
             .items_center()
             .gap_2()
             .p_2()
+            // over a sky the title needs glass behind it
+            .when(p.glass.is_some(), |d| d.m_2().mb_0().panel(&p, false))
             .child(toggle_left)
             .child(div().flex_1().overflow_hidden().text_color(p.text).child(title))
             .when_some(ctx, |d, c| d.child(div().text_sm().text_color(p.muted).child(c)))
@@ -162,7 +175,7 @@ impl App {
         };
         let rtl = self.rtl;
         Some(
-            div().absolute().top(px(46.)).when(rtl, |d| d.left(px(12.))).when(!rtl, |d| d.right(px(12.))).w(px(300.)).max_h(px(420.)).overflow_hidden().p_2().flex().flex_col().gap_1().rounded(p.radius).bg(p.surface).border_1().border_color(p.border).shadow(p.shadow.clone())
+            div().absolute().top(px(if p.glass.is_some() { 58. } else { 46. })).when(rtl, |d| d.left(px(12.))).when(!rtl, |d| d.right(px(12.))).w(px(300.)).max_h(px(420.)).overflow_hidden().p_2().flex().flex_col().gap_1().panel(&p, false)
                 .id("menu").role(Role::Menu).children(items).into_any_element(),
         )
     }
@@ -214,9 +227,8 @@ impl App {
             .w(px(width))
             .h_full()
             .p_2()
-            .rounded(p.radius)
-            .bg(p.surface)
-            .shadow(p.shadow.clone())
+            .panel(&p, self.focus == Focus::Sidebar)
+            .on_mouse_down(MouseButton::Left, cx.listener(|a, _, _, cx| a.focus_on(Focus::Sidebar, cx)))
             .child(new)
             .children((!depts.is_empty()).then(|| div().flex().flex_col().gap_0p5().child(div().text_xs().text_color(p.muted).px_2().child(if rtl { "الأقسام" } else { "Departments" })).children(depts)))
             .child(div().id("chat-list").role(Role::List).aria_label("Chats").flex_1().flex().flex_col().gap_0p5().overflow_y_scroll().children(rows))
@@ -283,7 +295,7 @@ impl App {
         let title = if pending.warning.is_null() { "Checking what this costs…".to_string() } else if cloud { format!("Continue with {} in the cloud?", pending.model) } else { format!("Continue with {}?", pending.model) };
         let ok = self.button("resume-ok", if cloud { "Continue and spend credits" } else { "Continue" }, if cloud { Kind::Danger } else { Kind::Primary }, cx, |a, _, cx| a.confirm_resume(cx));
         let no = self.button("resume-no", "Cancel", Kind::Normal, cx, |a, _, cx| a.cancel_resume(cx));
-        div().flex().flex_col().gap_2().p_3().rounded(p.radius).bg(p.surface).border_1().border_color(p.accent).text_color(p.text)
+        div().flex().flex_col().gap_2().p_3().panel(&p, false).border_1().border_color(p.accent).text_color(p.text)
             .id("resume-warning").role(Role::Group).aria_label("Continue this chat")
             .child(div().child(title)).child(div().text_sm().text_color(p.muted).child(msg))
             .when(!pending.warning.is_null(), |d| d.child(div().flex().gap_2().child(ok).child(no)).child(div().text_xs().text_color(p.muted).child("Ctrl+Enter continues, Escape cancels.")))
@@ -306,7 +318,7 @@ impl App {
             let yes = self.button(format!("ask-yes-{id}"), if rtl { "السماح" } else { "Allow" }, Kind::Primary, cx, move |app, _, cx| app.answer(&id, true, cx));
             let no = self.button(format!("ask-no-{id2}"), if rtl { "رفض" } else { "Deny" }, Kind::Normal, cx, move |app, _, cx| app.answer(&id2, false, cx));
             stack.push(
-                div().flex().flex_col().gap_2().p_3().rounded(p.radius).bg(p.surface).border_1().border_color(p.accent).text_color(p.text)
+                div().flex().flex_col().gap_2().p_3().panel(&p, false).border_1().border_color(p.accent).text_color(p.text)
                     .child(div().child(format!("May {} run?", a.tool)))
                     .child(div().text_sm().text_color(p.muted).child(a.what.clone()))
                     .when(!a.reason.is_empty(), |d| d.child(div().text_sm().text_color(p.muted).child(a.reason.clone())))
@@ -331,7 +343,7 @@ impl App {
             };
             let private = (chat.mode == Mode::Chat).then(|| self.button("mode-private", if chat.incognito { "Private: on" } else { "Private: off" }, if chat.incognito { Kind::Primary } else { Kind::Ghost }, cx, |a, _, cx| a.toggle_private(cx)));
             stack.push(
-                div().flex().flex_col().gap_2().p_3().rounded(p.radius).bg(p.surface).shadow(p.shadow.clone()).text_color(p.text)
+                div().flex().flex_col().gap_2().p_3().panel(&p, false).text_color(p.text)
                     .id("chat-kind").role(Role::Group).aria_label("Kind of chat")
                     .child(div().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().children(kinds).children(private))
                     .child(div().text_sm().text_color(p.muted).child(hint))
@@ -339,15 +351,17 @@ impl App {
             );
         }
         let action = self.button("send", if chat.busy { if rtl { "إيقاف" } else { "Stop" } } else if rtl { "إرسال" } else { "Send" }, if chat.busy { Kind::Danger } else { Kind::Primary }, cx, |a, w, cx| a.send(w, cx));
-        let composer = div().flex().when(rtl, |d| d.flex_row_reverse()).items_end().gap_2().p_2().rounded(p.radius).bg(p.surface).shadow(p.shadow.clone())
+        let composer = div().flex().when(rtl, |d| d.flex_row_reverse()).items_end().gap_2().p_2().panel(&p, false)
             .child(div().flex_1().child(Textarea::new(&self.composer).aria_label("Message")))
             .child(action);
+        let scroll = div().id("chat-scroll").role(Role::Log).aria_label("Conversation").flex_1().overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().gap_3().p_3()
+            .when(empty, |d| d.child(div().flex().justify_center().text_color(p.muted).child(if rtl { "ابدأ بكتابة رسالة." } else { "Write a message to begin." })))
+            .children(blocks);
+        // on glass the conversation sits on a panel of its own, so text never lands straight on the sky
+        let pane = div().flex().flex_col().flex_1().overflow_hidden().when(p.glass.is_some(), |d| d.panel(&p, self.focus == Focus::Chat)).child(scroll);
         div().flex().flex_col().flex_1().h_full().gap_2().overflow_hidden()
-            .child(
-                div().id("chat-scroll").role(Role::Log).aria_label("Conversation").flex_1().overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().gap_3().p_3()
-                    .when(empty, |d| d.child(div().flex().justify_center().text_color(p.muted).child(if rtl { "ابدأ بكتابة رسالة." } else { "Write a message to begin." })))
-                    .children(blocks),
-            )
+            .on_mouse_down(MouseButton::Left, cx.listener(|a, _, _, cx| a.focus_on(Focus::Chat, cx)))
+            .child(pane)
             .children(stack)
             .child(composer)
             .into_any_element()
@@ -441,6 +455,7 @@ impl Render for App {
                 }
             }));
         root.children(p.image_layer())
+            .children(p.motes_layer(self.mote_clock))
             .child(
                 div().size_full().flex().flex_col().child(top).child(
                     div().flex_1().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().px_2().pb_2().overflow_hidden().children(left).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle)).children(right),

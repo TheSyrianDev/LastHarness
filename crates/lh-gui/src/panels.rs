@@ -9,6 +9,7 @@ use crate::app::App;
 use lh_gui::layout::Panel;
 use lh_gui::runs::{Outcome, Question, Run, StepState};
 use lh_gui::settings;
+use crate::style::PanelExt;
 use crate::ui::Kind;
 
 pub use lh_gui::content::{Content, ContentKind};
@@ -79,9 +80,8 @@ impl App {
             .w(px(width))
             .h_full()
             .p_2()
-            .rounded(p.radius)
-            .bg(p.surface)
-            .shadow(p.shadow.clone())
+            .panel(&p, self.focus == crate::app::Focus::Side)
+            .on_mouse_down(MouseButton::Left, cx.listener(|a, _, _, cx| a.focus_on(crate::app::Focus::Side, cx)))
             .child(head.child(expand).child(hide))
             .child(div().id("panel-body").flex_1().overflow_y_scroll().flex().flex_col().gap_2().child(body))
             .into_any_element()
@@ -321,7 +321,7 @@ impl App {
             None => col = col.child(self.note("This department is not known to the core (it may have been removed).")),
         }
         col = col.child(
-            div().flex().flex_col().gap_2().p_2().rounded(p.radius).bg(p.surface).shadow(p.shadow.clone())
+            div().flex().flex_col().gap_2().p_2().panel(&p, false)
                 .child(Textarea::new(&self.goal).aria_label("Goal"))
                 .when_some(self.panels.goal_note.clone(), |d, n| d.child(div().text_sm().text_color(p.danger).child(n)))
                 .child(div().flex().child(start)),
@@ -339,7 +339,7 @@ impl App {
     fn run_card(&mut self, r: &Run, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let (done, total) = r.progress();
-        let mut col = div().flex().flex_col().gap_2().p_3().rounded(p.radius).bg(p.surface).shadow(p.shadow.clone()).text_color(p.text)
+        let mut col = div().flex().flex_col().gap_2().p_3().panel(&p, false).text_color(p.text)
             .child(div().flex().items_center().gap_2().child(div().flex_1().child(r.goal.clone())).child(div().text_sm().text_color(if r.is_waiting() { p.accent } else { p.muted }).child(format!("{} {}", r.status, if total > 0 { format!("({done}/{total})") } else { String::new() }))));
         for s in &r.steps {
             col = col.child(div().flex().gap_2().text_sm().child(div().w(px(18.)).text_color(if s.state == StepState::Failed { p.danger } else { p.accent }).child(state_mark(s.state))).child(div().flex_1().child(format!("{} · {}{}", s.title, s.assignee, if s.note.is_empty() { String::new() } else { format!(" — {}", s.note.chars().take(160).collect::<String>()) }))));
@@ -398,7 +398,7 @@ pub struct PopOut {
 impl Render for PopOut {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let p = self.pal.clone();
-        p.paint_background(div().size_full().p_4().text_color(p.text)).child(div().id("popout").size_full().overflow_y_scroll().child(viewer(&self.item, "popout", &p)))
+        p.paint_background(div().size_full().relative().p_4().text_color(p.text)).children(p.image_layer()).child(div().id("popout").size_full().overflow_y_scroll().child(viewer(&self.item, "popout", &p)))
     }
 }
 

@@ -78,6 +78,22 @@ After each turn of a local, stored chat the core asks the local server to save i
 
 It is controlled by three settings: `kvcache.enabled` (default on), `kvcache.dir` (the folder the server saves into; empty keeps the feature off, because a file the core cannot find is a file it cannot protect or remove) and `kvcache.max_gb` (default 5). With llama-swap the folder is the one above the per-model folders; the core finds its files below it.
 
+## Frutiger Aero, redone to look like the real thing
+
+The user said the first Frutiger Aero did not look like it, and lifted the plain-placeholder rule for this one look (they chose it, so it is made faithful; no logo or brand). The reference was the Omarchy theme `frutiger-aero-asadal-stock-1-day` on this machine (its palette and the pattern of its wallpapers). None of its photos are in the repository.
+
+What it is now, all set in the theme file, not in code:
+
+- **A painted sky.** `kind = "scene"` and a `[scene]` table. The app paints it in memory (about 90 ms once, kept while the theme stays): a multi-stop sky from deep blue to cyan, a hazy white horizon, a sun with a star and faint lens-flare rings, cumulus clouds with flat bases, rows of trees, a bright meadow and small daisies. Dark is a twilight sky with stars, a moon and dim clouds. Keys: `sky`, `ground`, `hills` (colour lists, top to bottom), `horizon`, `haze`, `haze_strength`, `sun_x`, `sun_y`, `sun_size`, `sun_color`, `flare`, `clouds`, `cloud_light`, `cloud_shade`, `stars`, `flowers`, `seed`.
+- **Your own photo instead.** In `[background]` set `kind = "image"`, `image = "/home/you/Pictures/sky.jpg"` (a full path, or relative to the theme file) and `image_opacity`. The built-in files say so in a comment.
+- **Glass panels.** `[glass]`: a translucent fill that is lighter at the top (about 66 percent to 46 percent in light), a white sheen over the top, a 1 px light line inside the edge and a pale blue line outside it, with a blue-tinted soft shadow. The title bar and the conversation sit on glass too, so text never lands on the deep blue.
+- **Gel buttons.** `[gel]`: a gradient with a glossy top half, a rim light, a cyan glow while the pointer is over it (fades in over the animation time) and a darker veil while pressed. The main button runs blue to cyan; ghost buttons are bare text until hovered.
+- **Gradient border on the panel in use.** `[focus]`: from `#1174a1` to violet `#6b60c4`, corner to corner, on the conversation, the chat list or the side panel, whichever was clicked last.
+- **Bubbles.** `[motes]`: `count` soft bubbles drift up behind the panels. They move at 10 frames a second and only while the window is the active one. They are off when the theme's animation time is 0, when `count = 0`, and when the desktop asks for reduced motion (`LASTHARNESS_REDUCE_MOTION=1`, `GTK_ENABLE_ANIMATIONS=0`, or the desktop's own animation setting); reduced motion also turns hover fades off.
+- Text is dark navy `#153141`, corners are 16 px, other looks are unchanged (no `[glass]`, `[gel]`, `[focus]` or `[motes]` means flat as before). The system prompt is unaffected.
+
+Checked in the real window, light and dark (`target/gui-shots/fa-light-*.png`, `fa-dark-*.png`: start, chat with a real model, settings, memory, hover). Cost: with the bubbles on, about 4 percent of one core while the window is in use (a flat look idles near 0), memory about 100 MB. Turn them off with `count = 0` in the `[motes]` table. `crates/lh-gui/examples/scene_preview.rs` paints a theme's scene to an image file for tuning.
+
 ## What is not done
 
 See `.grill/parked.md`, section Milestone 8 (build session). Main points: agent-opened content is only opened by a button (the core has no "show this" tool yet, so nothing opens by itself); no web pages in the app (Servo waits); saving the model's KV cache per chat is parked, with measurements in `spikes/kv-cache/RESULT.md`; Orca was not run; drawing the app's own window frame for matching roundness on desktops that do not report a radius; showing the cost of a cloud resume (the core has no price list yet, so the warning gives tokens only); Windows, macOS and mobile are later milestones.

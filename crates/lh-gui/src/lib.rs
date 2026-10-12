@@ -10,5 +10,6 @@ pub mod models;
 pub mod prefs;
 pub mod rtl;
 pub mod runs;
+pub mod scene;
 pub mod settings;
 pub mod theme;

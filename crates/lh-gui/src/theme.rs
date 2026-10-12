@@ -7,6 +7,8 @@ use std::time::SystemTime;
 
 use serde::Deserialize;
 
+use crate::scene::SceneSpec;
+
 /// A colour with opacity, parsed from `#rgb`, `#rrggbb` or `#rrggbbaa`.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Color {
@@ -67,6 +69,8 @@ pub enum BackgroundKind {
     Solid,
     Gradient,
     Image,
+    /// A painted landscape made in memory from the `[scene]` table.
+    Scene,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -142,6 +146,89 @@ impl Default for RawAnimation {
 
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(default, deny_unknown_fields)]
+struct RawScene {
+    sky: Option<Vec<String>>,
+    ground: Option<Vec<String>>,
+    hills: Option<Vec<String>>,
+    horizon: Option<f32>,
+    haze: Option<String>,
+    haze_strength: Option<f32>,
+    sun_x: Option<f32>,
+    sun_y: Option<f32>,
+    sun_size: Option<f32>,
+    sun_color: Option<String>,
+    flare: Option<bool>,
+    clouds: Option<u32>,
+    cloud_light: Option<String>,
+    cloud_shade: Option<String>,
+    stars: Option<u32>,
+    flowers: Option<u32>,
+    seed: Option<u32>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default, deny_unknown_fields)]
+struct RawGlass {
+    top: String,
+    bottom: String,
+    rim: String,
+    edge: String,
+    sheen: f32,
+}
+impl Default for RawGlass {
+    fn default() -> Self {
+        let d = |s: &str| s.to_string();
+        Self { top: d("#ffffffd9"), bottom: d("#ffffff8c"), rim: d("#ffffffe6"), edge: d("#7fb8dd99"), sheen: 0.3 }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default, deny_unknown_fields)]
+struct RawGel {
+    top: Option<String>,
+    bottom: Option<String>,
+    primary_top: Option<String>,
+    primary_bottom: Option<String>,
+    gloss: f32,
+    rim: String,
+    edge: String,
+    glow: String,
+    press: f32,
+}
+impl Default for RawGel {
+    fn default() -> Self {
+        let d = |s: &str| s.to_string();
+        Self { top: None, bottom: None, primary_top: None, primary_bottom: None, gloss: 0.5, rim: d("#ffffffcc"), edge: d("#3d86b8"), glow: d("#46d4ffcc"), press: 0.18 }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default, deny_unknown_fields)]
+struct RawFocus {
+    from: String,
+    to: String,
+    width: f32,
+}
+impl Default for RawFocus {
+    fn default() -> Self {
+        Self { from: "#1174a1".into(), to: "#6b60c4".into(), width: 2. }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default, deny_unknown_fields)]
+struct RawMotes {
+    count: u32,
+    color: String,
+}
+impl Default for RawMotes {
+    fn default() -> Self {
+        Self { count: 0, color: "#ffffff".into() }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default, deny_unknown_fields)]
 struct Raw {
     name: String,
     mode: Mode,
@@ -150,6 +237,11 @@ struct Raw {
     shape: RawShape,
     effects: RawEffects,
     animation: RawAnimation,
+    scene: RawScene,
+    glass: Option<RawGlass>,
+    gel: Option<RawGel>,
+    focus: Option<RawFocus>,
+    motes: Option<RawMotes>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -176,6 +268,50 @@ pub struct Background {
     /// An absolute path, resolved against the theme file's folder.
     pub image: Option<PathBuf>,
     pub image_opacity: f32,
+    /// What to paint when `kind` is `Scene`.
+    pub scene: SceneSpec,
+}
+
+/// Glass panels: a translucent fill that is lighter at the top, a light line just inside the edge and a pale
+/// line outside it. A theme without a `[glass]` table has plain flat panels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Glass {
+    pub top: Color,
+    pub bottom: Color,
+    pub rim: Color,
+    pub edge: Color,
+    /// Opacity of the white sheen over the top part of a panel.
+    pub sheen: f32,
+}
+
+/// Gel buttons: a gradient with a glossy top half, a rim light and a glow when hovered.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Gel {
+    pub top: Color,
+    pub bottom: Color,
+    pub primary_top: Color,
+    pub primary_bottom: Color,
+    pub gloss: f32,
+    pub rim: Color,
+    pub edge: Color,
+    pub glow: Color,
+    /// How much a pressed button darkens, 0 to 1.
+    pub press: f32,
+}
+
+/// The border of the focused panel: a gradient from one colour to another, corner to corner.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Focus {
+    pub from: Color,
+    pub to: Color,
+    pub width: f32,
+}
+
+/// Soft bubbles drifting up the window.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Motes {
+    pub count: u32,
+    pub color: Color,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -191,6 +327,48 @@ pub struct Theme {
     pub shadow_y: f32,
     pub shadow_color: Color,
     pub animation_ms: u64,
+    pub glass: Option<Glass>,
+    pub gel: Option<Gel>,
+    pub focus: Option<Focus>,
+    pub motes: Option<Motes>,
+}
+
+fn key(name: &str, v: &str) -> Result<Color, String> {
+    Color::parse(v).map_err(|e| format!("{name}: {e}"))
+}
+
+fn parse_scene(r: &RawScene) -> Result<SceneSpec, String> {
+    let d = SceneSpec::default();
+    let list = |k: &str, v: &Option<Vec<String>>, d: &[Color]| -> Result<Vec<Color>, String> {
+        match v {
+            Some(l) => l.iter().map(|s| key(&format!("scene.{k}"), s)).collect(),
+            None => Ok(d.to_vec()),
+        }
+    };
+    let one = |k: &str, v: &Option<String>, d: Color| -> Result<Color, String> { v.as_ref().map_or(Ok(d), |s| key(&format!("scene.{k}"), s)) };
+    let frac = |k: &str, v: Option<f32>, d: f32, lo: f32, hi: f32| -> Result<f32, String> {
+        let x = v.unwrap_or(d);
+        if (lo..=hi).contains(&x) { Ok(x) } else { Err(format!("scene.{k} must be between {lo} and {hi}")) }
+    };
+    Ok(SceneSpec {
+        sky: list("sky", &r.sky, &d.sky)?,
+        ground: list("ground", &r.ground, &d.ground)?,
+        hills: list("hills", &r.hills, &d.hills)?,
+        horizon: frac("horizon", r.horizon, d.horizon, 0.2, 0.9)?,
+        haze: one("haze", &r.haze, d.haze)?,
+        haze_strength: frac("haze_strength", r.haze_strength, d.haze_strength, 0., 1.)?,
+        sun_x: frac("sun_x", r.sun_x, d.sun_x, 0., 1.)?,
+        sun_y: frac("sun_y", r.sun_y, d.sun_y, 0., 1.)?,
+        sun_size: frac("sun_size", r.sun_size, d.sun_size, 0.02, 0.6)?,
+        sun_color: one("sun_color", &r.sun_color, d.sun_color)?,
+        flare: r.flare.unwrap_or(d.flare),
+        clouds: r.clouds.unwrap_or(d.clouds).min(30),
+        cloud_light: one("cloud_light", &r.cloud_light, d.cloud_light)?,
+        cloud_shade: one("cloud_shade", &r.cloud_shade, d.cloud_shade)?,
+        stars: r.stars.unwrap_or(d.stars).min(600),
+        flowers: r.flowers.unwrap_or(d.flowers).min(300),
+        seed: r.seed.unwrap_or(d.seed),
+    })
 }
 
 fn col(key: &str, v: &str) -> Result<Color, String> {
@@ -240,11 +418,43 @@ impl Theme {
             Some(s) => Color::parse(s).map_err(|e| format!("effects.shadow_color: {e}"))?,
             None => Color { r: 0, g: 0, b: 0, a: 0 },
         };
+        let scene = parse_scene(&raw.scene)?;
+        let glass = match &raw.glass {
+            Some(g) => Some(Glass { top: key("glass.top", &g.top)?, bottom: key("glass.bottom", &g.bottom)?, rim: key("glass.rim", &g.rim)?, edge: key("glass.edge", &g.edge)?, sheen: g.sheen.clamp(0., 1.) }),
+            None => None,
+        };
+        let gel = match &raw.gel {
+            Some(g) => {
+                let opt = |k: &str, v: &Option<String>, d: Color| -> Result<Color, String> { v.as_ref().map_or(Ok(d), |s| key(k, s)) };
+                let white = Color { r: 255, g: 255, b: 255, a: 255 };
+                let black = Color { r: 0, g: 0, b: 0, a: 255 };
+                Some(Gel {
+                    top: opt("gel.top", &g.top, colors.button.mix(white, 0.45))?,
+                    bottom: opt("gel.bottom", &g.bottom, colors.button.mix(black, 0.06))?,
+                    primary_top: opt("gel.primary_top", &g.primary_top, colors.accent.mix(white, 0.2))?,
+                    primary_bottom: opt("gel.primary_bottom", &g.primary_bottom, colors.accent.mix(black, 0.1))?,
+                    gloss: g.gloss.clamp(0., 1.),
+                    rim: key("gel.rim", &g.rim)?,
+                    edge: key("gel.edge", &g.edge)?,
+                    glow: key("gel.glow", &g.glow)?,
+                    press: g.press.clamp(0., 1.),
+                })
+            }
+            None => None,
+        };
+        let focus = match &raw.focus {
+            Some(f) => Some(Focus { from: key("focus.from", &f.from)?, to: key("focus.to", &f.to)?, width: f.width.clamp(0.5, 8.) }),
+            None => None,
+        };
+        let motes = match &raw.motes {
+            Some(m) => Some(Motes { count: m.count.min(40), color: key("motes.color", &m.color)? }),
+            None => None,
+        };
         Ok(Theme {
             name: raw.name.trim().to_string(),
             mode: raw.mode,
             colors,
-            background: Background { kind: b.kind, from, to, angle: b.angle, image: b.image.as_ref().map(|i| dir.join(i)), image_opacity: b.image_opacity },
+            background: Background { kind: b.kind, from, to, angle: b.angle, image: b.image.as_ref().map(|i| dir.join(i)), image_opacity: b.image_opacity, scene },
             roundness: raw.shape.roundness,
             match_window: raw.shape.match_window,
             blur: raw.effects.blur,
@@ -252,6 +462,10 @@ impl Theme {
             shadow_y: raw.effects.shadow_y,
             shadow_color,
             animation_ms: raw.animation.duration_ms,
+            glass,
+            gel,
+            focus,
+            motes,
         })
     }
 
@@ -263,7 +477,7 @@ impl Theme {
     /// Does anything in the look let the desktop show through? Then the window must be transparent.
     pub fn is_translucent(&self) -> bool {
         let c = &self.colors;
-        self.background_is_translucent() || c.surface.is_translucent() || self.blur
+        self.background_is_translucent() || c.surface.is_translucent() || self.blur || self.glass.is_some()
     }
 
     fn background_is_translucent(&self) -> bool {
@@ -271,6 +485,7 @@ impl Theme {
             BackgroundKind::Solid => self.colors.background.is_translucent(),
             BackgroundKind::Gradient => self.background.from.is_translucent() || self.background.to.is_translucent(),
             BackgroundKind::Image => self.background.image_opacity < 1.0 || self.colors.background.is_translucent(),
+            BackgroundKind::Scene => false,
         }
     }
 
@@ -422,8 +637,49 @@ mod tests {
         assert!(!by("Matte dark").is_translucent());
         assert!(by("Glass dark").is_translucent() && by("Glass dark").blur);
         assert!(by("Glass light").is_translucent());
-        assert_eq!(by("Frutiger Aero light").background.kind, BackgroundKind::Gradient);
+        assert_eq!(by("Frutiger Aero light").background.kind, BackgroundKind::Scene);
         assert!(by("Glass light").roundness > by("Calm light").roundness, "glass is rounder than calm");
+    }
+
+    #[test]
+    fn frutiger_aero_is_glass_and_gel_over_a_painted_sky_in_both_modes() {
+        let t = builtin();
+        for label in ["Frutiger Aero light", "Frutiger Aero dark"] {
+            let x = t.iter().find(|x| x.label() == label).unwrap();
+            assert_eq!(x.background.kind, BackgroundKind::Scene, "{label}");
+            assert!(x.glass.is_some() && x.gel.is_some() && x.focus.is_some(), "{label}");
+            assert!(x.motes.as_ref().is_some_and(|m| m.count > 0), "{label} has bubbles");
+            assert!(x.is_translucent(), "{label}");
+            assert!(x.roundness >= 12. && x.roundness <= 18., "{label} is rounded 12 to 18");
+            assert!(x.background.scene.sky.len() >= 4, "{label} has a sky with several stops");
+        }
+        let light = t.iter().find(|x| x.label() == "Frutiger Aero light").unwrap();
+        assert_eq!(light.colors.text, Color::parse("#153141").unwrap(), "dark navy, not black");
+        let g = light.glass.as_ref().unwrap();
+        assert!((0.5..=0.72).contains(&(g.top.a as f32 / 255.)) && g.bottom.a < g.top.a, "55 to 70 percent, lighter at the top");
+        assert_eq!(light.focus.as_ref().unwrap().to, Color::parse("#6b60c4").unwrap(), "the border runs to violet");
+        // the other looks stay flat
+        let calm = t.iter().find(|x| x.label() == "Calm light").unwrap();
+        assert!(calm.glass.is_none() && calm.gel.is_none() && calm.focus.is_none() && calm.motes.is_none());
+    }
+
+    #[test]
+    fn scene_glass_gel_focus_and_motes_are_checked_with_the_key_that_is_wrong() {
+        let ok = Theme::parse("name = \"x\"\n[background]\nkind = \"scene\"\n[scene]\nsky = [\"#000\", \"#fff\"]\nclouds = 3\n[glass]\n[gel]\n[focus]\n[motes]\ncount = 4\n", Path::new("")).unwrap();
+        assert_eq!(ok.background.scene.sky.len(), 2);
+        assert_eq!(ok.background.scene.clouds, 3);
+        assert!(ok.glass.is_some() && ok.gel.is_some() && ok.focus.is_some());
+        assert_eq!(ok.motes.unwrap().count, 4);
+        let e = |src: &str| Theme::parse(&format!("name = \"x\"\n{src}"), Path::new("")).unwrap_err();
+        assert!(e("[scene]\nsky = [\"blue\"]").contains("scene.sky"));
+        assert!(e("[scene]\nhorizon = 3").contains("scene.horizon"));
+        assert!(e("[glass]\ntop = \"x\"").contains("glass.top"));
+        assert!(e("[gel]\nglow = \"x\"").contains("gel.glow"));
+        assert!(e("[focus]\nfrom = \"x\"").contains("focus.from"));
+        assert!(e("[motes]\ncolor = \"x\"").contains("motes.color"));
+        assert!(e("[glass]\nshine = 1").contains("unknown field"));
+        let capped = Theme::parse("name = \"x\"\n[motes]\ncount = 9999\n", Path::new("")).unwrap();
+        assert_eq!(capped.motes.unwrap().count, 40, "bubbles are capped");
     }
 
     #[test]
