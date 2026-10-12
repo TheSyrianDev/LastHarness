@@ -7,6 +7,7 @@ use gpui_component::input::{Input, Textarea};
 use gpui_component::text::TextView;
 
 use crate::app::{App, Focus, Pending};
+use lh_gui::chrome::{RailItem, TitleInfo, RAIL_WIDTH};
 use lh_gui::layout::{Page, Panel};
 use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
@@ -43,6 +44,31 @@ pub enum Kind {
     Primary,
     Danger,
     Ghost,
+}
+
+/// An icon drawn as lines, so no picture files are needed. `lines` are on a 24 by 24 grid.
+fn icon_view(lines: Vec<Vec<(f32, f32)>>, color: Hsla, size: f32) -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        move |b, _, window, _| {
+            let scale = f32::from(b.size.width.min(b.size.height)) / 24.;
+            for line in &lines {
+                let mut pb = PathBuilder::stroke(px(1.7 * scale));
+                for (i, (x, y)) in line.iter().enumerate() {
+                    let at = point(b.left() + px(x * scale), b.top() + px(y * scale));
+                    if i == 0 {
+                        pb.move_to(at);
+                    } else {
+                        pb.line_to(at);
+                    }
+                }
+                if let Ok(path) = pb.build() {
+                    window.paint_path(path, color);
+                }
+            }
+        },
+    )
+    .size(px(size))
 }
 
 impl App {
@@ -102,82 +128,106 @@ impl App {
         el.with_animation(anim_key, Animation::new(self.pal.anim).with_easing(ease_in_out), move |el, d| el.bg(mix(from, to, d))).into_any_element()
     }
 
+    /// The slim column of icons on the side: the chat list and the panels that are not the chat.
+    fn rail(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let l = self.layout().clone();
+        let mut items: Vec<AnyElement> = vec![];
+        for item in RailItem::ALL {
+            let on = item.pressed(&l);
+            // settings sits at the bottom, away from the places you go to
+            if item == RailItem::Settings {
+                items.push(div().flex_1().into_any_element());
+            }
+            items.push(
+                div()
+                    .id(SharedString::from(format!("rail-{}", item.label(false))))
+                    .role(Role::Button)
+                    .aria_label(item.label(rtl))
+                    .aria_keyshortcuts(item.shortcut())
+                    .aria_toggled(if on { Toggled::True } else { Toggled::False })
+                    .w(px(36.))
+                    .h(px(36.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(p.inner)
+                    .cursor_pointer()
+                    .bg(if on { p.surface } else { hsla(0., 0., 0., 0.) })
+                    .hover(|s| s.bg(p.button))
+                    .child(icon_view(item.icon(), if on { p.accent } else { p.muted }, 18.))
+                    .on_click(cx.listener(move |a, _, _, cx| match item.panel() {
+                        None => {
+                            a.layout_mut().toggle_left();
+                            a.persist();
+                            cx.notify();
+                        }
+                        Some(panel) => a.open_panel(panel, cx),
+                    }))
+                    .into_any_element(),
+            );
+        }
+        div()
+            .id("rail")
+            .role(Role::Navigation)
+            .aria_label(if rtl { "الأقسام" } else { "Sections" })
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap_1p5()
+            .w(px(RAIL_WIDTH))
+            .h_full()
+            .py_2()
+            .panel(&p, false)
+            .children(items)
+            .into_any_element()
+    }
+
+    /// The bar over the chat: its name, the branch it is on, how much the model has read, and which model.
     fn top_bar(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
-        let chat = self.chats.current().cloned();
-        let title = chat.as_ref().map(|c| c.title.clone()).unwrap_or_default();
-        let model = chat.as_ref().map(|c| c.model.clone()).unwrap_or_default();
-        let ctx = chat.as_ref().and_then(|c| c.context_tokens).map(|n| format!("{n} tokens of context"));
-        let l = self.layout().clone();
-        let tabs: Vec<AnyElement> = [(Panel::Departments, if rtl { "الأقسام" } else { "Departments" }), (Panel::Memory, if rtl { "الذاكرة" } else { "Memory" }), (Panel::Settings, if rtl { "الإعدادات" } else { "Settings" })]
-            .into_iter()
-            .map(|(panel, label)| self.button(format!("tab-{label}"), label, if l.right_visible && l.panel == panel { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.open_panel(panel, cx)))
-            .collect();
-        let opened = (!self.content.is_empty()).then(|| self.button("tab-opened", if rtl { "المفتوح" } else { "Opened" }, if l.right_visible && l.panel == Panel::Content { Kind::Primary } else { Kind::Ghost }, cx, |a, _, cx| a.open_panel(Panel::Content, cx)));
-        let branches = self.button("tab-tree", if rtl { "الفروع" } else { "Branches" }, if l.right_visible && l.panel == Panel::Tree { Kind::Primary } else { Kind::Ghost }, cx, |a, _, cx| a.open_panel(Panel::Tree, cx));
-        let toggle_left = self.button("toggle-left", if rtl { "المحادثات" } else { "Chats" }, if l.left_visible { Kind::Normal } else { Kind::Ghost }, cx, |a, _, cx| {
-            a.layout_mut().toggle_left();
-            a.persist();
-            cx.notify();
-        });
-        let model_btn = self.button("model", format!("{} ▾", if model.is_empty() { "no model" } else { &model }), Kind::Normal, cx, |a, _, cx| {
-            a.model_menu = !a.model_menu;
-            a.theme_menu = false;
-            cx.notify();
-        });
-        let theme_label = self.themes.themes[self.active_theme].label();
-        let theme_btn = self.button("theme", theme_label, Kind::Ghost, cx, |a, _, cx| {
-            a.theme_menu = !a.theme_menu;
-            a.model_menu = false;
-            cx.notify();
-        });
-        let dir_label = match self.prefs.direction {
-            rtl::Direction::Auto => "Auto",
-            rtl::Direction::Ltr => "LTR",
-            rtl::Direction::Rtl => "RTL",
+        let info = match self.page().clone() {
+            Page::Department(name) => TitleInfo::page(&name),
+            Page::Chat => {
+                let chat = self.chats.current().cloned();
+                TitleInfo::chat(chat.as_ref().map(|c| c.title.as_str()).unwrap_or(""), chat.as_ref().map(|c| c.model.as_str()).unwrap_or(""), chat.as_ref().and_then(|c| c.context_tokens), self.branches(), rtl)
+            }
         };
-        let dir_btn = self.button("direction", dir_label, Kind::Ghost, cx, |a, _, cx| {
-            let n = a.prefs.direction.next();
-            a.set_direction(n);
-            cx.notify();
+        let model_btn = info.model.as_ref().map(|m| {
+            self.button("model", format!("{m} ▾"), Kind::Normal, cx, |a, _, cx| {
+                a.model_menu = !a.model_menu;
+                cx.notify();
+            })
         });
         div()
+            .id("title-bar")
+            .role(Role::Banner)
             .flex()
             .when(rtl, |d| d.flex_row_reverse())
             .items_center()
-            .gap_2()
+            .gap_3()
             .p_2()
             // over a sky the title needs glass behind it
             .when(p.glass.is_some(), |d| d.m_2().mb_0().panel(&p, false))
-            .child(toggle_left)
-            .child(div().flex_1().overflow_hidden().text_color(p.text).child(title))
-            .when_some(ctx, |d, c| d.child(div().text_sm().text_color(p.muted).child(c)))
-            .child(model_btn)
-            .children(opened)
-            .child(branches)
-            .children(tabs)
-            .child(theme_btn)
-            .child(dir_btn)
+            .child(div().flex_1().overflow_hidden().text_color(p.text).child(info.title))
+            .when_some(info.branch, |d, b| d.child(div().id("branch").role(Role::Label).text_sm().text_color(p.muted).child(b)))
+            .when_some(info.context, |d, c| d.child(div().id("context").role(Role::Label).text_sm().text_color(p.muted).child(c)))
+            .children(model_btn)
             .into_any_element()
     }
 
     fn menus(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let p = self.pal.clone();
-        let items: Vec<AnyElement> = if self.model_menu {
-            self.models.names().to_vec().into_iter().enumerate().map(|(i, m)| {
-                let name = m.clone();
-                let cur = self.chats.current().map(|c| c.model == m).unwrap_or(false);
-                self.button(format!("model-{i}"), m, if cur { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.choose_model(&name, cx))
-            }).collect()
-        } else if self.theme_menu {
-            (0..self.themes.themes.len()).map(|i| {
-                let label = self.themes.themes[i].label();
-                self.button(format!("theme-{i}"), label, if i == self.active_theme { Kind::Primary } else { Kind::Ghost }, cx, move |a, w, cx| a.set_theme(i, w, cx))
-            }).collect()
-        } else {
+        if !self.model_menu {
             return None;
-        };
+        }
+        let items: Vec<AnyElement> = self.models.names().to_vec().into_iter().enumerate().map(|(i, m)| {
+            let name = m.clone();
+            let cur = self.chats.current().map(|c| c.model == m).unwrap_or(false);
+            self.button(format!("model-{i}"), m, if cur { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.choose_model(&name, cx))
+        }).collect();
         let rtl = self.rtl;
         Some(
             div().absolute().top(px(if p.glass.is_some() { 58. } else { 46. })).when(rtl, |d| d.left(px(12.))).when(!rtl, |d| d.right(px(12.))).w(px(300.)).max_h(px(420.)).overflow_hidden().p_2().flex().flex_col().gap_1().panel(&p, false)
@@ -386,7 +436,8 @@ impl Render for App {
             self.composer.update(cx, |s, cx| s.set_value(t, window, cx));
         }
         let total: f32 = window.viewport_size().width.into();
-        let (left_w, right_w) = self.layout().widths(total - 24., 420.);
+        let (left_w, right_w) = self.layout().widths(total - 24. - RAIL_WIDTH, 420.);
+        let rail = self.rail(cx);
         let top = self.top_bar(cx);
         let menus = self.menus(cx);
         let left = (left_w > 0.).then(|| self.sidebar(left_w, cx));
@@ -446,9 +497,8 @@ impl Render for App {
             }))
             .on_action(cx.listener(|a, _: &Dismiss, _, cx| {
                 // Escape closes whatever is open on top: a menu, then the question about continuing a chat
-                if a.model_menu || a.theme_menu {
+                if a.model_menu {
                     a.model_menu = false;
-                    a.theme_menu = false;
                 } else if a.pending.is_some() {
                     a.pending = None;
                 } else if a.confirm_delete.is_some() {
@@ -468,13 +518,12 @@ impl Render for App {
                     a.select_chat(k, cx);
                 }
             }));
+        // the rail, the chat list, the chat under its title bar, and the side panel; right to left mirrors the order
+        let main = div().relative().flex().flex_col().flex_1().h_full().overflow_hidden().child(top).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle)).children(menus);
         root.children(p.image_layer())
             .children(p.motes_layer(self.mote_clock))
             .child(
-                div().size_full().flex().flex_col().child(top).child(
-                    div().flex_1().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().px_2().pb_2().overflow_hidden().children(left).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle)).children(right),
-                ),
+                div().size_full().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().p_2().overflow_hidden().child(rail).children(left).child(main).children(right),
             )
-            .children(menus)
     }
 }

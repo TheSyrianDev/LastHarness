@@ -6,6 +6,7 @@ use gpui_component::input::Textarea;
 use gpui_component::text::TextView;
 
 use crate::app::App;
+use lh_gui::chrome::{panel_label, DOCK_TABS};
 use lh_gui::layout::Panel;
 use lh_gui::runs::{Outcome, Question, Run, StepState};
 use lh_gui::settings;
@@ -32,13 +33,7 @@ impl App {
         let rtl = self.rtl;
         let panel = self.layout().panel;
         let expanded = self.layout().right_expanded;
-        let title = match panel {
-            Panel::Departments => if rtl { "الأقسام" } else { "Departments" },
-            Panel::Memory => if rtl { "الذاكرة" } else { "Memory" },
-            Panel::Settings => if rtl { "الإعدادات" } else { "Settings" },
-            Panel::Content => if rtl { "المحتوى" } else { "Opened content" },
-            Panel::Tree => if rtl { "الفروع" } else { "Branches of this chat" },
-        };
+        let title = panel_label(panel, rtl);
         let expand = self.button("panel-expand", if expanded { "Smaller" } else { "Larger" }, Kind::Ghost, cx, |a, _, cx| {
             a.layout_mut().toggle_expand();
             a.persist();
@@ -68,10 +63,18 @@ impl App {
             Panel::Content => self.content_body(cx),
             Panel::Tree => self.tree_body(cx),
         };
-        let mut head = div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(div().flex_1().text_color(p.text).child(title));
+        // the tabs, then the size controls beneath them
+        let tabs: Vec<AnyElement> = DOCK_TABS
+            .into_iter()
+            .chain((panel == Panel::Settings).then_some(Panel::Settings))
+            .map(|t| self.button(format!("dock-{}", panel_label(t, false)), panel_label(t, rtl), if t == panel { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.show_in_dock(t, cx)))
+            .collect();
+        let tab_row = div().id("dock-tabs").role(Role::TabList).aria_label(if rtl { "أقسام اللوحة" } else { "Side panel sections" }).flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_1().children(tabs);
+        let mut controls = div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(div().flex_1());
         if !expanded {
-            head = head.child(narrower).child(wider);
+            controls = controls.child(narrower).child(wider);
         }
+        let controls = controls.child(expand).child(hide);
         div()
             .id("right-panel")
             .role(Role::Group)
@@ -84,7 +87,8 @@ impl App {
             .p_2()
             .panel(&p, self.focus == crate::app::Focus::Side)
             .on_mouse_down(MouseButton::Left, cx.listener(|a, _, _, cx| a.focus_on(crate::app::Focus::Side, cx)))
-            .child(head.child(expand).child(hide))
+            .child(tab_row)
+            .child(controls)
             .child(div().id("panel-body").flex_1().overflow_y_scroll().flex().flex_col().gap_2().child(body))
             .into_any_element()
     }

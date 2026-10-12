@@ -96,7 +96,6 @@ pub struct App {
     pub pal: Pal,
     pub scroll: ScrollHandle,
     pub model_menu: bool,
-    pub theme_menu: bool,
     pub pending: Option<Pending>,
     pub confirm_delete: Option<u64>,
     pub open_blocks: HashSet<(u64, usize)>,
@@ -249,7 +248,6 @@ impl App {
             pal,
             scroll: ScrollHandle::new(),
             model_menu: false,
-            theme_menu: false,
             pending: None,
             confirm_delete: None,
             open_blocks: HashSet::new(),
@@ -306,8 +304,6 @@ impl App {
             return;
         }
         self.active_theme = idx;
-        // choosing from the menu closes it, so the next click on the button opens it again
-        self.theme_menu = false;
         self.refresh_pal(cx);
         self.apply_window(window);
         self.persist();
@@ -378,7 +374,7 @@ impl App {
             }
         }
         self.scroll_to_end();
-        self.reload_tree_if_shown();
+        self.refresh_tree();
         cx.notify();
     }
 
@@ -542,7 +538,7 @@ impl App {
                     c.end_turn();
                 }
                 self.persist();
-                self.reload_tree_if_shown();
+                self.refresh_tree();
             }
             Ev::Failed { chat, message } => {
                 if chat == 0 {
@@ -683,10 +679,21 @@ impl App {
         }
     }
 
-    pub fn reload_tree_if_shown(&mut self) {
-        if self.connected && self.layout().right_visible && self.layout().panel == Panel::Tree {
+    /// Read the tree of the open chat again. The title bar needs it for the branch it names, so it is read whether
+    /// or not the branches tab is shown; a chat with no stored messages yet has none.
+    pub fn refresh_tree(&mut self) {
+        if self.connected && self.tree_session().is_some() {
             self.load_tree();
         }
+    }
+
+    /// The branch the title bar names for the chat that is open: "branch 2 of 3", or nothing for a single line.
+    pub fn branches(&self) -> Option<(usize, Option<usize>)> {
+        let key = self.chats.current()?.key;
+        if self.tree.chat != Some(key) {
+            return None;
+        }
+        self.tree.tree.as_ref()?.branches()
     }
 
     /// Go to a line of the tree. The core asks about a summary when the branch being left has messages.
@@ -758,7 +765,18 @@ impl App {
         self.layout_mut().toggle_panel(panel);
         if self.connected {
             self.load_panels();
-            self.reload_tree_if_shown();
+            self.refresh_tree();
+        }
+        self.persist();
+        cx.notify();
+    }
+
+    /// Switch the side panel to another tab and keep it shown.
+    pub fn show_in_dock(&mut self, panel: Panel, cx: &mut Context<Self>) {
+        self.layout_mut().show_panel(panel);
+        if self.connected {
+            self.load_panels();
+            self.refresh_tree();
         }
         self.persist();
         cx.notify();

@@ -171,3 +171,10 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **A move rebuilds the model's history from stored text,** like resuming a chat, so the first reply after a move is slow on a local model unless the cache matches (it is dropped on a move). The warning is not shown for a move on the same model (nothing is re-sent to the cloud that was not already part of this chat).
 - **The terminal cannot open a fork or a copy.** It has no chat list. Recommended: add `lh --resume ID` and a chat list to the terminal later, together.
 - **Moving while a turn runs is refused** (the tree panel shows the core's message).
+
+## Window redesign (build session, 2026-10-12)
+
+- **The context meter shows a number, not a bar.** The mock draws a bar, but the app does not know the model's context size (the core compacts at a threshold it keeps to itself). A bar with an invented size would mislead. Recommended answer, taken: show "4,120 tokens" only. Later the core can send the context size with the usage event and the bar can follow.
+- **The branches tab is called "Tree"** as in the mock (Arabic: the tree). The terminal still says `/tree`.
+- **Settings has no tab in the side panel.** The mock lists four tabs (Opened, Departments, Memory, Tree) and a Settings icon on the rail. Settings opens in the same panel from the rail, and a fifth tab appears while it is shown. Recommended: keep; a page of its own can follow if the settings list grows.
+- **Opened shows as a tab even when nothing is opened** (as in the mock); it then explains how to open something.

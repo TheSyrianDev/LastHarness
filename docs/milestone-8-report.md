@@ -117,6 +117,18 @@ A stored chat is now a tree: every message says which message it answers, and th
 
 Tests: store (migration), memory (8: branches, plans, labels, fork, clone, sizes, delete), core API (9, plus one in the KV tests), client (5), terminal screen and keys (7), desktop state (5) and backend (1), and a terminal-client end-to-end test.
 
+## The window redesign (in slices)
+
+The user approved a calmer window (mock: "LastHarness Redesign"). It is built in four slices; each one leaves the app working.
+
+**Slice a: icon rail and slim title bar.**
+- A 52 px rail of icons sits on the side (chats, departments, memory, settings at the bottom). Chats shows or hides the chat list; the others open the side panel. The icons are lines drawn by the app, so no picture files ship. In right-to-left the rail moves to the right and everything mirrors.
+- The title bar now holds only the chat's name, the branch it is on ("branch 2 of 3", only when the chat has more than one), the context size ("4,120 tokens") and the model. Over a department page it shows the department's name alone.
+- Theme and text direction left the title bar. They are in Settings (the rail's last icon) and stay on Ctrl+T and Ctrl+Shift+R; the command palette (slice c) will list them too. The theme menu is gone with them.
+- The side panel has its tabs along the top: Opened, Departments, Memory, Tree. Settings has no tab; the rail opens it and a tab appears while it is shown. The size controls sit on a line under the tabs.
+- Accessibility: the rail is a navigation region; each icon is a button with a name, its key (`aria-keyshortcuts`) and a pressed state; the tabs form a tab list; the title bar is a banner. The names and keys come from `chrome.rs`, which is tested.
+- Tests: `chrome.rs` (rail names in both directions, keys, icon shapes stay on the grid, pressed states, tabs, wording of the title bar), `ChatTree::branches` in `lh-client`.
+
 ## What is not done
 
 See `.grill/parked.md`, section Milestone 8 (build session). Main points: agent-opened content is only opened by a button (the core has no "show this" tool yet, so nothing opens by itself); no web pages in the app (Servo waits); saving the model's KV cache per chat is parked, with measurements in `spikes/kv-cache/RESULT.md`; Orca was not run; drawing the app's own window frame for matching roundness on desktops that do not report a radius; showing the cost of a cloud resume (the core has no price list yet, so the warning gives tokens only); Windows, macOS and mobile are later milestones.

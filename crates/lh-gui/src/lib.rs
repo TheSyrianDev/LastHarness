@@ -2,6 +2,7 @@
 //! themes, layout, right-to-left rules and preferences. They live here so they can be tested without a window.
 
 pub mod api;
+pub mod chrome;
 pub mod config;
 pub mod content;
 pub mod layout;

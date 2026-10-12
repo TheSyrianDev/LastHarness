@@ -73,6 +73,16 @@ impl ChatTree {
         self.nodes.iter().find(|n| n.id == id)
     }
 
+    /// How many branches the chat has (the ends of the tree) and which one the chat is on, counting from 1.
+    /// `None` when there is only one line of talk. The position is `None` when the chat is parked part way
+    /// along a branch rather than at its end.
+    pub fn branches(&self) -> Option<(usize, Option<usize>)> {
+        let has_reply: HashSet<i64> = self.nodes.iter().filter_map(|n| n.parent).collect();
+        let mut ends: Vec<i64> = self.nodes.iter().filter(|n| !has_reply.contains(&n.id)).map(|n| n.id).collect();
+        ends.sort_unstable();
+        (ends.len() > 1).then(|| (ends.len(), ends.iter().position(|&e| e == self.leaf).map(|i| i + 1)))
+    }
+
     /// Fold a line's replies away, or bring them back. Lines without replies cannot be folded.
     pub fn toggle_fold(&mut self, id: i64) {
         if id != 0 && !self.nodes.iter().any(|n| n.parent == Some(id)) {
@@ -234,6 +244,19 @@ mod tests {
         assert!(rows.iter().find(|r| r.text == "a2b").unwrap().current, "the chat is at a2b");
         assert!(rows.iter().find(|r| r.text == "q2b").unwrap().active && !rows.iter().find(|r| r.text == "q2").unwrap().active, "the active branch is marked");
         assert!(rows[0].active && !rows[0].current, "the start is always on the way");
+    }
+
+    #[test]
+    fn branches_count_the_ends_and_say_which_one_the_chat_is_on() {
+        let mut t = sample();
+        assert_eq!(t.branches(), Some((2, Some(2))), "a2 (id 4) and a2b (id 7); the chat is at the second");
+        t.leaf = 4;
+        assert_eq!(t.branches(), Some((2, Some(1))));
+        t.leaf = 5;
+        assert_eq!(t.branches(), Some((2, None)), "part way along a branch");
+        let straight = ChatTree::from_json(&json!({"leaf": 2, "active": [1, 2], "nodes": [n(1, None, "user", "q"), n(2, Some(1), "assistant", "a")]})).unwrap();
+        assert_eq!(straight.branches(), None, "one line of talk has no branches to show");
+        assert_eq!(ChatTree::default().branches(), None);
     }
 
     #[test]
