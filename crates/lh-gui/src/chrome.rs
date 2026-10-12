@@ -74,16 +74,8 @@ impl RailItem {
             RailItem::Departments => vec![circle(12., 5., 2.), circle(5., 19., 2.), circle(19., 19., 2.), vec![(12., 7.), (12., 12.), (6., 17.)], vec![(12., 12.), (18., 17.)]],
             // a page with two lines
             RailItem::Memory => vec![vec![(5., 4.), (16., 4.), (19., 7.), (19., 20.), (5., 20.), (5., 4.)], vec![(8., 11.), (16., 11.)], vec![(8., 15.), (16., 15.)]],
-            // a ring with eight short spokes
-            RailItem::Settings => {
-                let mut v = vec![circle(12., 12., 3.)];
-                for k in 0..8 {
-                    let a = k as f32 * std::f32::consts::FRAC_PI_4;
-                    let (s, c) = a.sin_cos();
-                    v.push(vec![(12. + 6. * c, 12. + 6. * s), (12. + 9. * c, 12. + 9. * s)]);
-                }
-                v
-            }
+            // a gear: eight teeth round a hub
+            RailItem::Settings => vec![gear(12., 12.), circle(12., 12., 3.)],
         }
     }
 }
@@ -115,6 +107,25 @@ pub fn panel_label(p: Panel, rtl: bool) -> &'static str {
         (Panel::Settings, false) => "Settings",
         (Panel::Settings, true) => "الإعدادات",
     }
+}
+
+/// The outline of a gear with eight square teeth, as one closed line.
+fn gear(cx: f32, cy: f32) -> Vec<(f32, f32)> {
+    let (root, tip) = (6.8f32, 9.6f32);
+    let at = |r: f32, deg: f32| {
+        let a = deg.to_radians();
+        (cx + r * a.cos(), cy + r * a.sin())
+    };
+    let mut v = vec![];
+    for k in 0..8 {
+        let mid = k as f32 * 45.;
+        v.push(at(root, mid - 15.));
+        v.push(at(tip, mid - 9.));
+        v.push(at(tip, mid + 9.));
+        v.push(at(root, mid + 15.));
+    }
+    v.push(v[0]);
+    v
 }
 
 /// A closed line round a circle.
@@ -192,6 +203,21 @@ mod tests {
             }
         }
         assert_ne!(RailItem::Memory.icon(), RailItem::Chats.icon());
+    }
+
+    #[test]
+    fn settings_is_a_gear_with_eight_teeth_and_a_hub_and_nothing_like_a_sun() {
+        let icon = RailItem::Settings.icon();
+        assert_eq!(icon.len(), 2, "the outline and the hub");
+        assert_eq!(icon[0].len(), 8 * 4 + 1, "four points a tooth, closed");
+        assert_eq!(icon[0].first(), icon[0].last());
+        // a sun is a ring with separate rays; a gear is one joined outline, so no line in it is a short loose stroke
+        assert!(icon.iter().all(|line| line.len() > 2));
+        // the tips are farther out than the roots, so it has teeth
+        let dist = |p: &(f32, f32)| ((p.0 - 12.).powi(2) + (p.1 - 12.).powi(2)).sqrt();
+        let (lo, hi) = icon[0].iter().fold((f32::MAX, 0f32), |(lo, hi), p| (lo.min(dist(p)), hi.max(dist(p))));
+        assert!(hi - lo > 2.5, "teeth stand out: {lo} to {hi}");
+        assert!(icon[1].iter().all(|p| dist(p) < 3.1), "the hub is small");
     }
 
     #[test]
