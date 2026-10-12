@@ -5,6 +5,7 @@ mod panels;
 mod style;
 mod tray;
 mod ui;
+mod width;
 
 use lh_gui::config;
 use gpui::prelude::*;

@@ -37,6 +37,7 @@ impl Prefs {
             prefs.theme = family;
             prefs.mode = mode;
         }
+        prefs.layout.tidy();
         prefs
     }
 
@@ -85,6 +86,32 @@ mod tests {
         a.save(&p).unwrap();
         let c = Prefs::load(&p);
         assert_eq!((c.theme.as_str(), c.mode), ("Frutiger Aero", ModeChoice::Dark));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_width_and_presets_survive_a_restart_and_a_file_from_the_last_version_migrates() {
+        use crate::layout::{ColumnWidth, Preset};
+        let dir = std::env::temp_dir().join(format!("lh-gui-prefs-width-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        // the last version wrote a word under [layout]
+        for (word, want) in [("comfortable", ColumnWidth::Px(700.)), ("wide", ColumnWidth::Px(860.)), ("full", ColumnWidth::Full)] {
+            std::fs::write(&p, format!("[layout]\ncolumn = \"{word}\"\n")).unwrap();
+            assert_eq!(Prefs::load(&p).layout.column, want, "{word}");
+        }
+        // a number and two presets are written and read back unchanged
+        let mut a = Prefs::default();
+        a.layout.column = ColumnWidth::Px(980.);
+        a.layout.save_preset("Reading").unwrap();
+        a.layout.column = ColumnWidth::Full;
+        a.layout.save_preset("All").unwrap();
+        a.save(&p).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains("[[layout.presets]]"), "{text}");
+        let b = Prefs::load(&p);
+        assert_eq!(b, a);
+        assert_eq!(b.layout.presets, vec![Preset { name: "Reading".into(), width: ColumnWidth::Px(980.) }, Preset { name: "All".into(), width: ColumnWidth::Full }]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

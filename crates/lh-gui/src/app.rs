@@ -140,6 +140,8 @@ pub struct App {
     /// While the Settings window is drawn its buttons can take keyboard focus (elsewhere they would steal it from
     /// the message box when clicked).
     pub tab_buttons: bool,
+    /// The chat width slider, number box and presets in Settings.
+    pub width: crate::width::WidthControls,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -288,6 +290,7 @@ impl App {
         .detach();
         let locale = rtl::desktop_locale();
         let is_rtl = prefs.direction.is_rtl(&locale);
+        let prefs_column = prefs.layout.column;
         let mut chats = Chats::default();
         chats.new_chat(&prefs.model);
         let layout_model = prefs.model.clone();
@@ -336,6 +339,7 @@ impl App {
             settings_open: false,
             settings_focus,
             tab_buttons: false,
+            width: crate::width::WidthControls::new(window, cx, prefs_column, is_rtl),
         }
     }
 
@@ -927,6 +931,8 @@ impl App {
         if self.connected {
             self.load_panels();
         }
+        self.width.note = None;
+        self.sync_width_widgets(window, cx);
         self.settings_focus.focus(window, cx);
         cx.notify();
     }
@@ -964,6 +970,8 @@ impl App {
             dark: self.dark(),
             system_available: self.system_dark.is_some() || lh_gui::appearance::system_dark().is_some(),
             direction: self.prefs.direction,
+            column: self.layout().column,
+            presets: self.layout().presets.clone(),
         }
     }
 
@@ -1033,6 +1041,7 @@ impl App {
             Command::Mode(m) => self.set_appearance(m, window, cx),
             Command::ToggleMode => self.toggle_mode(window, cx),
             Command::Direction(d) => self.set_direction(d),
+            Command::Width(w) => self.set_column(w, window, cx),
         }
         cx.notify();
     }

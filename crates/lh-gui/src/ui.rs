@@ -333,10 +333,11 @@ impl App {
     }
 
     /// Settings as a window over the app: the rest is dimmed, the window is centred, a click outside or Escape closes it.
-    fn settings_view(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn settings_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.settings_open {
             return None;
         }
+        self.keep_width_slider_current(window, cx);
         let p = self.pal.clone();
         let rtl = self.rtl;
         self.tab_buttons = true;
@@ -649,6 +650,7 @@ impl Render for App {
         let asking = self.asking(cx);
         let total: f32 = window.viewport_size().width.into();
         let (left_w, right_w) = self.layout().widths(total - 24. - RAIL_WIDTH, 420.);
+        self.width.room = self.layout().middle_room(total - 24. - RAIL_WIDTH, 420.);
         let rail = self.rail(cx);
         let top = self.top_bar(cx);
         let menus = self.menus(cx);
@@ -740,7 +742,7 @@ impl Render for App {
             }));
         // the rail, the chat list, the chat under its title bar, and the side panel; right to left mirrors the order
         let main = div().relative().flex().flex_col().flex_1().h_full().overflow_hidden().child(top).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle)).children(menus);
-        let settings = self.settings_view(cx);
+        let settings = self.settings_view(window, cx);
         let palette = self.palette_view(cx);
         root.children(p.image_layer())
             .children(p.motes_layer(self.mote_clock))

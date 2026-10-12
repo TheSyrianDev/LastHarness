@@ -215,15 +215,7 @@ impl App {
             a.persist();
             cx.notify();
         });
-        let mut widths = div().flex().flex_wrap().items_center().gap_1().child(div().text_sm().text_color(p.muted).child(if rtl { "عرض المحادثة" } else { "Chat width" }));
-        for c in lh_gui::layout::ColumnWidth::ALL {
-            let on = self.layout().column == c;
-            widths = widths.child(self.button(format!("column-{c:?}"), c.label(rtl), if on { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| {
-                a.layout_mut().column = c;
-                a.persist();
-                cx.notify();
-            }));
-        }
+        let widths = self.width_controls(cx);
         col = col.child(
             div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
                 .id("appearance").role(Role::Group).aria_label("Appearance")

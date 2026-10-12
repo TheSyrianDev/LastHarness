@@ -4,7 +4,7 @@
 
 use crate::chrome::{panel_label, DOCK_TABS};
 use crate::appearance::ModeChoice;
-use crate::layout::Panel;
+use crate::layout::{ColumnWidth, Panel, Preset, BUILT_IN_WIDTHS};
 use crate::rtl::Direction;
 
 /// What choosing a row does.
@@ -21,6 +21,8 @@ pub enum Command {
     Mode(ModeChoice),
     ToggleMode,
     Direction(Direction),
+    /// A chat width, from the built-in numbers or a preset.
+    Width(ColumnWidth),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -51,6 +53,9 @@ pub struct Snapshot {
     pub dark: bool,
     pub system_available: bool,
     pub direction: Direction,
+    /// The chat width in use, and the presets the person saved.
+    pub column: ColumnWidth,
+    pub presets: Vec<Preset>,
 }
 
 fn entry(command: Command, group: &'static str, title: impl Into<String>, hint: impl Into<String>) -> Entry {
@@ -104,6 +109,15 @@ pub fn entries(s: &Snapshot) -> Vec<Entry> {
             (Direction::Rtl, true) => "من اليمين إلى اليسار",
         };
         v.push(entry(Command::Direction(d), g_dir, title, if d == s.direction { current } else { "Ctrl+Shift+R" }));
+    }
+    let g_width = if ar { "عرض" } else { "Width" };
+    let width_title = |w: ColumnWidth| if ar { format!("عرض المحادثة: {}", w.label(true)) } else { format!("Chat width: {}", w.label(false)) };
+    for w in BUILT_IN_WIDTHS {
+        v.push(entry(Command::Width(w), g_width, width_title(w), if w == s.column { current } else { "" }));
+    }
+    for p in &s.presets {
+        let title = if ar { format!("عرض المحادثة: {} ({})", p.name, p.width.label(true)) } else { format!("Chat width: {} ({})", p.name, p.width.label(false)) };
+        v.push(entry(Command::Width(p.width), g_width, title, if p.width == s.column { current } else { "" }));
     }
     v
 }
@@ -196,6 +210,8 @@ mod tests {
             dark: false,
             system_available: true,
             direction: Direction::Auto,
+            column: ColumnWidth::Px(860.),
+            presets: vec![Preset { name: "Reading".into(), width: ColumnWidth::Px(1010.) }, Preset { name: "Whole screen".into(), width: ColumnWidth::Full }],
         }
     }
 
@@ -216,6 +232,32 @@ mod tests {
         for p in DOCK_TABS {
             assert!(has(&|c| *c == Command::OpenTab(p)), "{p:?}");
         }
+    }
+
+    #[test]
+    fn the_chat_widths_are_listed_by_number_and_presets_by_name_with_their_number() {
+        let e = entries(&snap());
+        let ts = titles(&e, &filter(&e, "width"));
+        assert_eq!(ts, ["Chat width: 700 px", "Chat width: 900 px", "Chat width: 1100 px", "Chat width: Full", "Chat width: Reading (1010 px)", "Chat width: Whole screen (Full)"]);
+        // choosing a row hands over the exact width
+        let pick = |t: &str| e.iter().find(|x| x.title == t).unwrap().command.clone();
+        assert_eq!(pick("Chat width: Reading (1010 px)"), Command::Width(ColumnWidth::Px(1010.)));
+        assert_eq!(pick("Chat width: Full"), Command::Width(ColumnWidth::Full));
+        // a number typed finds the rows with that number
+        assert_eq!(titles(&e, &filter(&e, "1010")), ["Chat width: Reading (1010 px)"]);
+        assert_eq!(titles(&e, &filter(&e, "reading")), ["Chat width: Reading (1010 px)"]);
+        // the width in use is marked, and no width row is marked when none matches
+        let mut s = snap();
+        s.column = ColumnWidth::Px(900.);
+        let e = entries(&s);
+        assert_eq!(e.iter().find(|x| x.title == "Chat width: 900 px").unwrap().hint, "current");
+        assert_eq!(e.iter().filter(|x| x.group == "Width" && x.hint == "current").count(), 1);
+        s.column = ColumnWidth::Px(777.);
+        assert_eq!(entries(&s).iter().filter(|x| x.group == "Width" && x.hint == "current").count(), 0);
+        // Arabic names the group and keeps the numbers
+        s.rtl = true;
+        let ar = entries(&s);
+        assert!(ar.iter().any(|x| x.group == "عرض" && x.title == "عرض المحادثة: 900 px"));
     }
 
     #[test]
