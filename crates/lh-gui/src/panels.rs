@@ -3,6 +3,7 @@
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::input::Textarea;
+use gpui_component::Disableable as _;
 use gpui_component::text::TextView;
 
 use crate::app::App;
@@ -180,14 +181,26 @@ impl App {
             let (name, label) = (f.clone(), if one_mode { format!("{f} ({})", if rtl { "نمط واحد" } else { "one mode only" }) } else { f.clone() });
             looks = looks.child(self.button(format!("look-{f}"), label, if f == current { Kind::Primary } else { Kind::Normal }, cx, move |a, w, cx| a.set_family(&name, w, cx)));
         }
-        let mut modes = div().flex().flex_wrap().items_center().gap_1().child(div().text_sm().text_color(p.muted).child(if rtl { "النمط" } else { "Mode" }));
-        for m in lh_gui::appearance::ModeChoice::ALL {
-            if m == lh_gui::appearance::ModeChoice::System && self.system_dark.is_none() && lh_gui::appearance::system_dark().is_none() {
-                continue;
-            }
-            let on = self.prefs.mode == m;
-            modes = modes.child(self.button(format!("mode-{m:?}"), m.label(rtl), if on { Kind::Primary } else { Kind::Normal }, cx, move |a, w, cx| a.set_appearance(m, w, cx)));
-        }
+        // light and dark are a switch; following the desktop is its own switch beneath it
+        let reports = self.system_dark.is_some() || lh_gui::appearance::system_dark().is_some();
+        let sw = lh_gui::appearance::switches(self.prefs.mode, self.system_dark, reports);
+        let dark_note = if sw.dark_enabled { None } else { Some(if rtl { if sw.dark_on { "يتبع سطح المكتب: داكن الآن" } else { "يتبع سطح المكتب: فاتح الآن" } } else if sw.dark_on { "Following the desktop: dark now" } else { "Following the desktop: light now" }) };
+        let dark_switch = gpui_component::switch::Switch::new("dark-mode-switch")
+            .checked(sw.dark_on)
+            .disabled(!sw.dark_enabled)
+            .label(if rtl { "الوضع الداكن" } else { "Dark mode" })
+            .on_click(cx.listener(|a, on: &bool, w, cx| a.set_appearance(lh_gui::appearance::after_dark_switch(*on), w, cx)));
+        let match_switch = gpui_component::switch::Switch::new("match-desktop-switch")
+            .checked(sw.match_on)
+            .disabled(!sw.match_enabled)
+            .label(if rtl { "مطابقة سطح المكتب" } else { "Match the desktop" })
+            .on_click(cx.listener(|a, on: &bool, w, cx| {
+                let dark = a.dark();
+                a.set_appearance(lh_gui::appearance::after_match_switch(*on, dark), w, cx)
+            }));
+        let modes = div().flex().flex_col().gap_1().id("mode-switches").role(Role::Group).aria_label(if rtl { "الوضع" } else { "Light or dark" })
+            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().child(dark_switch).children(dark_note.map(|n| div().text_xs().text_color(p.muted).child(n))))
+            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().child(match_switch).children((!reports && !sw.match_on).then(|| div().text_xs().text_color(p.muted).child(if rtl { "سطح المكتب لا يخبرنا بوضعه." } else { "This desktop does not say whether it is light or dark." }))));
         let dir = match self.prefs.direction {
             lh_gui::rtl::Direction::Auto => "Direction: follow the desktop language",
             lh_gui::rtl::Direction::Ltr => "Direction: left to right",
@@ -213,8 +226,8 @@ impl App {
         let widths = self.width_controls(cx);
         div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
                 .id("appearance").role(Role::Group).aria_label("Appearance")
-                .child(looks)
                 .child(modes)
+                .child(looks)
                 .child(widths)
                 .child(div().flex().flex_wrap().gap_1().child(dir_btn).child(narrower).child(wider))
                 .child(div().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))

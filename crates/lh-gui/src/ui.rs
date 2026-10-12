@@ -16,7 +16,7 @@ use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::{mix, Look, PanelExt};
 
-actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, ToggleMode, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette]);
+actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, ToggleMode, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette, JumpToLatest]);
 
 /// The keys for every action; also how the app is driven without a mouse.
 pub fn bind_keys(cx: &mut gpui::App) {
@@ -36,6 +36,7 @@ pub fn bind_keys(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-enter", ConfirmResume, None),
         KeyBinding::new("escape", Dismiss, None),
         KeyBinding::new("ctrl-shift-l", OpenLastReply, None),
+        KeyBinding::new("ctrl-shift-j", JumpToLatest, None),
         KeyBinding::new("ctrl-shift-p", PopOutContent, None),
         KeyBinding::new("ctrl-pagedown", NextChat, None),
         KeyBinding::new("ctrl-pageup", PrevChat, None),
@@ -635,7 +636,20 @@ impl App {
             .children(blocks);
         let scroll = div().id("chat-scroll").role(Role::Log).aria_label("Conversation").flex_1().overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().items_center().p_3().child(column);
         // on glass the conversation sits on a panel of its own, so text never lands straight on the sky
-        let pane = div().flex().flex_col().flex_1().overflow_hidden().when(p.glass.is_some(), |d| d.panel(&p, self.focus == Focus::Chat)).child(scroll);
+        // the view stays where the person scrolled to while text streams in; a button takes them to the newest line
+        let max = self.scroll.max_offset().y;
+        self.follow.observe(self.scroll.offset().y.into(), max.into());
+        let jump = self.follow.wants_jump_button().then(|| {
+            self.tab_buttons = true;
+            let b = self.button("jump-to-latest", if rtl { "إلى الأحدث" } else { "Jump to latest" }, Kind::Primary, cx, |a, w, cx| {
+                a.scroll_to_end();
+                a.composer.update(cx, |s, cx| s.focus(w, cx));
+                cx.notify();
+            });
+            self.tab_buttons = false;
+            div().absolute().bottom_2().w_full().flex().justify_center().child(b)
+        });
+        let pane = div().relative().flex().flex_col().flex_1().overflow_hidden().when(p.glass.is_some(), |d| d.panel(&p, self.focus == Focus::Chat)).child(scroll).children(jump);
         // questions and the message box stay in view under the conversation, in the same column
         let beneath = div().flex().flex_col().items_center().px_3().child(div().flex().flex_col().gap_2().w_full().when_some(width, |d, w| d.max_w(px(w))).children(stack).child(composer));
         div().flex().flex_col().flex_1().h_full().gap_2().overflow_hidden()
@@ -705,6 +719,10 @@ impl Render for App {
                 if a.pending.as_ref().is_some_and(|p| !p.warning.is_null()) {
                     a.confirm_resume(cx);
                 }
+            }))
+            .on_action(cx.listener(|a, _: &JumpToLatest, _, cx| {
+                a.scroll_to_end();
+                cx.notify();
             }))
             .on_action(cx.listener(|a, _: &OpenLastReply, _, cx| {
                 // the newest reply or tool result of this chat, in the side panel

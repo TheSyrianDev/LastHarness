@@ -6,6 +6,7 @@ pub mod appearance;
 pub mod chrome;
 pub mod config;
 pub mod content;
+pub mod follow;
 pub mod layout;
 pub mod model;
 pub mod motion;

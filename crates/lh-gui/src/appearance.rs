@@ -54,6 +54,32 @@ pub fn is_dark(choice: ModeChoice, system: Option<bool>) -> bool {
     }
 }
 
+/// What the two switches in Appearance show. The dark switch is on for dark; while the app follows the desktop it
+/// is disabled and shows the desktop's mode. The match switch is on while following the desktop, and cannot be
+/// turned on when the desktop says nothing about it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Switches {
+    pub dark_on: bool,
+    pub dark_enabled: bool,
+    pub match_on: bool,
+    pub match_enabled: bool,
+}
+
+pub fn switches(choice: ModeChoice, system: Option<bool>, desktop_reports: bool) -> Switches {
+    let following = choice == ModeChoice::System;
+    Switches { dark_on: is_dark(choice, system), dark_enabled: !following, match_on: following, match_enabled: desktop_reports || following }
+}
+
+/// The dark switch was turned on or off: an explicit choice.
+pub fn after_dark_switch(on: bool) -> ModeChoice {
+    if on { ModeChoice::Dark } else { ModeChoice::Light }
+}
+
+/// The match switch was turned on or off. Off keeps what is showing now, as an explicit choice.
+pub fn after_match_switch(on: bool, dark_now: bool) -> ModeChoice {
+    if on { ModeChoice::System } else { after_dark_switch(dark_now) }
+}
+
 /// The light/dark key: swap to the other variant, as an explicit choice (so it stops following the desktop).
 pub fn toggled(choice: ModeChoice, system: Option<bool>) -> ModeChoice {
     if is_dark(choice, system) { ModeChoice::Light } else { ModeChoice::Dark }
@@ -115,6 +141,34 @@ mod tests {
             let s = toml::to_string(&W { mode: m }).unwrap();
             assert!(s.contains(&format!("\"{word}\"")), "{s}");
             assert_eq!(toml::from_str::<W>(&s).unwrap().mode, m);
+        }
+    }
+
+    #[test]
+    fn the_dark_switch_shows_the_mode_and_is_off_limits_while_following_the_desktop() {
+        let sw = |c, sys, rep| switches(c, sys, rep);
+        assert_eq!(sw(ModeChoice::Light, None, true), Switches { dark_on: false, dark_enabled: true, match_on: false, match_enabled: true });
+        assert_eq!(sw(ModeChoice::Dark, Some(false), true), Switches { dark_on: true, dark_enabled: true, match_on: false, match_enabled: true });
+        // following: the dark switch shows what the desktop says and cannot be moved
+        assert_eq!(sw(ModeChoice::System, Some(true), true), Switches { dark_on: true, dark_enabled: false, match_on: true, match_enabled: true });
+        assert_eq!(sw(ModeChoice::System, Some(false), true), Switches { dark_on: false, dark_enabled: false, match_on: true, match_enabled: true });
+        // a desktop that says nothing: the match switch cannot be turned on, but one already on can be turned off
+        assert!(!sw(ModeChoice::Light, None, false).match_enabled);
+        assert!(sw(ModeChoice::System, None, false).match_enabled);
+    }
+
+    #[test]
+    fn the_switches_make_the_same_saved_choices_as_before() {
+        assert_eq!(after_dark_switch(true), ModeChoice::Dark);
+        assert_eq!(after_dark_switch(false), ModeChoice::Light);
+        assert_eq!(after_match_switch(true, false), ModeChoice::System);
+        assert_eq!(after_match_switch(true, true), ModeChoice::System);
+        assert_eq!(after_match_switch(false, true), ModeChoice::Dark, "turning matching off keeps what is showing");
+        assert_eq!(after_match_switch(false, false), ModeChoice::Light);
+        // the saved words are unchanged, so an old gui.toml still reads
+        for (w, c) in [("light", ModeChoice::Light), ("dark", ModeChoice::Dark), ("system", ModeChoice::System)] {
+            let t: toml::Table = toml::from_str(&format!("mode = \"{w}\"")).unwrap();
+            assert_eq!(t["mode"].clone().try_into::<ModeChoice>().unwrap(), c);
         }
     }
 }

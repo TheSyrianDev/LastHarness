@@ -97,6 +97,8 @@ pub struct App {
     pub window_radius: Option<f32>,
     pub pal: Pal,
     pub scroll: ScrollHandle,
+    /// Whether the conversation follows new text, or the person scrolled up and is reading.
+    pub follow: lh_gui::follow::Follow,
     pub model_menu: bool,
     pub pending: Option<Pending>,
     pub confirm_delete: Option<u64>,
@@ -322,6 +324,7 @@ impl App {
             window_radius,
             pal,
             scroll: ScrollHandle::new(),
+            follow: Default::default(),
             model_menu: false,
             pending: None,
             confirm_delete: None,
@@ -624,9 +627,20 @@ impl App {
         cx.notify();
     }
 
+    /// Go to the newest line and follow from there: sending a message, opening a chat, the jump button.
     pub fn scroll_to_end(&mut self) {
         let max = self.scroll.max_offset();
         self.scroll.set_offset(point(px(0.), -max.y));
+        self.follow.placed((-max.y).into());
+    }
+
+    /// New text arrived in the open chat: follow it only if the view is at the bottom. If the person scrolled up
+    /// their place is left alone and the jump button is shown.
+    pub fn follow_stream(&mut self) {
+        let (offset, max) = (self.scroll.offset().y, self.scroll.max_offset().y);
+        if self.follow.on_new_content(offset.into(), max.into()) {
+            self.scroll_to_end();
+        }
     }
 
     // ---- events from the core -----------------------------------------------------------------
@@ -683,7 +697,7 @@ impl App {
                     c.apply(&event);
                 }
                 if current == Some(chat) {
-                    self.scroll_to_end();
+                    self.follow_stream();
                 }
             }
             Ev::StreamEnded { chat } => {
