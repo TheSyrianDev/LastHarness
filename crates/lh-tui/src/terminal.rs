@@ -36,10 +36,32 @@ fn default_token_path() -> PathBuf {
     }
 }
 
+/// What was said on a branch: (role, text) in order.
+type Said = Vec<(String, String)>;
+
 enum Msg {
     Event(ServerEvent),
     End,
     Review(Result<Vec<Suggestion>, String>),
+    /// The chat tree, opened or refreshed.
+    Tree(Result<lh_client::tree::ChatTree, String>),
+    /// A line of feedback for the tree screen (or the chat when it is closed).
+    TreeNote(Result<String, String>),
+    /// The answer to going to a message in the tree.
+    Moved(i64, Result<lh_client::tree::Moved, String>),
+    /// The active branch after a move: what was said, and the words for the input box.
+    Branch(Result<(Said, Option<String>), String>),
+}
+
+/// Ask the core for the active branch of this chat, after a move.
+fn fetch_branch(client: Arc<Client>, session: String, input: Option<String>, tx: mpsc::UnboundedSender<Msg>) {
+    tokio::spawn(async move {
+        let r = client.call("GET", &format!("/v1/chats/{session}"), None).await.map(|v| {
+            let said = v["history"].as_array().map(|a| a.iter().map(|m| (m["role"].as_str().unwrap_or("").to_string(), m["content"].as_str().unwrap_or("").to_string())).collect()).unwrap_or_default();
+            (said, input)
+        });
+        let _ = tx.send(Msg::Branch(r));
+    });
 }
 
 #[tokio::main]
@@ -292,12 +314,41 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                 Msg::Review(Ok(list)) if list.is_empty() => app.entries.push(crate::app::Entry::Notice("Nothing new to remember from this conversation.".into())),
                 Msg::Review(Ok(list)) => app.review = list,
                 Msg::Review(Err(e)) => app.entries.push(crate::app::Entry::Error(e)),
+                Msg::Tree(Ok(t)) => match app.tree.as_mut() { Some(open) => open.replace_tree(t), None => app.tree = Some(crate::tree_ui::TreeScreen::new(t)) },
+                Msg::Tree(Err(e)) => app.entries.push(crate::app::Entry::Error(e)),
+                Msg::TreeNote(r) => {
+                    let text = r.unwrap_or_else(|e| format!("error: {e}"));
+                    match app.tree.as_mut() { Some(open) => open.note = text, None => app.entries.push(crate::app::Entry::Notice(text)) }
+                }
+                Msg::Moved(node, Ok(lh_client::tree::Moved::NeedsChoice { leaving_messages })) => {
+                    if let Some(open) = app.tree.as_mut() { open.prompt = crate::tree_ui::Prompt::Summary { node, leaving: leaving_messages }; }
+                }
+                Msg::Moved(_, Ok(lh_client::tree::Moved::Done { input, .. })) => {
+                    app.tree = None;
+                    fetch_branch(client.clone(), session.clone(), input, tx.clone());
+                }
+                Msg::Moved(_, Err(e)) => match app.tree.as_mut() { Some(open) => open.note = format!("error: {e}"), None => app.entries.push(crate::app::Entry::Error(e)) },
+                Msg::Branch(Ok((history, input))) => app.show_branch(&history, input),
+                Msg::Branch(Err(e)) => app.entries.push(crate::app::Entry::Error(e)),
                 Msg::End => { turn = None; if app.busy { app.apply(ServerEvent::Error("The core closed the connection before the answer was finished.".into())); } }
             },
             Some(Ok(ev)) = keys.next() => {
                 let Event::Key(k) = ev else { continue };
                 if k.kind != KeyEventKind::Press { continue }
                 let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+                if let Some(open) = app.tree.as_mut() {
+                    use crate::tree_ui::Action;
+                    let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
+                    match open.key(k.code, k.modifiers) {
+                        Action::Nothing => {}
+                        Action::Close => app.tree = None,
+                        Action::Go(node) => { tokio::spawn(async move { let _ = tx.send(Msg::Moved(node, c.move_in_tree(&s, node, None).await)); }); }
+                        Action::GoWithSummary(node, yes) => { open.note = if yes { "Writing the summary…".into() } else { String::new() }; tokio::spawn(async move { let _ = tx.send(Msg::Moved(node, c.move_in_tree(&s, node, Some(yes)).await)); }); }
+                        Action::Label(node, text) => { tokio::spawn(async move { let r = match c.label_node(&s, node, &text).await { Ok(()) => c.chat_tree(&s).await, Err(e) => Err(e) }; let _ = tx.send(Msg::Tree(r)); }); }
+                        Action::Fork(node) => { tokio::spawn(async move { let r = c.fork_chat(&s, node).await.map(|(id, input)| format!("Made a new chat ({id}) from here{}. Open it from the chat list in the desktop app.", if input.is_some() { ", with that message ready to send again" } else { "" })); let _ = tx.send(Msg::TreeNote(r)); }); }
+                    }
+                    continue;
+                }
                 if !app.review.is_empty() {
                     let (c, id) = (client.clone(), app.review[0].id);
                     match k.code {
@@ -338,6 +389,16 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                     KeyCode::PageDown => app.scroll = app.scroll.saturating_sub(10),
                     KeyCode::Backspace => { app.input.pop(); }
                     KeyCode::Char(c) if !ctrl => app.input.push(c),
+                    KeyCode::Enter if !app.busy && app.input.trim() == "/tree" => {
+                        app.input.clear();
+                        let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
+                        tokio::spawn(async move { let _ = tx.send(Msg::Tree(c.chat_tree(&s).await)); });
+                    }
+                    KeyCode::Enter if !app.busy && app.input.trim() == "/clone" => {
+                        app.input.clear();
+                        let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
+                        tokio::spawn(async move { let r = c.clone_chat(&s).await.map(|id| format!("Copied this branch into a new chat ({id}). Open it from the chat list in the desktop app.")); let _ = tx.send(Msg::TreeNote(r)); });
+                    }
                     KeyCode::Enter if !app.busy && app.input.trim() == "/learn" => {
                         app.input.clear();
                         let (c, s, tx) = (client.clone(), session.clone(), tx.clone());

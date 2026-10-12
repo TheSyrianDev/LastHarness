@@ -12,7 +12,7 @@ use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::{mix, Look, PanelExt};
 
-actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent]);
+actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent]);
 
 /// The keys for every action; also how the app is driven without a mouse.
 pub fn bind_keys(cx: &mut gpui::App) {
@@ -23,6 +23,7 @@ pub fn bind_keys(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-shift-m", ShowMemory, None),
         KeyBinding::new("ctrl-shift-s", ShowSettings, None),
         KeyBinding::new("ctrl-shift-o", ShowContent, None),
+        KeyBinding::new("ctrl-shift-t", ShowTree, None),
         KeyBinding::new("ctrl-shift-e", ToggleExpand, None),
         KeyBinding::new("ctrl-t", NextTheme, None),
         KeyBinding::new("ctrl-shift-r", CycleDirection, None),
@@ -114,6 +115,7 @@ impl App {
             .map(|(panel, label)| self.button(format!("tab-{label}"), label, if l.right_visible && l.panel == panel { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.open_panel(panel, cx)))
             .collect();
         let opened = (!self.content.is_empty()).then(|| self.button("tab-opened", if rtl { "المفتوح" } else { "Opened" }, if l.right_visible && l.panel == Panel::Content { Kind::Primary } else { Kind::Ghost }, cx, |a, _, cx| a.open_panel(Panel::Content, cx)));
+        let branches = self.button("tab-tree", if rtl { "الفروع" } else { "Branches" }, if l.right_visible && l.panel == Panel::Tree { Kind::Primary } else { Kind::Ghost }, cx, |a, _, cx| a.open_panel(Panel::Tree, cx));
         let toggle_left = self.button("toggle-left", if rtl { "المحادثات" } else { "Chats" }, if l.left_visible { Kind::Normal } else { Kind::Ghost }, cx, |a, _, cx| {
             a.layout_mut().toggle_left();
             a.persist();
@@ -153,6 +155,7 @@ impl App {
             .when_some(ctx, |d, c| d.child(div().text_sm().text_color(p.muted).child(c)))
             .child(model_btn)
             .children(opened)
+            .child(branches)
             .children(tabs)
             .child(theme_btn)
             .child(dir_btn)
@@ -379,6 +382,9 @@ impl Render for App {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
+        if let Some(t) = self.pending_input.take() {
+            self.composer.update(cx, |s, cx| s.set_value(t, window, cx));
+        }
         let total: f32 = window.viewport_size().width.into();
         let (left_w, right_w) = self.layout().widths(total - 24., 420.);
         let top = self.top_bar(cx);
@@ -401,6 +407,7 @@ impl Render for App {
             .on_action(cx.listener(|a, _: &ShowMemory, _, cx| a.open_panel(Panel::Memory, cx)))
             .on_action(cx.listener(|a, _: &ShowSettings, _, cx| a.open_panel(Panel::Settings, cx)))
             .on_action(cx.listener(|a, _: &ShowContent, _, cx| a.open_panel(Panel::Content, cx)))
+            .on_action(cx.listener(|a, _: &ShowTree, _, cx| a.open_panel(Panel::Tree, cx)))
             .on_action(cx.listener(|a, _: &ToggleExpand, _, cx| {
                 a.layout_mut().toggle_expand();
                 a.persist();

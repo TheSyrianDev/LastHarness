@@ -119,6 +119,12 @@ pub struct App {
     pub mote_clock: f32,
     /// A problem to show on the opened-content panel, such as a browser that would not start.
     pub content_note: Option<String>,
+    /// The chat tree panel: whose tree it shows, the chosen line, a question waiting.
+    pub tree: lh_gui::treeview::TreeState,
+    /// A name being typed for a line of the tree.
+    pub tree_label: Entity<InputState>,
+    /// Words to put in the message box at the next draw (choosing something said earlier brings it back).
+    pub pending_input: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -261,6 +267,9 @@ impl App {
             focus: Focus::default(),
             mote_clock: 0.,
             content_note: None,
+            tree: Default::default(),
+            tree_label: cx.new(|cx| InputState::new(window, cx).placeholder("A name for this line")),
+            pending_input: None,
         }
     }
 
@@ -369,6 +378,7 @@ impl App {
             }
         }
         self.scroll_to_end();
+        self.reload_tree_if_shown();
         cx.notify();
     }
 
@@ -532,6 +542,7 @@ impl App {
                     c.end_turn();
                 }
                 self.persist();
+                self.reload_tree_if_shown();
             }
             Ev::Failed { chat, message } => {
                 if chat == 0 {
@@ -644,6 +655,7 @@ impl App {
                 }
             }
             ("run", Err(e)) => p.goal_note = Some(e),
+            (t, r) if t.starts_with("tree") => self.on_tree_reply(t, r),
             (t, Ok(_)) if t.starts_with("setting:") => {
                 p.settings_error = None;
                 self.backend.send(Cmd::Call { tag: "settings".into(), method: "GET".into(), path: "/v1/settings".into(), body: None });
@@ -653,10 +665,100 @@ impl App {
         }
     }
 
+    // ---- the chat tree ------------------------------------------------------------------------
+
+    /// The core's id of the chat that is open, if it has one.
+    fn tree_session(&self) -> Option<(u64, String)> {
+        self.chats.current().and_then(|c| c.session.clone().map(|s| (c.key, s)))
+    }
+
+    /// Ask for the tree of the open chat.
+    pub fn load_tree(&mut self) {
+        match self.tree_session() {
+            Some((key, sid)) => self.backend.send(Cmd::Call { tag: format!("tree:{key}"), method: "GET".into(), path: format!("/v1/chats/{sid}/tree"), body: None }),
+            None => {
+                self.tree = Default::default();
+                self.tree.note = "Nothing to show yet: the tree starts with the first message.".into();
+            }
+        }
+    }
+
+    pub fn reload_tree_if_shown(&mut self) {
+        if self.connected && self.layout().right_visible && self.layout().panel == Panel::Tree {
+            self.load_tree();
+        }
+    }
+
+    /// Go to a line of the tree. The core asks about a summary when the branch being left has messages.
+    pub fn tree_go(&mut self, node: i64, summarize: Option<bool>) {
+        if let Some((key, sid)) = self.tree_session() {
+            let mut body = serde_json::json!({"node": node});
+            if let Some(s) = summarize {
+                body["summarize"] = s.into();
+            }
+            self.backend.send(Cmd::Call { tag: format!("tree-move:{key}:{node}"), method: "POST".into(), path: format!("/v1/chats/{sid}/tree/move"), body: Some(body) });
+        }
+    }
+
+    pub fn tree_label(&mut self, node: i64, label: String) {
+        if let Some((key, sid)) = self.tree_session() {
+            self.backend.send(Cmd::Call { tag: format!("tree-label:{key}"), method: "POST".into(), path: format!("/v1/chats/{sid}/tree/label"), body: Some(serde_json::json!({"node": node, "label": label})) });
+        }
+    }
+
+    pub fn tree_fork(&mut self, node: i64) {
+        if let Some((key, sid)) = self.tree_session() {
+            self.backend.send(Cmd::Call { tag: format!("tree-fork:{key}"), method: "POST".into(), path: format!("/v1/chats/{sid}/fork"), body: Some(serde_json::json!({"node": node})) });
+        }
+    }
+
+    pub fn tree_clone(&mut self) {
+        if let Some((key, sid)) = self.tree_session() {
+            self.backend.send(Cmd::Call { tag: format!("tree-clone:{key}"), method: "POST".into(), path: format!("/v1/chats/{sid}/clone"), body: Some(serde_json::json!({})) });
+        }
+    }
+
+    fn on_tree_reply(&mut self, tag: &str, result: Result<Value, String>) {
+        use lh_gui::treeview::Outcome;
+        let mut parts = tag.split(':');
+        let (kind, key) = (parts.next().unwrap_or(""), parts.next().and_then(|k| k.parse::<u64>().ok()).unwrap_or(0));
+        let node = parts.next().and_then(|n| n.parse::<i64>().ok()).unwrap_or(0);
+        match (kind, result) {
+            ("tree", Ok(v)) => match lh_client::tree::ChatTree::from_json(&v) {
+                Ok(t) => self.tree.load(key, t),
+                Err(e) => self.tree.failed(key, e),
+            },
+            ("tree", Err(e)) => self.tree.failed(key, e),
+            ("tree-move", Ok(v)) => {
+                if let Outcome::Moved { input, .. } = self.tree.moved(node, lh_client::tree::Moved::from_json(&v)) {
+                    // the chat now shows its new branch, and the words of the message chosen go back in the box
+                    if let Some(sid) = self.chats.by_key(key).and_then(|c| c.session.clone()) {
+                        self.backend.send(Cmd::LoadHistory { chat: key, id: sid });
+                    }
+                    if input.is_some() {
+                        self.pending_input = input;
+                    }
+                    self.load_tree();
+                }
+            }
+            ("tree-move", Err(e)) | ("tree-label", Err(e)) | ("tree-fork", Err(e)) | ("tree-clone", Err(e)) => self.tree.note = e,
+            ("tree-label", Ok(_)) => {
+                self.tree.prompt = lh_gui::treeview::Prompt::None;
+                self.load_tree();
+            }
+            ("tree-fork", Ok(_)) | ("tree-clone", Ok(_)) => {
+                self.tree.note = "Made a new chat. It is in the chat list.".into();
+                self.backend.send(Cmd::Refresh);
+            }
+            _ => {}
+        }
+    }
+
     pub fn open_panel(&mut self, panel: Panel, cx: &mut Context<Self>) {
         self.layout_mut().toggle_panel(panel);
         if self.connected {
             self.load_panels();
+            self.reload_tree_if_shown();
         }
         self.persist();
         cx.notify();

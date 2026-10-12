@@ -81,12 +81,30 @@ pub struct App {
     /// Suggestions waiting for a decision; the first one is on screen.
     pub review: Vec<Suggestion>,
     pub incognito: bool,
+    /// The chat tree, while it is open.
+    pub tree: Option<crate::tree_ui::TreeScreen>,
     last_finish: Option<String>,
 }
 
 impl App {
     pub fn new(model: impl Into<String>) -> Self {
-        Self { model: model.into(), entries: vec![], input: String::new(), question: None, busy: false, show_thinking: false, scroll: 0, usage: None, review: vec![], incognito: false, last_finish: None }
+        Self { model: model.into(), entries: vec![], input: String::new(), question: None, busy: false, show_thinking: false, scroll: 0, usage: None, review: vec![], incognito: false, tree: None, last_finish: None }
+    }
+
+    /// Show the active branch the core sent after a move in the tree: what was said, and a summary if one was kept.
+    pub fn show_branch(&mut self, history: &[(String, String)], input: Option<String>) {
+        self.entries = history
+            .iter()
+            .map(|(role, text)| match role.as_str() {
+                "user" => Entry::User(text.clone()),
+                "assistant" => Entry::Assistant(text.clone()),
+                _ => Entry::Notice(format!("Summary of another path: {text}")),
+            })
+            .collect();
+        self.scroll = 0;
+        if let Some(i) = input {
+            self.input = i;
+        }
     }
 
     pub fn start_turn(&mut self, text: String) {
@@ -211,5 +229,17 @@ mod tests {
         assert_eq!(a.question.as_ref().unwrap().id, "a1");
         a.apply(ServerEvent::Error("boom".into()));
         assert!(a.question.is_none() && !a.busy);
+    }
+
+    #[test]
+    fn a_move_in_the_tree_replaces_the_chat_with_the_branch_and_fills_the_input() {
+        let mut a = App::new("m");
+        a.start_turn("old".into());
+        a.show_branch(&[("user".into(), "q1".into()), ("assistant".into(), "a1".into()), ("summary".into(), "found 42".into())], Some("q2".into()));
+        assert_eq!(a.entries, vec![Entry::User("q1".into()), Entry::Assistant("a1".into()), Entry::Notice("Summary of another path: found 42".into())]);
+        assert_eq!(a.input, "q2");
+        a.show_branch(&[], None);
+        assert_eq!(a.input, "q2", "no new words leaves what is typed alone");
+        assert!(a.entries.is_empty());
     }
 }

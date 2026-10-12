@@ -161,3 +161,13 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **The plain-placeholder rule is lifted for this one look.** The user chose Frutiger Aero and said the first version did not look like it; the planning peer relayed that no branding or logo is allowed but the look should be faithful. Done in `crates/lh-gui/themes/frutiger-aero-*.toml` and described in `docs/milestone-8-report.md`.
 - **Bubbles cost about 4 percent of one core while the window is in use.** Recommended answer, taken: they ship on (five bubbles, 10 frames a second, only while the window is active, off for reduced motion or animation 0). The user can set `count = 0` in `[motes]`. If battery matters more than the look, flip the default to 0.
 - **Photos.** The reference wallpapers are stock photos of unknown licence, so none is in the repository; a theme may point to a path of the user's own (`kind = "image"`).
+
+## Chat tree (build session, 2026-10-12)
+
+- **Memory and learning read only the active branch.** Recommended answer, taken. New learning signals come from what is sent, which is always on the active branch; the end-of-chat review reads the live history, which follows the branch; `GET /v1/chats` sizes and resume use the branch. Keyword search over past conversations still finds every branch, because it is the raw record. Change this only if you want search to skip other branches.
+- **Branch summary: ask each time.** Recommended answer, taken: setting `tree.summarize` = `ask` (also `always`, `never`).
+- **Private chats have no tree.** Nothing is stored for them, and a tree needs the stored messages. Recommended: leave it so ("incognito leaves nothing").
+- **Tool results in the tree are short notes, not the real results.** The store only ever kept what was said; the tree stores one line per tool call ("name arguments → start of the result") so it can show and filter them. They are never sent to a model again, so after a move the model has lost the full tool results of the new branch (it keeps what it said about them). Recommended: accept.
+- **A move rebuilds the model's history from stored text,** like resuming a chat, so the first reply after a move is slow on a local model unless the cache matches (it is dropped on a move). The warning is not shown for a move on the same model (nothing is re-sent to the cloud that was not already part of this chat).
+- **The terminal cannot open a fork or a copy.** It has no chat list. Recommended: add `lh --resume ID` and a chat list to the terminal later, together.
+- **Moving while a turn runs is refused** (the tree panel shows the core's message).

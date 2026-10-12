@@ -13,3 +13,4 @@ pub mod runs;
 pub mod scene;
 pub mod settings;
 pub mod theme;
+pub mod treeview;

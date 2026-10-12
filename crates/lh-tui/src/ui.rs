@@ -50,7 +50,53 @@ fn lines(app: &App) -> Vec<Line<'static>> {
     out
 }
 
+fn draw_tree(f: &mut Frame, screen: &crate::tree_ui::TreeScreen) {
+    use crate::tree_ui::Prompt;
+    let area = f.area();
+    f.render_widget(Clear, area);
+    let rows = screen.rows();
+    let sel = rows.iter().position(|r| r.id == screen.at).unwrap_or(0);
+    let inner_h = area.height.saturating_sub(4) as usize;
+    let first = if sel >= inner_h { sel + 1 - inner_h } else { 0 };
+    let dim = Style::new().add_modifier(Modifier::DIM);
+    let lines: Vec<Line> = rows
+        .iter()
+        .enumerate()
+        .skip(first)
+        .take(inner_h)
+        .map(|(i, r)| {
+            let marker = if r.current { "◆" } else if r.active { "●" } else { "○" };
+            let who = match r.role.as_str() {
+                "user" => "you",
+                "assistant" => "assistant",
+                "tool" => "tool",
+                "summary" => "summary",
+                _ => "",
+            };
+            let fold = if r.folded { format!(" ▸ +{}", r.hidden_below) } else if r.foldable { " ▾".to_string() } else { String::new() };
+            let label = r.label.as_ref().map(|l| format!(" [{l}]")).unwrap_or_default();
+            let text = format!("{}{marker} {}{}{label}{fold}", "  ".repeat(r.depth), if who.is_empty() { String::new() } else { format!("{who}: ") }, clip(&r.text, 80));
+            let style = if i == sel { Style::new().add_modifier(Modifier::REVERSED) } else if r.active { Style::new().fg(Color::Green) } else { dim };
+            Line::from(Span::styled(text, style))
+        })
+        .collect();
+    let title = format!("Chat tree ({}{})", if screen.tree.hide_tools { "tool results hidden, " } else { "" }, "● the branch you are on, ◆ where the chat is");
+    let outer = Rect { x: area.x, y: area.y, width: area.width, height: area.height.saturating_sub(2) };
+    f.render_widget(Paragraph::new(lines).block(Block::bordered().title(title)), outer);
+    let footer = Rect { x: area.x, y: area.y + area.height.saturating_sub(2), width: area.width, height: 2.min(area.height) };
+    let (first_line, second) = match &screen.prompt {
+        Prompt::Label { text, .. } => (Line::from(Span::styled(format!("Name for this line (Enter saves, Esc cancels, empty removes it): {text}_"), Style::new().fg(Color::Yellow).bold())), String::new()),
+        Prompt::Summary { leaving, .. } => (Line::from(Span::styled(format!("You are leaving {leaving} message(s) on this branch. Keep a short summary of them where you land?  y = yes   n = no   Esc = stay"), Style::new().fg(Color::Yellow).bold())), String::new()),
+        Prompt::None => (Line::from(screen.note.clone()), "Up/Down move  Enter go here  Left/Right/Space fold  t hide tool results  l name  f fork into a new chat  Esc close".to_string()),
+    };
+    f.render_widget(Paragraph::new(vec![first_line, Line::from(Span::styled(second, dim))]), footer);
+}
+
 pub fn draw(f: &mut Frame, app: &App) {
+    if let Some(t) = &app.tree {
+        draw_tree(f, t);
+        return;
+    }
     let rows = Layout::vertical([Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)]).split(f.area());
     let body = lines(app);
     let para = Paragraph::new(body).wrap(Wrap { trim: false });
@@ -59,7 +105,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let from_top = max_scroll.saturating_sub(app.scroll.min(max_scroll));
     f.render_widget(para.scroll((from_top, 0)), rows[0]);
 
-    let title = if app.incognito { "you (incognito: nothing is remembered)" } else if app.busy { "you (working, Esc to cancel)" } else { "you (Enter to send, /review to look at what to remember)" };
+    let title = if app.incognito { "you (incognito: nothing is remembered)" } else if app.busy { "you (working, Esc to cancel)" } else { "you (Enter to send, /review to look at what to remember, /tree for branches)" };
     f.render_widget(Paragraph::new(app.input.as_str()).block(Block::bordered().title(title)), rows[1]);
 
     let usage = app.usage.map(|(p, c, k)| format!("  tokens: {p} in ({k} cached), {c} out")).unwrap_or_default();
@@ -142,6 +188,29 @@ mod tests {
         for want in ["you", "read it", "thinking (3 characters", "read_file", "file text", "assistant", "It says file text.", "tiny-model", "10 in (2 cached)"] {
             assert!(s.contains(want), "missing {want:?} in:\n{s}");
         }
+    }
+
+    #[test]
+    fn the_tree_screen_marks_the_branch_you_are_on_and_shows_names_folds_and_the_keys() {
+        use crate::tree_ui::{Prompt, TreeScreen};
+        let n = |id: i64, parent: Option<i64>, role: &str, preview: &str, label: Option<&str>| serde_json::json!({"id": id, "parent": parent, "role": role, "preview": preview, "chars": 1, "label": label});
+        let v = serde_json::json!({"leaf": 4, "active": [1, 2, 4], "summarize": "ask", "nodes": [
+            n(1, None, "user", "first question", None), n(2, Some(1), "assistant", "first answer", Some("good start")), n(3, Some(2), "user", "other path", None), n(4, Some(2), "user", "this path", None)]});
+        let mut a = App::new("m");
+        let mut t = TreeScreen::new(lh_client::tree::ChatTree::from_json(&v).unwrap());
+        t.tree.toggle_fold(3);
+        a.tree = Some(t);
+        let s = screen(&a, 100, 16);
+        for want in ["Chat tree", "start of the chat", "you: first question", "assistant: first answer [good start]", "you: this path", "◆", "●", "○", "Enter go here", "fold"] {
+            assert!(s.contains(want), "missing {want:?} in:\n{s}");
+        }
+        a.tree.as_mut().unwrap().prompt = Prompt::Summary { node: 3, leaving: 2 };
+        let s = screen(&a, 120, 16);
+        assert!(s.contains("leaving 2 message(s)") && s.contains("y = yes"), "{s}");
+        a.tree.as_mut().unwrap().prompt = Prompt::Label { node: 2, text: "keep".into() };
+        assert!(screen(&a, 120, 16).contains("keep_"));
+        a.tree = None;
+        assert!(screen(&a, 100, 16).contains("Enter to send"), "closing it brings the chat back");
     }
 
     #[test]

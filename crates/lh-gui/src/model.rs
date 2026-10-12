@@ -104,6 +104,7 @@ impl Chat {
             .filter_map(|(role, text)| match role.as_str() {
                 "user" => Some(Block::User(text.clone())),
                 "assistant" => Some(Block::Assistant { text: text.clone(), reasoning: String::new() }),
+                "summary" => Some(Block::Notice(format!("Summary of another path: {text}"))),
                 _ => None,
             })
             .collect();

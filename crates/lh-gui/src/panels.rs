@@ -37,6 +37,7 @@ impl App {
             Panel::Memory => if rtl { "الذاكرة" } else { "Memory" },
             Panel::Settings => if rtl { "الإعدادات" } else { "Settings" },
             Panel::Content => if rtl { "المحتوى" } else { "Opened content" },
+            Panel::Tree => if rtl { "الفروع" } else { "Branches of this chat" },
         };
         let expand = self.button("panel-expand", if expanded { "Smaller" } else { "Larger" }, Kind::Ghost, cx, |a, _, cx| {
             a.layout_mut().toggle_expand();
@@ -65,6 +66,7 @@ impl App {
             Panel::Memory => self.memory_body(cx),
             Panel::Settings => self.settings_body(cx),
             Panel::Content => self.content_body(cx),
+            Panel::Tree => self.tree_body(cx),
         };
         let mut head = div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(div().flex_1().text_color(p.text).child(title));
         if !expanded {
@@ -320,6 +322,132 @@ impl App {
         self.layout_mut().show_panel(Panel::Content);
         self.persist();
         cx.notify();
+    }
+
+    /// The branches of the open chat: a line per message, the branch you are on marked, and what can be done with the chosen line.
+    fn tree_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        use lh_gui::treeview::Prompt;
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let mut col = div().flex().flex_col().gap_2();
+        let Some(tree) = self.tree.tree.clone() else {
+            let why = if self.tree.note.is_empty() { "Loading…".to_string() } else { self.tree.note.clone() };
+            return col.child(self.note(why)).into_any_element();
+        };
+        let at = self.tree.at;
+        col = col.child(self.note(if rtl { "● الفرع الحالي   ◆ مكان المحادثة" } else { "● the branch you are on   ◆ where the chat is. Choose a line, then Go here." }));
+        // the whole-tree controls
+        let tools = self.button("tree-tools", if tree.hide_tools { "Show tool results" } else { "Hide tool results" }, Kind::Ghost, cx, |a, _, cx| {
+            a.tree.toggle_tools();
+            cx.notify();
+        });
+        let copy = self.button("tree-clone", "Copy this branch to a new chat", Kind::Ghost, cx, |a, _, cx| {
+            a.tree_clone();
+            cx.notify();
+        });
+        col = col.child(div().flex().flex_wrap().gap_1().child(tools).child(copy));
+        if !self.tree.note.is_empty() {
+            col = col.child(self.note(self.tree.note.clone()));
+        }
+        // a question about keeping a summary of the branch being left
+        if let Prompt::Summary { node, leaving } = self.tree.prompt.clone() {
+            let yes = self.button("tree-sum-yes", "Keep a summary", Kind::Primary, cx, move |a, _, cx| {
+                a.tree_go(node, Some(true));
+                cx.notify();
+            });
+            let no = self.button("tree-sum-no", "No summary", Kind::Normal, cx, move |a, _, cx| {
+                a.tree_go(node, Some(false));
+                cx.notify();
+            });
+            let stay = self.button("tree-sum-stay", "Stay here", Kind::Ghost, cx, |a, _, cx| {
+                a.tree.prompt = Prompt::None;
+                cx.notify();
+            });
+            col = col.child(
+                div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).border_1().border_color(p.accent).text_color(p.text)
+                    .id("tree-summary-question").role(Role::Group).aria_label("Keep a summary of the branch you are leaving")
+                    .child(div().child(format!("You are leaving {leaving} message(s) on this branch. Keep a short summary of them where you land?")))
+                    .child(div().flex().flex_wrap().gap_2().child(yes).child(no).child(stay)),
+            );
+        }
+        // a name for the chosen line
+        if self.tree.prompt == Prompt::Label {
+            let save = self.button("tree-label-save", "Save name", Kind::Primary, cx, move |a, _, cx| {
+                let text = a.tree_label.read(cx).value().to_string();
+                a.tree_label(at, text);
+                cx.notify();
+            });
+            let cancel = self.button("tree-label-cancel", "Cancel", Kind::Ghost, cx, |a, _, cx| {
+                a.tree.prompt = Prompt::None;
+                cx.notify();
+            });
+            col = col.child(div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).child(gpui_component::input::Input::new(&self.tree_label)).child(div().flex().gap_2().child(save).child(cancel)));
+        }
+        // the lines
+        let rows = tree.rows();
+        let lines: Vec<AnyElement> = rows
+            .iter()
+            .map(|r| {
+                let (id, chosen) = (r.id, r.id == at);
+                let marker = if r.current { "◆" } else if r.active { "●" } else { "○" };
+                let who = match r.role.as_str() {
+                    "user" => "you",
+                    "assistant" => "assistant",
+                    "tool" => "tool",
+                    "summary" => "summary",
+                    _ => "",
+                };
+                let label = r.label.as_ref().map(|l| format!("  [{l}]")).unwrap_or_default();
+                let text = format!("{marker} {}{}{label}", if who.is_empty() { String::new() } else { format!("{who}: ") }, r.text.chars().take(90).collect::<String>());
+                let fold = r.foldable.then(|| self.button(format!("tree-fold-{id}"), if r.folded { format!("▸ +{}", r.hidden_below) } else { "▾".to_string() }, Kind::Ghost, cx, move |a, _, cx| {
+                    a.tree.toggle_fold(id);
+                    cx.notify();
+                }));
+                div()
+                    .id(SharedString::from(format!("tree-row-{id}")))
+                    .role(Role::ListItem)
+                    .aria_label(text.clone())
+                    .aria_selected(chosen)
+                    .flex()
+                    .when(rtl, |d| d.flex_row_reverse())
+                    .items_center()
+                    .gap_1()
+                    .pl(px(r.depth as f32 * 14.))
+                    .px_1()
+                    .py_0p5()
+                    .rounded(p.inner)
+                    .cursor_pointer()
+                    .text_sm()
+                    .text_color(if r.current || r.active { p.text } else { p.muted })
+                    .bg(if chosen { p.accent.opacity(0.22) } else { hsla(0., 0., 0., 0.) })
+                    .on_click(cx.listener(move |a, _, _, cx| {
+                        a.tree.select(id);
+                        cx.notify();
+                    }))
+                    .child(div().flex_1().overflow_hidden().child(text))
+                    .children(fold)
+                    .into_any_element()
+            })
+            .collect();
+        col = col.child(div().id("tree-lines").role(Role::List).aria_label("Messages in this chat").flex().flex_col().gap_0p5().children(lines));
+        // what can be done with the chosen line
+        let chosen_is_message = at != 0;
+        let go = self.button("tree-go", "Go here", Kind::Primary, cx, move |a, _, cx| {
+            a.tree_go(at, None);
+            cx.notify();
+        });
+        let name = chosen_is_message.then(|| self.button("tree-name", "Name…", Kind::Normal, cx, move |a, window, cx| {
+            let current = a.tree.tree.as_ref().and_then(|t| t.node(at)).and_then(|n| n.label.clone()).unwrap_or_default();
+            a.tree_label.update(cx, |s, cx| s.set_value(current, window, cx));
+            a.tree.prompt = Prompt::Label;
+            cx.notify();
+        }));
+        let fork = self.button("tree-fork", "New chat from here", Kind::Normal, cx, move |a, _, cx| {
+            a.tree_fork(at);
+            cx.notify();
+        });
+        col = col.child(div().flex().flex_wrap().gap_2().child(go).children(name).child(fork));
+        col.into_any_element()
     }
 
     fn content_body(&mut self, cx: &mut Context<Self>) -> AnyElement {

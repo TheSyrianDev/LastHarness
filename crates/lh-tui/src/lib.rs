@@ -13,4 +13,5 @@ pub mod service_cli;
 pub mod settings_cli;
 pub mod setup;
 pub mod terminal;
+pub mod tree_ui;
 pub mod ui;

@@ -1,5 +1,7 @@
 //! The client every front end uses to talk to the core (`lhd`): plain HTTP and server-sent events on the local API.
 
+pub mod tree;
+
 use std::collections::VecDeque;
 use std::path::Path;
 

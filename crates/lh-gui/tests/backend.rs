@@ -368,3 +368,56 @@ async fn something_the_assistant_shows_arrives_as_content_for_the_side_panel() {
     let c = shown.expect("a show event arrived");
     assert_eq!((c.title.as_str(), c.kind, c.body.as_str()), ("Summary", lh_gui::content::ContentKind::Markdown, "# Summary\n- done"));
 }
+
+#[tokio::test]
+async fn the_tree_panel_loads_moves_and_shows_the_branch_through_the_backend() {
+    use lh_client::tree::{ChatTree, Moved};
+    use lh_gui::treeview::{Outcome, TreeState};
+    let core = fresh(vec![text("a one"), text("a two")], Duration::ZERO, false);
+    let mut w = Window::open(&core.cfg);
+    w.backend.send(Cmd::Send { chat: 3, session: None, session_model: None, model: "alpha-balanced".into(), text: "q one".into(), start: Default::default() });
+    let evs = w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
+    let sid = evs.iter().find_map(|e| if let Ev::SessionReady { session, .. } = e { Some(session.clone()) } else { None }).unwrap();
+    w.backend.send(Cmd::Send { chat: 3, session: Some(sid.clone()), session_model: None, model: "alpha-balanced".into(), text: "q two".into(), start: Default::default() });
+    w.until(|e| matches!(e, Ev::StreamEnded { .. })).await;
+
+    // load the tree the way the panel does
+    w.backend.send(Cmd::Call { tag: "tree:3".into(), method: "GET".into(), path: format!("/v1/chats/{sid}/tree"), body: None });
+    let evs = w.until(|e| matches!(e, Ev::Reply { tag, .. } if tag == "tree:3")).await;
+    let Some(Ev::Reply { result: Ok(v), .. }) = evs.last() else { panic!("{evs:?}") };
+    let mut state = TreeState::default();
+    state.load(3, ChatTree::from_json(v).unwrap());
+    let rows = state.tree.as_ref().unwrap().rows();
+    assert_eq!(rows.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(), ["start of the chat", "q one", "a one", "q two", "a two"]);
+    assert!(rows.last().unwrap().current);
+
+    // choose the second question: the core asks about a summary, and nothing moves until the answer
+    let q2 = state.tree.as_ref().unwrap().nodes.iter().find(|n| n.preview == "q two").unwrap().id;
+    w.backend.send(Cmd::Call { tag: format!("tree-move:3:{q2}"), method: "POST".into(), path: format!("/v1/chats/{sid}/tree/move"), body: Some(json!({"node": q2})) });
+    let evs = w.until(|e| matches!(e, Ev::Reply { tag, .. } if tag.starts_with("tree-move"))).await;
+    let Some(Ev::Reply { result: Ok(v), .. }) = evs.last() else { panic!() };
+    assert_eq!(state.moved(q2, Moved::from_json(v)), Outcome::Asked);
+    // no summary
+    w.backend.send(Cmd::Call { tag: format!("tree-move:3:{q2}"), method: "POST".into(), path: format!("/v1/chats/{sid}/tree/move"), body: Some(json!({"node": q2, "summarize": false})) });
+    let evs = w.until(|e| matches!(e, Ev::Reply { tag, .. } if tag.starts_with("tree-move"))).await;
+    let Some(Ev::Reply { result: Ok(v), .. }) = evs.last() else { panic!() };
+    assert_eq!(state.moved(q2, Moved::from_json(v)), Outcome::Moved { input: Some("q two".into()), summary: false });
+    // the chat's own history is now the branch, and the list counts only it
+    w.backend.send(Cmd::LoadHistory { chat: 3, id: sid.clone() });
+    let evs = w.until(|e| matches!(e, Ev::History { .. })).await;
+    let Some(Ev::History { messages, .. }) = evs.last() else { panic!() };
+    assert_eq!(messages, &[("user".to_string(), "q one".to_string()), ("assistant".to_string(), "a one".to_string())]);
+    w.backend.send(Cmd::Refresh);
+    let evs = w.until(|e| matches!(e, Ev::Chats(_))).await;
+    let Some(Ev::Chats(list)) = evs.last() else { panic!() };
+    assert_eq!(list[0].messages, 2);
+    // a private chat has no tree and says so
+    w.backend.send(Cmd::Send { chat: 4, session: None, session_model: None, model: "alpha-balanced".into(), text: "hush".into(), start: lh_gui::api::SessionStart { incognito: true, mode: "chat".into(), ..Default::default() } });
+    let evs = w.until(|e| matches!(e, Ev::StreamEnded { chat: 4 })).await;
+    let psid = evs.iter().find_map(|e| if let Ev::SessionReady { session, .. } = e { Some(session.clone()) } else { None }).unwrap();
+    w.backend.send(Cmd::Call { tag: "tree:4".into(), method: "GET".into(), path: format!("/v1/chats/{psid}/tree"), body: None });
+    let evs = w.until(|e| matches!(e, Ev::Reply { tag, .. } if tag == "tree:4")).await;
+    let Some(Ev::Reply { result: Err(e), .. }) = evs.last() else { panic!() };
+    state.failed(4, e.clone());
+    assert!(state.tree.is_none() && state.note.contains("private"));
+}

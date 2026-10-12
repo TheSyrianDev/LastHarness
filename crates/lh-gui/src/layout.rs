@@ -18,6 +18,8 @@ pub enum Panel {
     Settings,
     /// Things the agent opened: a page, a file, a table.
     Content,
+    /// The branches of the chat that is open.
+    Tree,
 }
 
 /// What fills the middle.
