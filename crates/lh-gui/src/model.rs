@@ -1,12 +1,15 @@
 //! What the chat screen shows, and how each thing the core says changes it. No window code here, so it is
 //! tested without a screen.
 
+use std::time::Instant;
+
 use lh_client::ServerEvent;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Block {
     User(String),
-    Assistant { text: String, reasoning: String },
+    /// `worked` is the seconds of thinking and tool use that came before this answer began.
+    Assistant { text: String, reasoning: String, worked: Option<u64> },
     Tool { id: String, name: String, arguments: String, result: Option<String> },
     Notice(String),
     /// The assistant opened something beside the chat; the title lets the chat offer to open it again.
@@ -70,13 +73,15 @@ pub struct Chat {
     /// The project folder, for a chat in project mode.
     pub project: String,
     turn_had_text: bool,
+    /// When the thinking and tool use before the next answer began.
+    work_since: Option<Instant>,
 }
 
 pub const NEW_TITLE: &str = "New chat";
 
 impl Chat {
     pub fn new(key: u64, model: &str) -> Chat {
-        Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), turn_had_text: false }
+        Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), turn_had_text: false, work_since: None }
     }
 
     /// A chat that is only a name in the list until the user opens it.
@@ -95,6 +100,7 @@ impl Chat {
         self.blocks.push(Block::User(text.into()));
         self.busy = true;
         self.turn_had_text = false;
+        self.work_since = Some(Instant::now());
     }
 
     /// Fill from the stored history of a chat.
@@ -103,7 +109,7 @@ impl Chat {
             .iter()
             .filter_map(|(role, text)| match role.as_str() {
                 "user" => Some(Block::User(text.clone())),
-                "assistant" => Some(Block::Assistant { text: text.clone(), reasoning: String::new() }),
+                "assistant" => Some(Block::Assistant { text: text.clone(), reasoning: String::new(), worked: None }),
                 "summary" => Some(Block::Notice(format!("Summary of another path: {text}"))),
                 _ => None,
             })
@@ -112,17 +118,35 @@ impl Chat {
 
     fn assistant(&mut self) -> &mut Block {
         if !matches!(self.blocks.last(), Some(Block::Assistant { .. })) {
-            self.blocks.push(Block::Assistant { text: String::new(), reasoning: String::new() });
+            self.blocks.push(Block::Assistant { text: String::new(), reasoning: String::new(), worked: None });
         }
         self.blocks.last_mut().unwrap()
     }
 
     pub fn apply(&mut self, ev: &ServerEvent) {
+        self.apply_at(ev, Instant::now());
+    }
+
+    /// `apply` with the time the event arrived, so the seconds an answer waited for can be tested.
+    pub fn apply_at(&mut self, ev: &ServerEvent, now: Instant) {
+        // thinking and tool use start a stretch of work; the answer that follows says how long it was
+        if matches!(ev, ServerEvent::Reasoning(_) | ServerEvent::ToolStart { .. }) && self.work_since.is_none() {
+            self.work_since = Some(now);
+        }
         match ev {
             ServerEvent::Text(t) => {
                 self.turn_had_text = true;
-                if let Block::Assistant { text, .. } = self.assistant() {
+                let since = self.work_since;
+                let mut began = false;
+                if let Block::Assistant { text, worked, .. } = self.assistant() {
+                    if text.is_empty() && !t.is_empty() {
+                        *worked = since.map(|s| now.saturating_duration_since(s).as_secs());
+                        began = true;
+                    }
                     text.push_str(t);
+                }
+                if began {
+                    self.work_since = None;
                 }
             }
             ServerEvent::Reasoning(t) => {
@@ -257,10 +281,34 @@ mod tests {
         c.apply(&text("Hi"));
         c.apply(&text(" there"));
         c.apply(&ServerEvent::Done { empty: false });
-        assert_eq!(c.blocks, vec![Block::User("  Hello   there,\nfriend  ".into()), Block::Assistant { text: "Hi there".into(), reasoning: "hmm".into() }]);
+        assert_eq!(c.blocks, vec![Block::User("  Hello   there,\nfriend  ".into()), Block::Assistant { text: "Hi there".into(), reasoning: "hmm".into(), worked: Some(0) }]);
         assert!(!c.busy);
         c.push_user("again");
         assert_eq!(c.title, "Hello there, friend", "the title is set once");
+    }
+
+    #[test]
+    fn an_answer_remembers_how_long_the_work_before_it_took() {
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + std::time::Duration::from_secs(s);
+        let mut c = Chat::new(1, "m");
+        c.push_user("find a hotel");
+        c.work_since = Some(t0);
+        c.apply_at(&ServerEvent::ToolStart { id: "t".into(), name: "web_search".into(), arguments: "{}".into() }, at(1));
+        c.apply_at(&ServerEvent::ToolResult { id: "t".into(), text: "x".into() }, at(9));
+        c.apply_at(&text("Found "), at(14));
+        c.apply_at(&text("three."), at(15));
+        assert!(matches!(c.blocks.last(), Some(Block::Assistant { worked: Some(14), .. })), "14 s from the start of the work to the first word, not to the last");
+        // a second stretch of work in the same turn is timed on its own
+        c.apply_at(&ServerEvent::ToolStart { id: "u".into(), name: "show".into(), arguments: "{}".into() }, at(20));
+        c.apply_at(&text("Done."), at(23));
+        assert!(matches!(c.blocks.last(), Some(Block::Assistant { worked: Some(3), .. })));
+        // an answer with no work before it has no time to report
+        let mut d = Chat::new(2, "m");
+        d.push_user("hi");
+        d.work_since = None;
+        d.apply_at(&text("Hello"), at(5));
+        assert!(matches!(d.blocks.last(), Some(Block::Assistant { worked: None, .. })));
     }
 
     #[test]

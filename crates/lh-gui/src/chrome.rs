@@ -88,6 +88,16 @@ impl RailItem {
     }
 }
 
+/// The little arrow beside a folded line: pointing down when it is open, otherwise towards where the text
+/// continues (right, or left in right-to-left).
+pub fn chevron(open: bool, rtl: bool) -> Vec<Vec<(f32, f32)>> {
+    vec![match (open, rtl) {
+        (true, _) => vec![(6., 9.), (12., 15.), (18., 9.)],
+        (false, false) => vec![(9., 6.), (15., 12.), (9., 18.)],
+        (false, true) => vec![(15., 6.), (9., 12.), (15., 18.)],
+    }]
+}
+
 /// The tabs along the top of the side panel, in order. Settings has no tab: the rail opens it.
 pub const DOCK_TABS: [Panel; 4] = [Panel::Content, Panel::Departments, Panel::Memory, Panel::Tree];
 
@@ -217,6 +227,15 @@ mod tests {
         for p in [Panel::Departments, Panel::Memory, Panel::Settings, Panel::Content, Panel::Tree] {
             assert!(DOCK_TABS.contains(&p) || p == Panel::Settings, "{p:?} can be reached");
         }
+    }
+
+    #[test]
+    fn the_arrow_points_down_when_open_and_the_way_the_text_runs_when_closed() {
+        let (open, ltr, rtl) = (chevron(true, false), chevron(false, false), chevron(false, true));
+        assert_eq!(open, chevron(true, true), "open looks the same either way");
+        assert!(ltr[0][1].0 > ltr[0][0].0, "closed points right");
+        assert!(rtl[0][1].0 < rtl[0][0].0, "closed points left in right-to-left");
+        assert!(open[0][1].1 > open[0][0].1, "open points down");
     }
 
     #[test]

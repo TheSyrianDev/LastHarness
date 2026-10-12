@@ -7,13 +7,15 @@ use gpui_component::input::{Input, Textarea};
 use gpui_component::text::TextView;
 
 use crate::app::{App, Focus, Pending};
-use lh_gui::chrome::{RailItem, TitleInfo, RAIL_WIDTH};
+use lh_gui::chrome::{chevron, RailItem, TitleInfo, RAIL_WIDTH};
+use lh_gui::permissions::may_offer;
+use lh_gui::transcript::{self, work_label, Item, Step, StepKind};
 use lh_gui::layout::{Page, Panel};
 use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::{mix, Look, PanelExt};
 
-actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent]);
+actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk]);
 
 /// The keys for every action; also how the app is driven without a mouse.
 pub fn bind_keys(cx: &mut gpui::App) {
@@ -35,8 +37,14 @@ pub fn bind_keys(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-shift-p", PopOutContent, None),
         KeyBinding::new("ctrl-pagedown", NextChat, None),
         KeyBinding::new("ctrl-pageup", PrevChat, None),
+        // only while a permission question waits and the message box is empty, so typing is never taken
+        KeyBinding::new("y", AllowAsk, Some("Asking")),
+        KeyBinding::new("n", DenyAsk, Some("Asking")),
     ]);
 }
+
+/// How wide the conversation, the questions and the message box are.
+const COLUMN_WIDTH: f32 = 640.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Kind {
@@ -297,47 +305,10 @@ impl App {
             Block::User(t) => {
                 let is_rtl = rtl::paragraph_is_rtl(t);
                 div().flex().w_full().when(!rtl, |d| d.justify_end()).when(rtl, |d| d.justify_start()).child(
-                    div().id(SharedString::from(format!("u{key}-{i}"))).role(Role::Label).max_w(px(680.)).px_3().py_2().rounded(p.inner).bg(p.accent.opacity(0.18)).text_color(p.text).when(is_rtl, |d| d.text_right()).child(t.clone()),
+                    div().id(SharedString::from(format!("u{key}-{i}"))).role(Role::Label).max_w(px(480.)).px_3().py_2().rounded(p.inner).bg(p.accent.opacity(0.18)).text_color(p.text).when(is_rtl, |d| d.text_right()).child(t.clone()),
                 ).into_any_element()
             }
-            Block::Assistant { text, reasoning } => {
-                let is_rtl = rtl::paragraph_is_rtl(text);
-                let open = self.open_blocks.contains(&(key, i));
-                let think = (!reasoning.is_empty()).then(|| {
-                    let r = reasoning.clone();
-                    div().flex().flex_col().gap_1().child(self.button(format!("think-{key}-{i}"), if open { "Hide thinking" } else { "Show thinking" }, Kind::Ghost, cx, move |a, _, cx| {
-                        if !a.open_blocks.remove(&(key, i)) {
-                            a.open_blocks.insert((key, i));
-                        }
-                        cx.notify();
-                    })).when(open, |d| d.child(div().px_2().text_sm().text_color(p.muted).child(r)))
-                });
-                let content = crate::panels::Content::detect(&self.chats.list.iter().find(|c| c.key == key).map(|c| c.title.clone()).unwrap_or_default(), text);
-                let open_btn = self.button(format!("open-{key}-{i}"), "Open in panel", Kind::Ghost, cx, move |a, _, cx| a.open_content(content.clone(), cx));
-                div().flex().w_full().child(
-                    div().id(SharedString::from(format!("a{key}-{i}"))).role(Role::Label).max_w(px(760.)).px_3().py_2().rounded(p.inner).bg(p.sunken).text_color(p.text).when(is_rtl, |d| d.text_right())
-                        .children(think)
-                        .child(TextView::markdown(SharedString::from(format!("md{key}-{i}")), text.clone()))
-                        .when(text.len() > 400, |d| d.child(div().flex().child(open_btn))),
-                ).into_any_element()
-            }
-            Block::Tool { name, arguments, result, .. } => {
-                let open = self.open_blocks.contains(&(key, i));
-                let head = format!("{name} {}", arguments.chars().take(90).collect::<String>());
-                let toggle = self.button(format!("tool-{key}-{i}"), if open { "Hide" } else { "Details" }, Kind::Ghost, cx, move |a, _, cx| {
-                    if !a.open_blocks.remove(&(key, i)) {
-                        a.open_blocks.insert((key, i));
-                    }
-                    cx.notify();
-                });
-                let body = result.clone().map(|r| r.chars().take(4000).collect::<String>()).unwrap_or_else(|| "running…".into());
-                let content = crate::panels::Content::detect(name, result.as_deref().unwrap_or(""));
-                let open_btn = self.button(format!("tool-open-{key}-{i}"), "Open in panel", Kind::Ghost, cx, move |a, _, cx| a.open_content(content.clone(), cx));
-                div().flex().flex_col().gap_1().px_3().py_2().rounded(p.inner).border_1().border_color(p.border).text_sm().text_color(p.muted)
-                    .child(div().flex().items_center().gap_2().child(div().flex_1().child(head)).child(toggle))
-                    .when(open, |d| d.child(div().text_color(p.text).child(body)).child(div().flex().child(open_btn)))
-                    .into_any_element()
-            }
+            Block::Assistant { .. } | Block::Tool { .. } => div().into_any_element(),
             Block::Shown(title) => {
                 let t = title.clone();
                 let again = self.button(format!("shown-{key}-{i}"), if rtl { "عرض مرة أخرى" } else { "Show again" }, Kind::Normal, cx, move |a, _, cx| a.show_content_again(&t, cx));
@@ -346,6 +317,85 @@ impl App {
             Block::Notice(t) => div().w_full().flex().justify_center().text_sm().text_color(p.muted).child(t.clone()).into_any_element(),
             Block::Error(t) => div().px_3().py_2().rounded(p.inner).border_1().border_color(p.danger).text_color(p.danger).child(t.clone()).into_any_element(),
         }
+    }
+
+    /// The model's words as plain text in the column, no bubble.
+    fn answer_view(&self, key: u64, i: usize, text: &str, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let is_rtl = rtl::paragraph_is_rtl(text);
+        let content = crate::panels::Content::detect(&self.chats.list.iter().find(|c| c.key == key).map(|c| c.title.clone()).unwrap_or_default(), text);
+        let open_btn = self.button(format!("open-{key}-{i}"), "Open in panel", Kind::Ghost, cx, move |a, _, cx| a.open_content(content.clone(), cx));
+        div().id(SharedString::from(format!("a{key}-{i}"))).role(Role::Label).w_full().flex().flex_col().gap_2().text_color(p.text).when(is_rtl, |d| d.text_right())
+            .child(TextView::markdown(SharedString::from(format!("md{key}-{i}")), text.to_string()))
+            .when(text.len() > 400, |d| d.child(div().flex().when(is_rtl, |d| d.flex_row_reverse()).child(open_btn)))
+            .into_any_element()
+    }
+
+    /// Thinking and tool calls as one line that opens to the list of steps.
+    fn work_view(&self, key: u64, work: (usize, &[Step], Option<u64>, bool), blocks: &[Block], cx: &mut Context<Self>) -> AnyElement {
+        let (first, steps, secs, running) = work;
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let open = self.open_blocks.contains(&(key, first));
+        let label = work_label(secs, steps.len(), running, rtl);
+        let head = div()
+            .id(SharedString::from(format!("work-{key}-{first}")))
+            .role(Role::Button)
+            .aria_label(label.clone())
+            .aria_expanded(open)
+            .flex()
+            .when(rtl, |d| d.flex_row_reverse())
+            .items_center()
+            .gap_1p5()
+            .text_sm()
+            .text_color(p.muted)
+            .cursor_pointer()
+            .hover(|s| s.text_color(p.text))
+            .on_click(cx.listener(move |a, _, _, cx| {
+                if !a.open_blocks.remove(&(key, first)) {
+                    a.open_blocks.insert((key, first));
+                }
+                cx.notify();
+            }))
+            .child(icon_view(chevron(open, rtl), p.muted, 12.))
+            .child(label);
+        let mut rows: Vec<AnyElement> = vec![];
+        if open {
+            for s in steps {
+                match (&s.kind, blocks.get(s.block)) {
+                    (StepKind::Thinking, Some(Block::Assistant { reasoning, .. })) => {
+                        rows.push(div().flex().flex_col().gap_0p5().child(div().text_color(p.text).child(if rtl { "تفكير" } else { "Thinking" })).child(div().child(reasoning.clone())).into_any_element());
+                    }
+                    (StepKind::Tool, Some(Block::Tool { name, result, .. })) => {
+                        let at = s.block;
+                        let shown = self.open_blocks.contains(&(key, at));
+                        let body = result.clone().map(|r| r.chars().take(4000).collect::<String>()).unwrap_or_else(|| "running…".into());
+                        let content = crate::panels::Content::detect(name, result.as_deref().unwrap_or(""));
+                        let open_btn = self.button(format!("tool-open-{key}-{at}"), "Open in panel", Kind::Ghost, cx, move |a, _, cx| a.open_content(content.clone(), cx));
+                        rows.push(
+                            div().flex().flex_col().gap_1()
+                                .child(
+                                    div().id(SharedString::from(format!("step-{key}-{at}"))).role(Role::Button).aria_label(s.label.clone()).aria_expanded(shown).cursor_pointer().hover(|x| x.text_color(p.text))
+                                        .on_click(cx.listener(move |a, _, _, cx| {
+                                            if !a.open_blocks.remove(&(key, at)) {
+                                                a.open_blocks.insert((key, at));
+                                            }
+                                            cx.notify();
+                                        }))
+                                        .child(s.label.clone()),
+                                )
+                                .when(shown, |d| d.child(div().text_color(p.text).child(body)).child(div().flex().child(open_btn)))
+                                .into_any_element(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+        div().flex().flex_col().gap_1p5()
+            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).child(head))
+            .when(open, |d| d.child(div().id(SharedString::from(format!("steps-{key}-{first}"))).role(Role::List).aria_label(if rtl { "الخطوات" } else { "Steps" }).flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_sm().text_color(p.muted).font_family("DejaVu Sans Mono").children(rows)))
+            .into_any_element()
     }
 
     fn pending_card(&mut self, pending: &Pending, cx: &mut Context<Self>) -> AnyElement {
@@ -366,23 +416,36 @@ impl App {
         let p = self.pal.clone();
         let rtl = self.rtl;
         let Some(chat) = self.chats.current().cloned() else { return div().into_any_element() };
-        let blocks: Vec<AnyElement> = chat.blocks.iter().enumerate().map(|(i, b)| self.block_view(chat.key, i, b, cx)).collect();
+        let blocks: Vec<AnyElement> = transcript::items(&chat.blocks, chat.busy)
+            .into_iter()
+            .map(|item| match item {
+                Item::Block(i) => self.block_view(chat.key, i, &chat.blocks[i], cx),
+                Item::Answer(i) => match &chat.blocks[i] {
+                    Block::Assistant { text, .. } => self.answer_view(chat.key, i, text, cx),
+                    _ => div().into_any_element(),
+                },
+                Item::Work { first, steps, secs, running } => self.work_view(chat.key, (first, &steps, secs, running), &chat.blocks, cx),
+            })
+            .collect();
         let empty = chat.blocks.is_empty() && !chat.dormant;
         let mut stack: Vec<AnyElement> = vec![];
         if let Some(b) = &self.banner {
             stack.push(div().px_3().py_2().rounded(p.inner).border_1().border_color(p.danger).text_color(p.danger).child(b.clone()).into_any_element());
         }
         for a in chat.asks.clone() {
-            let id = a.id.clone();
-            let id2 = a.id.clone();
-            let yes = self.button(format!("ask-yes-{id}"), if rtl { "السماح" } else { "Allow" }, Kind::Primary, cx, move |app, _, cx| app.answer(&id, true, cx));
-            let no = self.button(format!("ask-no-{id2}"), if rtl { "رفض" } else { "Deny" }, Kind::Normal, cx, move |app, _, cx| app.answer(&id2, false, cx));
+            let (id, id2, id3) = (a.id.clone(), a.id.clone(), a.id.clone());
+            let (tool, reason) = (a.tool.clone(), a.reason.clone());
+            let yes = self.button(format!("ask-yes-{id}"), if rtl { "نعم (Y)" } else { "Yes (Y)" }, Kind::Primary, cx, move |app, _, cx| app.answer(&id, true, cx));
+            let no = self.button(format!("ask-no-{id2}"), if rtl { "لا (N)" } else { "No (N)" }, Kind::Normal, cx, move |app, _, cx| app.answer(&id2, false, cx));
+            let always = may_offer(&a.reason).then(|| self.button(format!("ask-always-{id3}"), if rtl { "دائمًا في هذه المحادثة" } else { "Always for this chat" }, Kind::Ghost, cx, move |app, _, cx| app.answer_always(&id3, &tool, &reason, cx)));
+            let question = if rtl { format!("السماح بتشغيل {}؟", a.tool) } else { format!("Allow {}?", a.tool) };
             stack.push(
                 div().flex().flex_col().gap_2().p_3().panel(&p, false).border_1().border_color(p.accent).text_color(p.text)
-                    .child(div().child(format!("May {} run?", a.tool)))
+                    .id(SharedString::from(format!("ask-{}", a.id))).role(Role::Group).aria_label(format!("Permission question. {question}")).aria_keyshortcuts("Y N")
+                    .child(div().child(question))
                     .child(div().text_sm().text_color(p.muted).child(a.what.clone()))
                     .when(!a.reason.is_empty(), |d| d.child(div().text_sm().text_color(p.muted).child(a.reason.clone())))
-                    .child(div().flex().gap_2().child(yes).child(no)).into_any_element(),
+                    .child(div().flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_2().child(yes).child(no).children(always)).into_any_element(),
             );
         }
         if let Some(pen) = self.pending.clone().filter(|x| x.chat == chat.key) {
@@ -414,16 +477,19 @@ impl App {
         let composer = div().flex().when(rtl, |d| d.flex_row_reverse()).items_end().gap_2().p_2().panel(&p, false)
             .child(div().flex_1().child(Textarea::new(&self.composer).aria_label("Message")))
             .child(action);
-        let scroll = div().id("chat-scroll").role(Role::Log).aria_label("Conversation").flex_1().overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().gap_3().p_3()
+        // the conversation reads in one column about 640 px wide, in the middle
+        let column = div().flex().flex_col().gap_4().w_full().max_w(px(COLUMN_WIDTH))
             .when(empty, |d| d.child(div().flex().justify_center().text_color(p.muted).child(if rtl { "ابدأ بكتابة رسالة." } else { "Write a message to begin." })))
             .children(blocks);
+        let scroll = div().id("chat-scroll").role(Role::Log).aria_label("Conversation").flex_1().overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().items_center().p_3().child(column);
         // on glass the conversation sits on a panel of its own, so text never lands straight on the sky
         let pane = div().flex().flex_col().flex_1().overflow_hidden().when(p.glass.is_some(), |d| d.panel(&p, self.focus == Focus::Chat)).child(scroll);
+        // questions and the message box stay in view under the conversation, in the same column
+        let beneath = div().flex().flex_col().items_center().px_3().child(div().flex().flex_col().gap_2().w_full().max_w(px(COLUMN_WIDTH)).children(stack).child(composer));
         div().flex().flex_col().flex_1().h_full().gap_2().overflow_hidden()
             .on_mouse_down(MouseButton::Left, cx.listener(|a, _, _, cx| a.focus_on(Focus::Chat, cx)))
             .child(pane)
-            .children(stack)
-            .child(composer)
+            .child(beneath)
             .into_any_element()
     }
 }
@@ -435,6 +501,7 @@ impl Render for App {
         if let Some(t) = self.pending_input.take() {
             self.composer.update(cx, |s, cx| s.set_value(t, window, cx));
         }
+        let asking = self.asking(cx);
         let total: f32 = window.viewport_size().width.into();
         let (left_w, right_w) = self.layout().widths(total - 24. - RAIL_WIDTH, 420.);
         let rail = self.rail(cx);
@@ -447,7 +514,7 @@ impl Render for App {
         };
         let right = (right_w > 0.).then(|| self.right_panel(right_w, cx));
         let root = p.paint_background(div().size_full().relative().overflow_hidden().text_color(p.text))
-            .key_context("LastHarness")
+            .key_context(if asking { "LastHarness Asking" } else { "LastHarness" })
             .on_action(cx.listener(|a, _: &NewChat, _, cx| a.new_chat(cx)))
             .on_action(cx.listener(|a, _: &ToggleSidebar, _, cx| {
                 a.layout_mut().toggle_left();
@@ -474,6 +541,8 @@ impl Render for App {
                 cx.notify();
             }))
             .on_action(cx.listener(|a, _: &StopTurn, _, cx| a.stop(cx)))
+            .on_action(cx.listener(|a, _: &AllowAsk, _, cx| a.answer_first(true, cx)))
+            .on_action(cx.listener(|a, _: &DenyAsk, _, cx| a.answer_first(false, cx)))
             .on_action(cx.listener(|a, _: &ConfirmResume, _, cx| {
                 if a.pending.as_ref().is_some_and(|p| !p.warning.is_null()) {
                     a.confirm_resume(cx);

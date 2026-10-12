@@ -129,6 +129,14 @@ The user approved a calmer window (mock: "LastHarness Redesign"). It is built in
 - Accessibility: the rail is a navigation region; each icon is a button with a name, its key (`aria-keyshortcuts`) and a pressed state; the tabs form a tab list; the title bar is a banner. The names and keys come from `chrome.rs`, which is tested.
 - Tests: `chrome.rs` (rail names in both directions, keys, icon shapes stay on the grid, pressed states, tabs, wording of the title bar), `ChatTree::branches` in `lh-client`.
 
+**Slice b: plain answers, one "Worked for" line, permission card.**
+- The conversation reads in one column about 640 px wide. The model's answers are plain text with no bubble; only your messages keep a bubble. The questions and the message box sit under the conversation in the same column.
+- Thinking and tool calls fold into one quiet line before the answer they led to: "Worked for 14 s, 3 steps" (thinking counts as a step). It opens to the list; a tool step opens again to its result with "Open in panel". While work goes on it reads "Working… 2 steps". The seconds are measured in the app from the start of the work to the first word of the answer. A chat opened from storage has no times, so the line says only "3 steps".
+- A permission question is a card: Yes (Y), No (N) and Always for this chat. The Y and N keys answer the oldest open question, but only while the message box is empty, so typing is never taken.
+- "Always for this chat" is kept by the window, not the core: while the app runs, the same tool asking for the same reason in that chat is answered yes for you. It is never saved, and it is not offered for anything that deletes, installs or runs as root.
+- Accessibility: the line is a button that says whether it is open; the steps are a list; the card is a group named "Permission question" with the keys Y and N. Right-to-left mirrors the line, the arrow, the card and the bubble.
+- Tests: `transcript.rs` (grouping, order kept, running state, labels in both languages), `permissions.rs`, timing in `model.rs`, the arrow in `chrome.rs`.
+
 ## What is not done
 
 See `.grill/parked.md`, section Milestone 8 (build session). Main points: agent-opened content is only opened by a button (the core has no "show this" tool yet, so nothing opens by itself); no web pages in the app (Servo waits); saving the model's KV cache per chat is parked, with measurements in `spikes/kv-cache/RESULT.md`; Orca was not run; drawing the app's own window frame for matching roundness on desktops that do not report a radius; showing the cost of a cloud resume (the core has no price list yet, so the warning gives tokens only); Windows, macOS and mobile are later milestones.

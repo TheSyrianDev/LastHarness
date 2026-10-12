@@ -124,6 +124,8 @@ pub struct App {
     pub tree_label: Entity<InputState>,
     /// Words to put in the message box at the next draw (choosing something said earlier brings it back).
     pub pending_input: Option<String>,
+    /// Questions the person answered "Always for this chat" to.
+    pub always: lh_gui::permissions::Always,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -268,6 +270,7 @@ impl App {
             tree: Default::default(),
             tree_label: cx.new(|cx| InputState::new(window, cx).placeholder("A name for this line")),
             pending_input: None,
+            always: Default::default(),
         }
     }
 
@@ -470,6 +473,30 @@ impl App {
         cx.notify();
     }
 
+    /// Yes, and the same question from the same tool in this chat is answered yes from now on (until the app closes).
+    pub fn answer_always(&mut self, ask: &str, tool: &str, reason: &str, cx: &mut Context<Self>) {
+        if let Some(key) = self.chats.current().map(|c| c.key) {
+            self.always.grant(key, tool, reason);
+        }
+        self.answer(ask, true, cx);
+    }
+
+    /// Answer the oldest open question of the chat that is shown (the Y and N keys).
+    pub fn answer_first(&mut self, yes: bool, cx: &mut Context<Self>) {
+        if let Some(id) = self.chats.current().and_then(|c| c.asks.first().map(|a| a.id.clone())) {
+            self.answer(&id, yes, cx);
+        }
+    }
+
+    /// Do the Y and N keys answer a question now? Only when one is open on the chat shown, and nothing that takes
+    /// typing could be using the keys: the message box is empty and no name is being typed.
+    pub fn asking(&self, cx: &Context<Self>) -> bool {
+        self.page() == &Page::Chat
+            && self.chats.current().is_some_and(|c| !c.asks.is_empty())
+            && self.composer.read(cx).value().is_empty()
+            && self.tree.prompt != lh_gui::treeview::Prompt::Label
+    }
+
     pub fn answer(&mut self, ask: &str, yes: bool, cx: &mut Context<Self>) {
         if let Some(c) = self.chats.current_mut() {
             if let Some(s) = c.session.clone() {
@@ -520,6 +547,15 @@ impl App {
                 self.core_models.insert(chat, self.models.name_of(&model));
             }
             Ev::Server { chat, event } => {
+                // a question the person already said "always" to is answered without asking again
+                if let ServerEvent::Ask { id, tool, reason, .. } = &event {
+                    if self.always.covers(chat, tool, reason) {
+                        if let Some(session) = self.chats.by_key(chat).and_then(|c| c.session.clone()) {
+                            self.backend.send(Cmd::Answer { session, ask: id.clone(), yes: true });
+                            return cx.notify();
+                        }
+                    }
+                }
                 // the assistant opened something: it goes to the side panel (of whatever chat is shown)
                 if let ServerEvent::Show { title, kind, content, path } = &event {
                     let c = lh_gui::content::Content::from_show(title, kind, content, path.as_deref());
@@ -557,6 +593,7 @@ impl App {
                 let model = self.chats.current().map(|c| c.model.clone()).unwrap_or_default();
                 self.chats.remove(chat, &model);
                 self.core_models.remove(&chat);
+                self.always.forget_chat(chat);
                 self.pending = None;
             }
             Ev::History { chat, messages, context_tokens } => {

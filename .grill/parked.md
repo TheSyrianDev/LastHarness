@@ -178,3 +178,7 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **The branches tab is called "Tree"** as in the mock (Arabic: the tree). The terminal still says `/tree`.
 - **Settings has no tab in the side panel.** The mock lists four tabs (Opened, Departments, Memory, Tree) and a Settings icon on the rail. Settings opens in the same panel from the rail, and a fifth tab appears while it is shown. Recommended: keep; a page of its own can follow if the settings list grows.
 - **Opened shows as a tab even when nothing is opened** (as in the mock); it then explains how to open something.
+- **"Always for this chat" lives in the window, not the core.** The core only knows yes and no (and its own "writes ask once per session" rule). Recommended answer, taken: the window remembers the tool and the reason for one chat until the app closes, and never offers it for deleting, installing or running as root. If it should be saved or enforced by the core, that needs a core change and a decision about where it is stored.
+- **Thinking counts as a step** in "Worked for 14 s, 3 steps". Recommended: keep, since it is part of the work.
+- **Questions sit under the conversation, not inside the scrolling feed,** so a permission question is never scrolled out of sight. The mock puts the card at the end of the feed. Recommended: keep it fixed under the feed.
+- **The message box is not the mock's field yet** (mode chips, a round send button). That was not among the four approved items. Recommended: do it with the dock and motion slice if wanted.
