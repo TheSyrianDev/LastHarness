@@ -114,4 +114,46 @@ mod tests {
         assert_eq!(b.layout.presets, vec![Preset { name: "Reading".into(), width: ColumnWidth::Px(980.) }, Preset { name: "All".into(), width: ColumnWidth::Full }]);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn odd_or_old_files_never_stop_the_app_from_starting() {
+        use crate::layout::ColumnWidth;
+        let dir = std::env::temp_dir().join(format!("lh-gui-prefs-odd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        let missing = dir.join("nothing-here.toml");
+        assert_eq!(Prefs::load(&missing), Prefs::default());
+        let cases: [(&str, Option<ColumnWidth>); 14] = [
+            ("", Some(ColumnWidth::Px(860.))),
+            ("[layout]\ncolumn = \"wide\"\n", Some(ColumnWidth::Px(860.))),
+            ("[layout]\ncolumn = \"comfortable\"\n", Some(ColumnWidth::Px(700.))),
+            ("[layout]\ncolumn = \"nonsense\"\n", None),
+            ("[layout]\ncolumn = -5\n", Some(ColumnWidth::Px(480.))),
+            ("[layout]\ncolumn = 0\n", Some(ColumnWidth::Px(480.))),
+            ("[layout]\ncolumn = 999999999999\n", Some(ColumnWidth::Px(999999995904.))),
+            ("[layout]\ncolumn = 1e300\n", Some(ColumnWidth::Px(f32::MAX))),
+            ("[layout]\ncolumn = nan\n", Some(ColumnWidth::Px(860.))),
+            ("[layout]\ncolumn = true\n", None),
+            ("[[layout.presets]]\nname = \"x\"\n", None),
+            ("[[layout.presets]]\nname = \"x\"\nwidth = \"wide\"\n", Some(ColumnWidth::Px(860.))),
+            ("[layout]\npresets = 5\n", None),
+            ("\u{0}\u{1}binary", None),
+        ];
+        for (text, want) in cases {
+            std::fs::write(&p, text).unwrap();
+            let got = Prefs::load(&p);
+            match want {
+                Some(w) => match (got.layout.column, w) {
+                    (ColumnWidth::Px(a), ColumnWidth::Px(b)) if b == f32::MAX => assert!(a.is_finite() && a >= 480., "{text:?}"),
+                    (a, b) => assert_eq!(a, b, "{text:?}"),
+                },
+                None => assert_eq!(got, Prefs::default(), "{text:?} gives the defaults"),
+            }
+            // whatever was read, the controls can be built from it
+            let room = 1200.;
+            let s = crate::width_slider::state(got.layout.column, room, false);
+            assert!(s.min_value() < s.max_value());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

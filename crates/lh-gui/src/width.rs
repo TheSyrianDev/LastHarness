@@ -13,7 +13,7 @@ use gpui_component::slider::{Slider, SliderEvent, SliderState};
 
 use crate::app::App;
 use crate::ui::Kind;
-use lh_gui::layout::{mirror, slider_max, ColumnWidth, COLUMN_MIN, COLUMN_STEP, BUILT_IN_WIDTHS};
+use lh_gui::layout::{mirror, slider_max, ColumnWidth, BUILT_IN_WIDTHS, COLUMN_MIN, COLUMN_STEP};
 
 /// Everything the width controls remember between frames.
 pub struct WidthControls {
@@ -36,9 +36,7 @@ pub struct WidthControls {
 }
 
 fn build_slider(window: &mut Window, cx: &mut Context<App>, column: ColumnWidth, room: f32, rtl: bool) -> (Entity<SliderState>, Subscription) {
-    let pos = column.position(room);
-    let value = if rtl { mirror(pos, room) } else { pos };
-    let state = cx.new(|_| SliderState::new().min(COLUMN_MIN).max(slider_max(room)).step(COLUMN_STEP).default_value(value));
+    let state = cx.new(|_| lh_gui::width_slider::state(column, room, rtl));
     let sub = cx.subscribe_in(&state, window, |this: &mut App, _, ev: &SliderEvent, window, cx| match ev {
         SliderEvent::Change(v) => this.width_dragged(v.end(), window, cx),
         SliderEvent::Release(_) => this.persist(),

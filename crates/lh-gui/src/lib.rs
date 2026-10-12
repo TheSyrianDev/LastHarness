@@ -20,3 +20,4 @@ pub mod settings;
 pub mod theme;
 pub mod transcript;
 pub mod treeview;
+pub mod width_slider;
