@@ -377,7 +377,7 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     turn("two").await;
     let reqs = seen.lock().unwrap().clone();
     let first = reqs[0].messages[0].content.clone().unwrap();
-    assert!(first.starts_with("You are Qwen3.6-35B-A3B (34.7B) running through llama-swap. You work in LastHarness"), "{first}");
+    assert!(first.starts_with("You are Qwen3.6-35B-A3B (34.7B), served by llama-swap, an endpoint made by someone else, not a harness. You work in LastHarness"), "{first}");
     assert_eq!(reqs[1].messages[0], reqs[0].messages[0], "the same bytes on the next turn");
 
     // switching model: refused while idle sessions are fine, and the next turn names the new model
@@ -386,7 +386,7 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     turn("three").await;
     let reqs = seen.lock().unwrap().clone();
     let third = reqs[2].messages[0].content.clone().unwrap();
-    assert!(third.starts_with("You are gpt-4o (34.7B) running through llama-swap. You work in LastHarness"), "{third}");
+    assert!(third.starts_with("You are gpt-4o (34.7B), served by llama-swap, an endpoint made by someone else, not a harness. You work in LastHarness"), "{third}");
     assert_eq!(reqs[2].model, "gpt-4o");
     assert_eq!(&reqs[2].messages[1..4], &reqs[1].messages[1..4], "the conversation itself is unchanged");
     let log = store.recent(10, Some("model_switched")).unwrap();

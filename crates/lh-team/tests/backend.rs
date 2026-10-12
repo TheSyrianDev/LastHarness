@@ -52,7 +52,7 @@ async fn a_worker_gets_the_base_prompt_a_short_role_line_and_only_the_brief() {
     assert_eq!(req.messages.len(), 2, "system and the brief, nothing else");
     let sys = req.messages[0].content.clone().unwrap();
     assert!(sys.starts_with("You are m-7b"), "{sys}");
-    assert!(sys.contains("running through llama-swap") && sys.ends_with("You write code. Keep it simple."));
+    assert!(sys.contains("served by llama-swap, an endpoint made by someone else") && sys.ends_with("You write code. Keep it simple."));
     assert!(sys.contains("stay inside it"), "a project worker is told its folder");
     assert!(lh_tools::estimate_text_tokens(&sys) <= 300, "{} tokens", lh_tools::estimate_text_tokens(&sys));
     let user = req.messages[1].content.clone().unwrap();

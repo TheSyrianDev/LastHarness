@@ -53,7 +53,9 @@ pub fn format_params(n: u64) -> String {
     }
 }
 
-/// The first sentence of the prompt, from four complete templates, never with an empty slot.
+/// The first sentence of the prompt, from four complete templates, never with an empty slot. A known
+/// provider is named as a separate endpoint made by someone else, so the model does not take it for a
+/// harness or credit it to the maker of the model.
 pub fn identity_line(i: &Identity) -> String {
     let model = i.model.as_deref().map(display_name).filter(|m| !m.is_empty());
     let provider = i.provider.as_deref().map(str::trim).filter(|p| !p.is_empty());
@@ -62,9 +64,9 @@ pub fn identity_line(i: &Identity) -> String {
         None => m.to_string(),
     };
     match (model, provider) {
-        (Some(m), Some(p)) => format!("You are {} running through {p}.", sized(&m)),
+        (Some(m), Some(p)) => format!("You are {}, served by {p}, an endpoint made by someone else, not a harness.", sized(&m)),
         (Some(m), None) => format!("You are {}.", sized(&m)),
-        (None, Some(p)) => format!("You are an AI model running through {p}."),
+        (None, Some(p)) => format!("You are an AI model, served by {p}, an endpoint made by someone else, not a harness."),
         (None, None) => "You are an AI assistant.".to_string(),
     }
 }
@@ -112,7 +114,7 @@ pub fn ymd(days: i64) -> String {
 }
 
 pub fn base_prompt(c: &BaseContext) -> String {
-    let mut s = format!("{} You work in LastHarness, a local-first harness for one person's computer, built by LastSoftware. Be brief; say what you did and checked.\nToday: {}. ", identity_line(&c.identity), c.date);
+    let mut s = format!("{} You work in LastHarness, the only harness here, made by LastSoftware. Be brief; say what you did and checked.\nToday: {}. ", identity_line(&c.identity), c.date);
     let folder = c.folder.map(|p| p.display().to_string()).unwrap_or_default();
     s.push_str(&match c.kind {
         SessionKind::Chat => "Mode: chat, no tools.\n".to_string(),
@@ -167,12 +169,12 @@ mod tests {
     fn the_first_line_has_four_complete_forms_with_no_empty_slot() {
         let id = |m: Option<&str>, p: Option<u64>, v: Option<&str>| Identity { model: m.map(Into::into), parameters: p, provider: v.map(Into::into) };
         let cases = [
-            (id(Some("Qwen3.6-35B-A3B"), None, Some("llama-swap")), "You are Qwen3.6-35B-A3B running through llama-swap."),
-            (id(Some("Qwen3.6-35B-A3B"), Some(34_660_610_688), Some("llama-swap")), "You are Qwen3.6-35B-A3B (34.7B) running through llama-swap."),
+            (id(Some("Qwen3.6-35B-A3B"), None, Some("llama-swap")), "You are Qwen3.6-35B-A3B, served by llama-swap, an endpoint made by someone else, not a harness."),
+            (id(Some("Qwen3.6-35B-A3B"), Some(34_660_610_688), Some("llama-swap")), "You are Qwen3.6-35B-A3B (34.7B), served by llama-swap, an endpoint made by someone else, not a harness."),
             (id(Some("/m/x/LFM2.5-2.6B.gguf"), Some(2_697_198_592), None), "You are LFM2.5-2.6B (2.7B)."),
             (id(Some("gpt-4o"), None, None), "You are gpt-4o."),
-            (id(None, None, Some("OpenRouter")), "You are an AI model running through OpenRouter."),
-            (id(None, Some(8_000_000_000), Some("OpenRouter")), "You are an AI model running through OpenRouter."),
+            (id(None, None, Some("OpenRouter")), "You are an AI model, served by OpenRouter, an endpoint made by someone else, not a harness."),
+            (id(None, Some(8_000_000_000), Some("OpenRouter")), "You are an AI model, served by OpenRouter, an endpoint made by someone else, not a harness."),
             (id(None, None, None), "You are an AI assistant."),
             (id(Some("  "), Some(5), Some("  ")), "You are an AI assistant."),
             (id(Some("m"), Some(0), Some("")), "You are m."),
@@ -180,7 +182,7 @@ mod tests {
         for (identity, want) in cases {
             let line = identity_line(&identity);
             assert_eq!(line, want);
-            assert!(!line.contains("  ") && !line.contains("()") && !line.contains("{}") && !line.ends_with(" running through.") && !line.ends_with("through") && !line.contains("running through ."), "{line}");
+            assert!(!line.contains("  ") && !line.contains("()") && !line.contains("{}") && !line.ends_with("served by.") && !line.ends_with("served by") && !line.contains("served by ,") && !line.contains("served by ."), "{line}");
             // and inside the whole prompt the first line is that line
             let none: Vec<String> = vec![];
             let p = base_prompt(&BaseContext { identity, kind: SessionKind::Chat, folder: None, permissions: Mode::Tiered, sudo_enabled: false, date: "2026-10-11", guidelines: &none });
