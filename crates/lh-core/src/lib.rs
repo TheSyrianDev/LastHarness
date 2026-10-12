@@ -36,6 +36,7 @@ pub mod web;
 mod settings_api;
 mod show_tool;
 mod team_api;
+mod tree_api;
 
 pub use learn_api::{LearnMode, LearnRuntime};
 pub use mcp_api::McpRuntime;
@@ -108,11 +109,17 @@ pub struct AppState<M> {
     pub idle: Arc<idle::Idle>,
     /// Saving the KV cache per local chat; set once at start when the user has set it up.
     pub kv: std::sync::OnceLock<Arc<kv_cache::KvCache>>,
+    /// What to do with the branch a person leaves in the chat tree: ask, always or never write a summary.
+    pub tree_summarize_setting: std::sync::OnceLock<String>,
 }
 
 impl<M: Model + 'static> AppState<M> {
     /// Builds the state and starts the idle manager. Must be called inside a Tokio runtime.
     /// The KV cache saver, if it is set up and allowed for this session: a local endpoint, a stored (not private) chat.
+    pub(crate) fn tree_summarize(&self) -> String {
+        self.tree_summarize_setting.get().cloned().unwrap_or_else(|| "ask".into())
+    }
+
     pub(crate) fn kv_for(&self, s: &Session) -> Option<Arc<kv_cache::KvCache>> {
         let kv = self.kv.get()?;
         let local = self.settings.memory.as_ref().is_some_and(|m| m.trust == lh_memory::Trust::Local);
@@ -147,7 +154,7 @@ impl<M: Model + 'static> AppState<M> {
         }
         tokio::spawn(idle.clone().run());
         let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
-        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: std::sync::OnceLock::new() })
+        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: std::sync::OnceLock::new(), tree_summarize_setting: std::sync::OnceLock::new() })
     }
 
     pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
@@ -178,6 +185,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
         .merge(chats_api::routes::<M>())
+        .merge(tree_api::routes::<M>())
 }
 
 /// Only a request that passed its guard counts as activity: this layer sits outside the guard, so it
@@ -564,6 +572,8 @@ struct Recorder {
     /// Incognito sessions still leave a security record, but without any text from the conversation.
     incognito: bool,
     sess: Arc<Session>,
+    /// What each tool did this turn, kept for the chat tree (never sent to a model again).
+    notes: Arc<Mutex<Vec<String>>>,
 }
 
 impl Recorder {
@@ -592,6 +602,10 @@ impl Recorder {
             TurnEvent::ToolResult { id, text, undo } => {
                 let (tool, args) = self.calls.remove(id).unwrap_or_default();
                 let preview: String = text.chars().take(300).collect();
+                if !self.incognito {
+                    let one = |t: &str, n: usize| t.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(n).collect::<String>();
+                    self.notes.lock().unwrap().push(format!("{tool} {} → {}", one(&args, 120), one(text, 160)));
+                }
                 let detail = if self.incognito { json!({"tool": tool, "incognito": true}) } else { json!({"tool": tool, "arguments": args, "result": preview}) };
                 let logged = self.store.log("tool_call", &self.session, "assistant", &detail);
                 match (logged, undo) {
@@ -686,7 +700,8 @@ async fn start_turn<M: Model + 'static>(
             let asker = ApiAsker { session: s.clone(), events: tx.clone() };
             let opts = TurnOptions::default();
             let events = tx.clone();
-            let mut rec = Recorder { store: store.clone(), session: id.clone(), calls: HashMap::new(), incognito: s.incognito, sess: s.clone() };
+            let notes: Arc<Mutex<Vec<String>>> = Default::default();
+            let mut rec = Recorder { store: store.clone(), session: id.clone(), calls: HashMap::new(), incognito: s.incognito, sess: s.clone(), notes: notes.clone() };
             let end = run_turn(&*model, &meter, &mut work, &s.tools, &s.perms, &asker, &opts, move |e| {
                 rec.record(&e);
                 if let Some(msg) = describe(&e) {
@@ -726,6 +741,9 @@ async fn start_turn<M: Model + 'static>(
                     if let (Some(rt), Some(conv)) = (&st2.settings.memory, &s.conv) {
                         let _ = rt.memory.append_message(conv, "user", &b.text);
                         let _ = rt.memory.set_title_if_empty(conv, &b.text);
+                        for note in notes.lock().unwrap().iter() {
+                            let _ = rt.memory.append_message(conv, "tool", note);
+                        }
                         if !r.text.is_empty() {
                             let _ = rt.memory.append_message(conv, "assistant", &r.text);
                         }

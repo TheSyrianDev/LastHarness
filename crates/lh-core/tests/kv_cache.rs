@@ -81,6 +81,9 @@ impl Server {
     fn post(&self, p: &str, b: Value) -> reqwest::RequestBuilder {
         self.http.post(format!("{}{p}", self.base)).bearer_auth(&self.token).json(&b)
     }
+    fn get(&self, p: &str) -> reqwest::RequestBuilder {
+        self.http.get(format!("{}{p}", self.base)).bearer_auth(&self.token)
+    }
     async fn json(&self, rb: reqwest::RequestBuilder) -> Value {
         rb.send().await.unwrap().json().await.unwrap_or(Value::Null)
     }
@@ -305,4 +308,22 @@ async fn a_chat_opened_again_gets_its_cache_back_before_the_first_turn_unless_th
     assert!(!seen.iter().any(|x| x.starts_with("restore")), "a cache is only for the model that made it: {seen:?}");
     let log = s2.store.recent(30, None).unwrap_or_default();
     assert!(log.iter().any(|e| e.kind == "kv_cache_skipped"), "{log:?}");
+}
+
+#[tokio::test]
+async fn moving_in_the_chat_tree_drops_the_saved_cache_because_it_no_longer_matches_the_chat() {
+    let (data, slots) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (s, _kv) = start(Setup { data: data.path(), slots: slots.path(), trust: Trust::Local, fake: fake(slots.path(), 1000, true), cap: None, replies: vec![text("one"), text("two"), text("three")] }).await;
+    let id = s.session(json!({})).await;
+    s.turn(&id, "first").await;
+    s.turn(&id, "second").await;
+    assert_eq!(bins(slots.path()).len(), 1, "the chat's work is saved");
+    let t = s.json(s.get(&format!("/v1/chats/{id}/tree"))).await;
+    let a1 = t["nodes"].as_array().unwrap().iter().find(|n| n["preview"] == "one").unwrap()["id"].as_i64().unwrap();
+    s.json(s.post(&format!("/v1/chats/{id}/tree/move"), json!({"node": a1, "summarize": false}))).await;
+    assert!(bins(slots.path()).is_empty(), "a saved cache of the longer branch is not valid for the shorter one, so it is gone");
+    s.turn(&id, "third").await;
+    assert_eq!(bins(slots.path()).len(), 1, "the next turn saves a cache that matches the new branch");
+    let seen = s.seen.lock().unwrap().clone();
+    assert!(!seen.iter().any(|x| x.starts_with("restore ")), "an old cache is never put back: {seen:?}");
 }

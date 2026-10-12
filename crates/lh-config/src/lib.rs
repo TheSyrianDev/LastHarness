@@ -74,6 +74,7 @@ pub const SCHEMA: &[Def] = &[
     d("permissions.mode", Kind::Choice(&["tiered", "ask-all"]), "tiered", false, "tiered: reads are free, writes ask once, risky things always ask. ask-all: ask for everything"),
     d("permissions.bypass", Kind::Bool, "false", false, "Skip every permission question. You accept the risk; the project is not responsible for the outcome"),
     d("permissions.sudo", Kind::Bool, "false", false, "Let agents use sudo (it still asks like any other command)"),
+    d("tree.summarize", Kind::Choice(&["ask", "always", "never"]), "ask", false, "When you leave a branch of a chat for another, write a short summary of it where you come back. ask: you are asked each time"),
     d("kvcache.enabled", Kind::Bool, "true", false, "Save the model's work on a local chat, so a stored chat goes on quickly instead of being read again. Needs kvcache.dir; never for private chats or cloud models"),
     d("kvcache.dir", Kind::Text, "", false, "The folder the local server saves slots into (its --slot-save-path; with llama-swap, the folder that holds the per-model ones). Empty switches saving off"),
     d("kvcache.max_gb", Kind::Int { min: 1, max: 500 }, "5", false, "Most disk the saved caches may use in total; the oldest are removed first"),

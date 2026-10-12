@@ -274,6 +274,20 @@ const MIGRATIONS: &[&str] = &[r#"
     alter table conversations add column model text;
     alter table conversations add column mode text;
     alter table conversations add column title text;
+"#, r#"
+    -- A chat is a tree: each message says which message it answers. A new message goes under the node the chat
+    -- is at now, so going back to an earlier message and writing again starts a new branch and loses nothing.
+    alter table messages add column parent integer;                 -- the message this one answers; null = the first
+    -- Chats stored before this were one straight line: each message answers the one before it. The one allowed edit
+    -- (setting that once) is made with the guard lifted, then the guard goes back exactly as it was.
+    drop trigger messages_no_update;
+    update messages set parent = (select m2.id from messages m2 where m2.conv = messages.conv and m2.seq < messages.seq order by m2.seq desc limit 1);
+    create trigger messages_no_update before update on messages begin select raise(abort, 'conversations are never edited'); end;
+
+    -- Where each chat is now: the message the next one will answer (0 = before the first). No row means the newest message.
+    create table chat_branch(conv text primary key, leaf integer not null);
+    -- A name the user gave a message, to find it again in the tree.
+    create table chat_labels(msg integer primary key, label text not null);
 "#];
 
 pub struct Store {
@@ -336,6 +350,37 @@ mod tests {
         assert_eq!(n, 1);
         let v: i64 = s.with(|c| c.query_row("pragma user_version", [], |r| r.get(0))).unwrap();
         assert_eq!(v, MIGRATIONS.len() as i64);
+    }
+
+    #[test]
+    fn chats_stored_before_the_tree_become_one_straight_branch_and_stay_uneditable() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("pragma journal_mode=wal;").unwrap();
+        let before = MIGRATIONS.len() - 1;
+        for (i, m) in MIGRATIONS.iter().enumerate().take(before) {
+            conn.execute_batch(m).unwrap();
+            conn.execute_batch(&format!("pragma user_version = {}", i + 1)).unwrap();
+        }
+        conn.execute("insert into conversations(id, started) values ('s1', 1), ('s2', 1)", []).unwrap();
+        for (conv, seq, role) in [("s1", 1, "user"), ("s1", 2, "assistant"), ("s1", 3, "user"), ("s2", 1, "user"), ("s2", 2, "assistant")] {
+            conn.execute("insert into messages(conv, seq, role, content, search_text, at) values (?1,?2,?3,'x','x',1)", (conv, seq, role)).unwrap();
+        }
+        let s = Store::init(conn).unwrap();
+        let parents: Vec<(i64, Option<i64>)> = s.with(|c| {
+            let mut q = c.prepare("select seq, parent from messages where conv = 's1' order by seq")?;
+            let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect()
+        }).unwrap();
+        let ids: Vec<i64> = s.with(|c| {
+            let mut q = c.prepare("select id from messages where conv = 's1' order by seq")?;
+            let rows = q.query_map([], |r| r.get(0))?;
+            rows.collect()
+        }).unwrap();
+        assert_eq!(parents, vec![(1, None), (2, Some(ids[0])), (3, Some(ids[1]))], "a straight line, first message has no parent");
+        let other: Option<i64> = s.with(|c| c.query_row("select parent from messages where conv = 's2' and seq = 2", [], |r| r.get(0))).unwrap();
+        assert!(other.is_some() && !ids.contains(&other.unwrap()), "another chat's messages never join this one");
+        assert!(s.with(|c| c.execute("update messages set parent = null", [])).is_err(), "conversations are still never edited");
+        assert!(s.with(|c| c.execute("update messages set content = 'y'", [])).is_err());
     }
 
     #[test]

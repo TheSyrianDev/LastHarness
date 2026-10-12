@@ -1,5 +1,6 @@
 //! Past conversations: the raw record, as it was said. Never edited (the database refuses updates),
-//! searchable by keyword, and exportable to Markdown. Incognito sessions never reach this code.
+//! searchable by keyword (across every branch), and exportable to Markdown. Incognito sessions never reach this code.
+//! A chat is a tree; see `tree.rs` for branches.
 
 use lh_store::now;
 
@@ -57,22 +58,41 @@ impl Memory {
         Ok(())
     }
 
-    /// Stored chats that have at least one message, newest first.
+    /// Stored chats that have at least one message, newest first. The size of a chat is the size of its active branch.
     pub fn list_conversations(&self, limit: usize) -> Result<Vec<ConversationInfo>> {
+        self.list_inner(None, limit)
+    }
+
+    fn list_inner(&self, only: Option<&str>, limit: usize) -> Result<Vec<ConversationInfo>> {
         Ok(self.store.with(|c| {
             let mut q = c.prepare(
-                "select c.id, coalesce(c.title, ''), c.project, coalesce(c.mode, 'chat'), c.model, c.started, coalesce(max(m.at), c.started), count(m.id), coalesce(sum(length(m.content)), 0) \
-                 from conversations c join messages m on m.conv = c.id group by c.id order by 7 desc, c.started desc limit ?1",
+                "select c.id, coalesce(c.title, ''), c.project, coalesce(c.mode, 'chat'), c.model, c.started, coalesce(max(m.at), c.started), \
+                        coalesce((select leaf from chat_branch b where b.conv = c.id), max(m.id)) \
+                 from conversations c join messages m on m.conv = c.id where (?2 is null or c.id = ?2) group by c.id order by 7 desc, c.started desc limit ?1",
             )?;
-            let rows = q.query_map([limit as i64], |r| {
-                Ok(ConversationInfo { id: r.get(0)?, title: r.get(1)?, project: r.get(2)?, mode: r.get(3)?, model: r.get(4)?, started: r.get(5)?, last: r.get(6)?, messages: r.get::<_, i64>(7)? as usize, chars: r.get::<_, i64>(8)? as usize })
-            })?;
-            rows.collect()
+            let heads: Vec<(ConversationInfo, i64)> = q
+                .query_map(lh_store::rusqlite::params![limit as i64, only], |r| {
+                    Ok((ConversationInfo { id: r.get(0)?, title: r.get(1)?, project: r.get(2)?, mode: r.get(3)?, model: r.get(4)?, started: r.get(5)?, last: r.get(6)?, messages: 0, chars: 0 }, r.get(7)?))
+                })?
+                .collect::<lh_store::rusqlite::Result<_>>()?;
+            let mut out = Vec::with_capacity(heads.len());
+            for (mut info, leaf) in heads {
+                // only the active branch counts: it is what a model would read again
+                let (n, chars): (i64, i64) = c.query_row(
+                    "with recursive path(id, parent) as (select id, parent from messages where id = ?1 union all select m.id, m.parent from messages m join path p on m.id = p.parent) \
+                     select count(*), coalesce(sum(length(m.content)), 0) from messages m join path on path.id = m.id where m.role != 'tool'",
+                    [leaf],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                (info.messages, info.chars) = (n as usize, chars as usize);
+                out.push(info);
+            }
+            Ok(out)
         })?)
     }
 
     pub fn conversation(&self, id: &str) -> Result<Option<ConversationInfo>> {
-        Ok(self.list_conversations(100_000)?.into_iter().find(|c| c.id == id))
+        Ok(self.list_inner(Some(id), 1)?.into_iter().next())
     }
 
     /// Remove a chat for good: its messages, their search entries and the chat itself.
@@ -86,6 +106,8 @@ impl Memory {
                     tx.execute("insert into messages_fts(messages_fts, rowid, search_text) values ('delete', ?1, ?2)", (rowid, st))?;
                 }
             }
+            tx.execute("delete from chat_labels where msg in (select id from messages where conv = ?1)", [id])?;
+            tx.execute("delete from chat_branch where conv = ?1", [id])?;
             tx.execute("delete from messages where conv = ?1", [id])?;
             let n = tx.execute("delete from conversations where id = ?1", [id])?;
             tx.commit()?;
@@ -103,21 +125,9 @@ impl Memory {
         Ok(())
     }
 
-    pub fn append_message(&self, conv: &str, role: &str, content: &str) -> Result<()> {
-        let st = text::tokens(content).join(" ");
-        self.store.with(|c| {
-            let seq: i64 = c.query_row("select coalesce(max(seq), 0) + 1 from messages where conv = ?1", [conv], |r| r.get(0))?;
-            c.execute("insert into messages(conv, seq, role, content, search_text, at) values (?1,?2,?3,?4,?5,?6)", (conv, seq, role, content, st, now())).map(|_| ())
-        })?;
-        Ok(())
-    }
-
+    /// What the model reads: the active branch, as (role, text). Tool results are left out.
     pub fn messages(&self, conv: &str) -> Result<Vec<(String, String)>> {
-        Ok(self.store.with(|c| {
-            let mut q = c.prepare("select role, content from messages where conv = ?1 order by seq")?;
-            let rows = q.query_map([conv], |r| Ok((r.get(0)?, r.get(1)?)))?;
-            rows.collect()
-        })?)
+        Ok(self.branch(conv)?.into_iter().filter(|n| n.role != "tool").map(|n| (n.role, n.content)).collect())
     }
 
     /// Keyword search over everything ever said.

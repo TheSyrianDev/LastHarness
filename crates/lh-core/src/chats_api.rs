@@ -140,11 +140,7 @@ async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
             return Err(ApiError(StatusCode::CONFLICT, format!("{hits} message(s) in this chat repeat a sensitive note, so it cannot be sent to a cloud model. Continue it with a local model instead.")));
         }
     }
-    let messages: Vec<Message> = history.iter().filter_map(|(role, text)| match role.as_str() {
-        "user" => Some(Message::user(text.clone())),
-        "assistant" => Some(Message::assistant(text.clone(), vec![])),
-        _ => None,
-    }).collect();
+    let messages: Vec<Message> = crate::tree_api::history_to_messages(&history);
     if let Some(s) = live {
         // A loaded session moves to the new model: the first line of its prompt changes and the server reads it all again.
         let mut req = s.req.lock().await;
