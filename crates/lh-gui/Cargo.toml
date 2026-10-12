@@ -26,6 +26,7 @@ ksni = { version = "0.3", features = ["blocking"] }
 tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "time", "macros"] }
 
 [dev-dependencies]
+lh-config = { path = "../lh-config" }
 lh-core = { path = "../lh-core" }
 lh-tools = { path = "../lh-tools" }
 lh-spend = { path = "../lh-spend" }

@@ -7,7 +7,7 @@ use crate::layout::{Layout, Panel};
 pub const RAIL_WIDTH: f32 = 52.;
 
 /// How wide the Settings window is, at most, in pixels.
-pub const SETTINGS_WIDTH: f32 = 680.;
+pub const SETTINGS_WIDTH: f32 = 800.;
 
 /// How much the rest of the window is darkened while Settings is up. This is a plain dimming, not a blur: the toolkit
 /// cannot blur what is behind a panel. Strong enough that the page behind stops competing, a little stronger in a

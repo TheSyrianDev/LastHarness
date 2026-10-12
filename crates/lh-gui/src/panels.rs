@@ -168,15 +168,10 @@ impl App {
         col.into_any_element()
     }
 
-    pub fn settings_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    /// The Appearance page: the app's own look, mode, direction and widths. It works when the core is away.
+    fn appearance_block(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
-        let mut col = div().flex().flex_col().gap_2();
-        if let Some(e) = self.panels.settings_error.clone() {
-            col = col.child(div().px_2().py_1().rounded(p.inner).border_1().border_color(p.danger).text_color(p.danger).child(e));
-        }
-        // how the app looks is the app's own setting, so it works even when the core is away
-        col = col.child(div().text_sm().text_color(p.muted).child("appearance"));
         // a look is a family with a light and a dark variant; the mode below picks the variant for all of them
         let mut looks = div().flex().flex_wrap().items_center().gap_1().child(div().text_sm().text_color(p.muted).child(if rtl { "المظهر" } else { "Look" }));
         let current = self.family();
@@ -203,73 +198,178 @@ impl App {
             a.set_direction(n);
             cx.notify();
         });
-        let narrower = self.button("left-narrower", "Chat list −", Kind::Ghost, cx, |a, _, cx| {
+        let narrower = self.button("left-narrower", "Chat list narrower", Kind::Ghost, cx, |a, _, cx| {
             let w = a.layout().left_width - 30.;
             a.layout_mut().resize_left(w);
             a.persist();
             cx.notify();
         });
-        let wider = self.button("left-wider", "Chat list +", Kind::Ghost, cx, |a, _, cx| {
+        let wider = self.button("left-wider", "Chat list wider", Kind::Ghost, cx, |a, _, cx| {
             let w = a.layout().left_width + 30.;
             a.layout_mut().resize_left(w);
             a.persist();
             cx.notify();
         });
         let widths = self.width_controls(cx);
-        col = col.child(
-            div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
+        div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
                 .id("appearance").role(Role::Group).aria_label("Appearance")
                 .child(looks)
                 .child(modes)
                 .child(widths)
                 .child(div().flex().flex_wrap().gap_1().child(dir_btn).child(narrower).child(wider))
                 .child(div().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))
-                .children(self.themes.problems.iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Theme file problem: {e}")))),
-        );
-        if !self.connected {
-            return col.child(self.note("The core is not running, so its settings cannot be shown.")).into_any_element();
-        }
-        let groups = settings::groups(&self.panels.settings, |s| s.group.as_str());
-        for (g, idx) in groups {
-            col = col.child(div().text_sm().text_color(p.muted).pt_2().child(g));
-            for i in idx {
-                let s = self.panels.settings[i].clone();
-                let control: AnyElement = match &s.kind {
-                    settings::Kind::Bool | settings::Kind::Choice(_) => {
-                        let (key, cur, kind) = (s.key.clone(), s.value.clone(), s.kind.clone());
-                        self.button(format!("set-{}", s.key), s.value.clone(), Kind::Normal, cx, move |a, _, cx| {
-                            if let Some(v) = kind.next(&cur) {
-                                a.change_setting(&key, v, cx);
-                            }
-                        })
+                .children(self.themes.problems.iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Theme file problem: {e}"))))
+            .into_any_element()
+    }
+
+    /// One setting as a card: its plain title, one sentence, the control, and the value in words.
+    fn setting_card(&mut self, i: usize, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let s = self.panels.settings[i].clone();
+        let d = lh_gui::setting_names::describe(&s.key, &s.help);
+        let words = lh_gui::setting_names::value_text(&s.key, &s.value);
+        let control: AnyElement = match &s.kind {
+            settings::Kind::Bool | settings::Kind::Choice(_) => {
+                let (key, cur, kind) = (s.key.clone(), s.value.clone(), s.kind.clone());
+                self.button(format!("set-{}", s.key), words.clone(), Kind::Normal, cx, move |a, _, cx| {
+                    if let Some(v) = kind.next(&cur) {
+                        a.change_setting(&key, v, cx);
                     }
-                    settings::Kind::Int { .. } => {
-                        let (k1, c1, kind1) = (s.key.clone(), s.value.clone(), s.kind.clone());
-                        let (k2, c2, kind2) = (s.key.clone(), s.value.clone(), s.kind.clone());
-                        let minus = self.button(format!("set-{}-minus", s.key), "−", Kind::Ghost, cx, move |a, _, cx| {
-                            if let Some(v) = kind1.step(&c1, false) {
-                                a.change_setting(&k1, v, cx);
-                            }
-                        });
-                        let plus = self.button(format!("set-{}-plus", s.key), "+", Kind::Ghost, cx, move |a, _, cx| {
-                            if let Some(v) = kind2.step(&c2, true) {
-                                a.change_setting(&k2, v, cx);
-                            }
-                        });
-                        div().flex().items_center().gap_1().child(minus).child(div().min_w(px(36.)).flex().justify_center().child(s.value.clone())).child(plus).into_any_element()
-                    }
-                    settings::Kind::Other => div().text_color(p.muted).child(if s.value.is_empty() { "(not set)".to_string() } else { s.value.clone() }).into_any_element(),
-                };
-                col = col.child(
-                    div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
-                        .id(SharedString::from(format!("setting-{}", s.key))).role(Role::Group).aria_label(s.key.clone())
-                        .child(div().flex().items_center().gap_2().child(div().flex_1().child(s.key.clone())).child(control))
-                        .child(div().text_xs().text_color(p.muted).child(s.help.clone()))
-                        .when(!s.kind.editable(), |d| d.child(div().text_xs().text_color(p.muted).child("Change this with `lh settings`."))),
-                );
+                })
             }
+            settings::Kind::Int { .. } => {
+                let (k1, c1, kind1) = (s.key.clone(), s.value.clone(), s.kind.clone());
+                let (k2, c2, kind2) = (s.key.clone(), s.value.clone(), s.kind.clone());
+                let minus = self.button(format!("set-{}-minus", s.key), "−", Kind::Ghost, cx, move |a, _, cx| {
+                    if let Some(v) = kind1.step(&c1, false) {
+                        a.change_setting(&k1, v, cx);
+                    }
+                });
+                let plus = self.button(format!("set-{}-plus", s.key), "+", Kind::Ghost, cx, move |a, _, cx| {
+                    if let Some(v) = kind2.step(&c2, true) {
+                        a.change_setting(&k2, v, cx);
+                    }
+                });
+                div().flex().items_center().gap_1().child(minus).child(div().min_w(px(36.)).flex().justify_center().child(words.clone())).child(plus).into_any_element()
+            }
+            settings::Kind::Other => div().text_color(p.muted).child(words.clone()).into_any_element(),
+        };
+        let tip = format!("Name in the settings file: {}", s.key);
+        let aria = format!("{}: {}", d.title, words);
+        let rtl = self.rtl;
+        div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
+            .when(d.careful, |c| c.border_1().border_color(p.danger.opacity(0.55)))
+            .id(SharedString::from(format!("setting-{}", s.key))).role(Role::Group).aria_label(aria).aria_description(d.about.clone())
+            .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx))
+            .child(div().flex().when(rtl, |r| r.flex_row_reverse()).items_center().gap_2().child(div().flex_1().child(d.title.clone())).child(control))
+            .child(div().text_xs().text_color(p.muted).child(d.about.clone()))
+            .when(d.careful, |c| c.child(div().text_xs().text_color(p.danger).child(if rtl { "إعداد حساس، غيّره بحذر." } else { "Take care with this one." })))
+            .when(!s.kind.editable(), |c| c.child(div().text_xs().text_color(p.muted).child("To change this, run lh settings in a terminal.")))
+            .into_any_element()
+    }
+
+    /// The page for the chosen category, or the settings that match what is typed in the search box.
+    pub fn settings_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        use lh_gui::setting_names::{appearance_matches, describe, matches, Category};
+        let p = self.pal.clone();
+        let mut col = div().flex().flex_col().gap_2();
+        if let Some(e) = self.panels.settings_error.clone() {
+            col = col.child(div().px_2().py_1().rounded(p.inner).border_1().border_color(p.danger).text_color(p.danger).child(e));
+        }
+        let query = self.settings_search.read(cx).value().to_string();
+        let searching = !query.trim().is_empty();
+        let page = self.settings_page;
+        let core_settings = |a: &Self| -> Vec<usize> { (0..a.panels.settings.len()).collect() };
+        let mut shown: Vec<usize> = vec![];
+        let mut show_appearance = false;
+        if searching {
+            show_appearance = appearance_matches(&query);
+            shown = core_settings(self).into_iter().filter(|&i| {
+                let s = &self.panels.settings[i];
+                matches(&s.key, &describe(&s.key, &s.help), &query)
+            }).collect();
+        } else if page == Category::Appearance {
+            show_appearance = true;
+        } else {
+            shown = core_settings(self).into_iter().filter(|&i| describe(&self.panels.settings[i].key, "").category == page).collect();
+        }
+        if searching {
+            col = col.child(div().text_sm().text_color(p.muted).child(format!("Results for \"{}\"", query.trim())));
+        } else {
+            col = col.child(div().text_color(p.text).child(page.title())).child(div().text_xs().text_color(p.muted).child(page.blurb()));
+        }
+        if show_appearance {
+            col = col.child(self.appearance_block(cx));
+        }
+        if !self.connected && !show_appearance {
+            return col.child(self.note("The core is not running, so these settings cannot be shown.")).into_any_element();
+        }
+        for i in shown.iter().copied() {
+            col = col.child(self.setting_card(i, cx));
+        }
+        if searching && !show_appearance && shown.is_empty() {
+            col = col.child(self.note("No setting matches. Try fewer or different words."));
+        }
+        if !self.connected && show_appearance {
+            col = col.child(self.note("The core is not running, so the other settings cannot be shown."));
         }
         col.into_any_element()
+    }
+
+    /// The list of pages down the side. Up and Down move between them; Tab moves on into the page.
+    pub fn settings_sidebar(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        use lh_gui::setting_names::pages;
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let list = pages(self.panels.settings.iter().map(|s| s.key.as_str()));
+        let ring = BoxShadow { color: p.accent, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(2.), inset: false };
+        let searching = !self.settings_search.read(cx).value().trim().is_empty();
+        let mut nav = div()
+            .id("settings-pages")
+            .role(Role::TabList)
+            .aria_label("Settings pages")
+            .track_focus(&self.settings_nav_focus)
+            .tab_stop(true)
+            .focus_visible(move |s| s.shadow(vec![ring]))
+            .w(px(168.))
+            .flex_none()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .rounded(p.inner)
+            .on_key_down(cx.listener(|a, ev: &KeyDownEvent, w, cx| {
+                let down = match ev.keystroke.key.as_str() {
+                    "down" => true,
+                    "up" => false,
+                    _ => return,
+                };
+                let pages = lh_gui::setting_names::pages(a.panels.settings.iter().map(|s| s.key.as_str()));
+                let next = lh_gui::setting_names::neighbour(&pages, a.settings_page, down);
+                a.set_settings_page(next, w, cx);
+                cx.stop_propagation();
+            }));
+        for c in list {
+            let on = c == self.settings_page && !searching;
+            let danger = matches!(c, lh_gui::setting_names::Category::Permissions | lh_gui::setting_names::Category::Spending);
+            nav = nav.child(
+                div()
+                    .id(SharedString::from(format!("settings-page-{}", c.id())))
+                    .role(Role::Tab)
+                    .aria_label(c.title())
+                    .aria_selected(on)
+                    .px_3()
+                    .py_1p5()
+                    .rounded(p.inner)
+                    .cursor_pointer()
+                    .text_color(if on { p.accent_text } else { p.text })
+                    .bg(if on { p.accent } else { hsla(0., 0., 0., 0.) })
+                    .hover(|s| s.bg(p.button))
+                    .when(rtl, |d| d.text_right())
+                    .on_click(cx.listener(move |a, _, w, cx| a.set_settings_page(c, w, cx)))
+                    .child(div().flex().when(rtl, |r| r.flex_row_reverse()).items_center().gap_1().child(c.title()).when(danger && !on, |r| r.child(div().w(px(6.)).h(px(6.)).rounded_full().bg(p.danger)))),
+            );
+        }
+        nav.into_any_element()
     }
 
     /// A web page is not run here. The card says so and offers the two honest things to do: open the file in the

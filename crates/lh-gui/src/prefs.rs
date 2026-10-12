@@ -19,6 +19,8 @@ pub struct Prefs {
     pub direction: Direction,
     pub layout: Layout,
     pub model: String,
+    /// The page of the Settings window that was open last, by `Category::id`. Empty or unknown means the first.
+    pub settings_page: String,
 }
 
 pub fn path() -> PathBuf {
@@ -154,6 +156,21 @@ mod tests {
             let s = crate::width_slider::state(got.layout.column, room, false);
             assert!(s.min_value() < s.max_value());
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_last_settings_page_is_remembered() {
+        use crate::setting_names::Category;
+        let dir = std::env::temp_dir().join(format!("lh-gui-prefs-page-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        assert_eq!(Category::from_id(&Prefs::load(&p).settings_page), Category::Appearance, "no file, first page");
+        let a = Prefs { settings_page: Category::Spending.id().into(), ..Default::default() };
+        a.save(&p).unwrap();
+        assert_eq!(Category::from_id(&Prefs::load(&p).settings_page), Category::Spending);
+        std::fs::write(&p, "settings_page = \"a page from the future\"\n").unwrap();
+        assert_eq!(Category::from_id(&Prefs::load(&p).settings_page), Category::Appearance, "unknown falls back");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

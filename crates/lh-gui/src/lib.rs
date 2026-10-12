@@ -16,6 +16,7 @@ pub mod prefs;
 pub mod rtl;
 pub mod runs;
 pub mod scene;
+pub mod setting_names;
 pub mod settings;
 pub mod theme;
 pub mod transcript;

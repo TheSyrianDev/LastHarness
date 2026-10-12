@@ -4042,6 +4042,7 @@ dependencies = [
  "image",
  "ksni",
  "lh-client",
+ "lh-config",
  "lh-core",
  "lh-learn",
  "lh-memory",

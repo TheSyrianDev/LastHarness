@@ -342,6 +342,7 @@ impl App {
         let rtl = self.rtl;
         self.tab_buttons = true;
         let body = self.settings_body(cx);
+        let sidebar = self.settings_sidebar(cx);
         let close = self.button("settings-close", if rtl { "إغلاق" } else { "Close" }, Kind::Ghost, cx, |a, w, cx| a.close_settings(w, cx));
         self.tab_buttons = false;
         let shadow = BoxShadow { color: hsla(0., 0., 0., 0.4), offset: point(px(0.), px(14.)), blur_radius: px(44.), spread_radius: px(0.), inset: false };
@@ -366,6 +367,7 @@ impl App {
                         .track_focus(&self.settings_focus)
                         .w(px(SETTINGS_WIDTH))
                         .max_w_full()
+                        .h(relative(0.84))
                         .max_h(relative(0.9))
                         .flex()
                         .flex_col()
@@ -376,7 +378,11 @@ impl App {
                         // clicks inside must not reach the dimmed area behind and close the window
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_2().child(div().flex_1().text_color(p.text).child(if rtl { "الإعدادات" } else { "Settings" })).child(div().text_xs().text_color(p.muted).child(if rtl { "Esc للإغلاق" } else { "Esc closes" })).child(close))
-                        .child(div().id("settings-body").flex_1().overflow_y_scroll().flex().flex_col().gap_2().child(body)),
+                        .child(
+                            div().flex().flex_1().min_h_0().when(rtl, |d| d.flex_row_reverse()).gap_3()
+                                .child(div().flex().flex_col().flex_none().gap_2().child(div().w(px(168.)).child(Input::new(&self.settings_search))).child(sidebar))
+                                .child(div().id("settings-body").flex_1().min_w_0().overflow_y_scroll().flex().flex_col().gap_2().child(body)),
+                        ),
                 )
                 .into_any_element(),
         )

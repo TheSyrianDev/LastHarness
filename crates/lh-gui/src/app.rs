@@ -142,6 +142,10 @@ pub struct App {
     pub tab_buttons: bool,
     /// The chat width slider, number box and presets in Settings.
     pub width: crate::width::WidthControls,
+    /// The page shown in Settings, the box that searches all pages, and keyboard focus for the list of pages.
+    pub settings_page: lh_gui::setting_names::Category,
+    pub settings_search: Entity<InputState>,
+    pub settings_nav_focus: FocusHandle,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -291,6 +295,14 @@ impl App {
         let locale = rtl::desktop_locale();
         let is_rtl = prefs.direction.is_rtl(&locale);
         let prefs_column = prefs.layout.column;
+        let settings_page = lh_gui::setting_names::Category::from_id(&prefs.settings_page);
+        let settings_search = cx.new(|cx| InputState::new(window, cx).placeholder("Search the settings"));
+        cx.subscribe_in(&settings_search, window, |_, _, ev: &InputEvent, _, cx| {
+            if matches!(ev, InputEvent::Change) {
+                cx.notify();
+            }
+        })
+        .detach();
         let mut chats = Chats::default();
         chats.new_chat(&prefs.model);
         let layout_model = prefs.model.clone();
@@ -340,6 +352,9 @@ impl App {
             settings_focus,
             tab_buttons: false,
             width: crate::width::WidthControls::new(window, cx, prefs_column, is_rtl),
+            settings_page,
+            settings_search,
+            settings_nav_focus: cx.focus_handle(),
         }
     }
 
@@ -938,6 +953,16 @@ impl App {
     }
 
     /// Put Settings away and give focus back to the message box.
+    /// Show another page of Settings. The page is remembered, and a search in progress is cleared.
+    pub fn set_settings_page(&mut self, page: lh_gui::setting_names::Category, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings_page = page;
+        self.prefs.settings_page = page.id().to_string();
+        self.settings_search.update(cx, |s, cx| s.set_value("", window, cx));
+        self.settings_nav_focus.focus(window, cx);
+        self.persist();
+        cx.notify();
+    }
+
     pub fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.settings_open {
             self.settings_open = false;
