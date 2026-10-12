@@ -346,7 +346,7 @@ pub fn mix(a: Hsla, b: Hsla, t: f32) -> Hsla {
 
 #[cfg(test)]
 mod tests {
-    use super::{Background, Pal, SCENE_SIZE};
+    use super::{Background, Pal, PanelExt, SCENE_SIZE};
     use lh_gui::theme::Theme;
     use std::sync::Arc;
 
@@ -381,6 +381,19 @@ mod tests {
             }
             _ => panic!("the Frutiger Aero look paints a scene"),
         }
+    }
+
+    #[test]
+    fn a_panel_keeps_the_position_it_was_given() {
+        // a pop-up menu is absolute; making it a glass panel must not pull it back into the layout (it did, and the
+        // theme menu disappeared under the Frutiger Aero look)
+        use gpui::{div, Position, Styled};
+        let p = Pal::from(&aero(), None, false);
+        let mut menu = div().absolute().panel(&p, false);
+        assert_eq!(menu.style().position, Some(Position::Absolute));
+        let flat = Pal::from(&lh_gui::theme::builtin().remove(0), None, false);
+        let mut menu = div().absolute().panel(&flat, false);
+        assert_eq!(menu.style().position, Some(Position::Absolute));
     }
 
     #[test]

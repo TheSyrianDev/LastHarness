@@ -20,6 +20,7 @@ A department-led, local-first, endpoint-agnostic AI harness with a memory that l
 - **Spikes are throwaway.** Milestone 0 experiments live under `spikes/`, answer a question, and are not product code. Report each result in plain language and wait for the user before moving on.
 - **Check facts, do not assume.** When unsure how something works (MCP, Agent Skills, Omarchy, a model's behaviour), read the source or test it, and say what was verified.
 - **Keep the system prompt small.** A large system prompt slows time to first token on local models. Every feature that wants to add text to the system prompt must justify it, prefer on-demand loading (tools, skills, memory recall) over always-on text, and keep the measured size within the budget test. Report the size in each milestone report. Never trim silently and never grow silently.
+- **Never take over the user's mouse or keyboard.** Do not run scripts that move the real pointer, click, or type into the user's desktop (the GUI window driver in `crates/lh-gui/tests/gui_drive.py` is one). Run it only when the user says so for that run. Test the app with unit and backend tests, or ask the user to try it.
 - **Tone.** Calm, plain language, short. No em-dash asides. The user is learning along the way and is allowed to be unsure.
 
 ## Environment

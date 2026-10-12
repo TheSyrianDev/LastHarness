@@ -145,6 +145,25 @@ mod tests {
     }
 
     #[test]
+    fn something_the_assistant_opens_brings_the_side_panel_back_whatever_was_hidden() {
+        let mut l = Layout::default();
+        l.toggle_left();
+        l.toggle_panel(Panel::Settings);
+        l.hide_right();
+        assert!(!l.left_visible && !l.right_visible, "everything hidden");
+        l.show_panel(Panel::Content);
+        assert!(l.right_visible && l.panel == Panel::Content);
+        let (left, right) = l.widths(1200., 420.);
+        assert_eq!(left, 0., "the chat list stays hidden; the person has the Chats button for it");
+        assert!(right > 0., "the panel has room to be seen");
+        // and in a narrow window the panel still shows
+        let (_, right) = l.widths(700., 420.);
+        assert!(right > 0.);
+        l.toggle_left();
+        assert!(l.left_visible, "the Chats button brings the list back");
+    }
+
+    #[test]
     fn expanding_needs_a_visible_panel_and_dragging_ends_it() {
         let mut l = Layout::default();
         l.toggle_expand();

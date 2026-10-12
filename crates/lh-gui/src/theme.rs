@@ -571,6 +571,11 @@ impl ThemeSet {
         *self = ThemeSet::load(&self.dir.clone());
     }
 
+    /// Where a saved theme label sits in the list; a label that is gone (a deleted file) gives the first look.
+    pub fn index_of(&self, label: &str) -> usize {
+        self.themes.iter().position(|t| t.label() == label).unwrap_or(0)
+    }
+
     pub fn find(&self, label: &str) -> Option<&Theme> {
         self.themes.iter().find(|t| t.label() == label)
     }
@@ -747,6 +752,25 @@ mod tests {
         assert_eq!(set.find("Mine dark").unwrap().colors.accent.rgba(), 0x123456ff);
         std::fs::remove_file(dir.join("bad.toml")).unwrap();
         assert!(set.changed(), "a removed file is noticed too");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn every_look_can_be_chosen_saved_and_found_again_after_a_restart() {
+        let set = ThemeSet::load(Path::new("/nonexistent-themes-folder"));
+        let dir = std::env::temp_dir().join(format!("lh-gui-switch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("gui.toml");
+        // go through every look in turn, as a person clicking through the menu would, including back to the first
+        for i in (0..set.themes.len()).chain([3, 0, 7, 1]) {
+            let mut prefs = crate::prefs::Prefs::load(&file);
+            prefs.theme = set.themes[i].label();
+            prefs.save(&file).unwrap();
+            let restarted = crate::prefs::Prefs::load(&file);
+            assert_eq!(set.index_of(&restarted.theme), i, "{} comes back as itself", set.themes[i].label());
+        }
+        assert_eq!(set.index_of("A look that was deleted"), 0);
+        assert_eq!(set.index_of(""), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

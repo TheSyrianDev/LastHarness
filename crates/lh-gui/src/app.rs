@@ -152,7 +152,7 @@ impl App {
     pub fn new(cfg: Config, window: &mut Window, cx: &mut Context<Self>) -> App {
         let prefs = Prefs::load(&cfg.prefs);
         let themes = ThemeSet::load(&cfg.themes);
-        let active_theme = themes.themes.iter().position(|t| t.label() == prefs.theme).unwrap_or(0);
+        let active_theme = themes.index_of(&prefs.theme);
         let window_radius = theme::window_radius();
         let pal = Pal::from(&themes.themes[active_theme], window_radius, lh_gui::config::reduce_motion());
         apply_component_theme(&pal, cx);
@@ -179,7 +179,7 @@ impl App {
                     if app.themes.changed() {
                         let label = app.themes.themes[app.active_theme].label();
                         app.themes.reload();
-                        app.active_theme = app.themes.themes.iter().position(|t| t.label() == label).unwrap_or(0);
+                        app.active_theme = app.themes.index_of(&label);
                         app.refresh_pal(cx);
                         cx.notify();
                     }
