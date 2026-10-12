@@ -1,0 +1,452 @@
+{
+ "label": "qwen36-7k-cpu",
+ "model": "Qwen3.6-35B-A3B.APEX-I-NanoPlus-noMTP.gguf",
+ "args": [
+  "-ngl",
+  "0",
+  "-t",
+  "6",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "-b",
+  "1024",
+  "-ub",
+  "128"
+ ],
+ "tokens": {
+  "old": 7060,
+  "branch": 7143,
+  "shared_start": 5582,
+  "ctx": 8561
+ },
+ "cold_old_then_save": {
+  "wall_s": 66.39,
+  "prompt_n": 7060,
+  "cache_n": 0,
+  "prompt_s": 63.61,
+  "tokens_evaluated": 7060,
+  "tokens_cached": 7083,
+  "reply": "<think>\n\n</think>\n\nThe code is 88022 and the note number is 49."
+ },
+ "save": {
+  "ok": true,
+  "s": 0.09,
+  "resp": {
+   "id_slot": 0,
+   "filename": "old.bin",
+   "n_saved": 7083,
+   "n_written": 274855024,
+   "timings": {
+    "save_ms": 90.041
+   }
+  }
+ },
+ "file_bytes": 274855024,
+ "cold_branch": {
+  "wall_s": 69.03,
+  "prompt_n": 7143,
+  "cache_n": 0,
+  "prompt_s": 64.19,
+  "tokens_evaluated": 7143,
+  "tokens_cached": 7182,
+  "reply": "<think>\nThe user wants to find the code and the note number from the very last note in the provided text.\nLooking at the text, the last note is:\n\"New branch note"
+ },
+ "restore": {
+  "ok": true,
+  "s": 0.06,
+  "resp": {
+   "id_slot": 0,
+   "filename": "old.bin",
+   "n_restored": 7083,
+   "n_read": 274855024,
+   "timings": {
+    "restore_ms": 59.141
+   }
+  }
+ },
+ "restore_then_branch": {
+  "wall_s": 67.63,
+  "prompt_n": 7143,
+  "cache_n": 0,
+  "prompt_s": 62.65,
+  "tokens_evaluated": 7143,
+  "tokens_cached": 7182,
+  "reply": "<think>\nThe user wants to find the code and the note number from the very last note in the provided text.\nLooking at the text, the last note is:\n\"New branch note"
+ },
+ "old_reply": "<think>\n\n</think>\n\nThe code is 88022 and the note number is 49.",
+ "replies_equal": true,
+ "logprobs_cold_vs_restore": {
+  "positions": 40,
+  "same_top_token_everywhere": true,
+  "max_abs_logprob_diff": 0.0
+ },
+ "top1_cold_branch": [
+  [
+   "\n\n",
+   -0.0322
+  ],
+  [
+   "<think>",
+   -0.0316
+  ],
+  [
+   "\n",
+   -0.6331
+  ],
+  [
+   "The",
+   -0.2228
+  ],
+  [
+   " user",
+   -0.0163
+  ],
+  [
+   " wants",
+   -0.0036
+  ],
+  [
+   " to",
+   -0.0057
+  ],
+  [
+   " find",
+   -0.2125
+  ],
+  [
+   " the",
+   -0.002
+  ],
+  [
+   " code",
+   -0.0007
+  ],
+  [
+   " and",
+   -0.0249
+  ],
+  [
+   " the",
+   -0.07
+  ],
+  [
+   " note",
+   -0.1191
+  ],
+  [
+   " number",
+   -0.0001
+  ],
+  [
+   " from",
+   -0.728
+  ],
+  [
+   " the",
+   -0.0002
+  ],
+  [
+   " very",
+   -0.0874
+  ],
+  [
+   " last",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0831
+  ],
+  [
+   " in",
+   -0.3172
+  ],
+  [
+   " the",
+   -0.0
+  ],
+  [
+   " provided",
+   -0.0389
+  ],
+  [
+   " text",
+   -0.0351
+  ],
+  [
+   ".",
+   -0.0001
+  ],
+  [
+   "\n",
+   -0.1566
+  ],
+  [
+   "Looking",
+   -0.4776
+  ],
+  [
+   " at",
+   -0.0002
+  ],
+  [
+   " the",
+   0
+  ],
+  [
+   " text",
+   -0.1681
+  ],
+  [
+   ",",
+   -0.1029
+  ],
+  [
+   " the",
+   -0.0032
+  ],
+  [
+   " last",
+   -0.0791
+  ],
+  [
+   " note",
+   -0.6212
+  ],
+  [
+   " is",
+   -0.0017
+  ],
+  [
+   ":",
+   -0.005
+  ],
+  [
+   "\n",
+   -0.001
+  ],
+  [
+   "\"",
+   -0.0041
+  ],
+  [
+   "New",
+   -0.0034
+  ],
+  [
+   " branch",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0
+  ]
+ ],
+ "top1_restore_branch": [
+  [
+   "\n\n",
+   -0.0322
+  ],
+  [
+   "<think>",
+   -0.0316
+  ],
+  [
+   "\n",
+   -0.6331
+  ],
+  [
+   "The",
+   -0.2228
+  ],
+  [
+   " user",
+   -0.0163
+  ],
+  [
+   " wants",
+   -0.0036
+  ],
+  [
+   " to",
+   -0.0057
+  ],
+  [
+   " find",
+   -0.2125
+  ],
+  [
+   " the",
+   -0.002
+  ],
+  [
+   " code",
+   -0.0007
+  ],
+  [
+   " and",
+   -0.0249
+  ],
+  [
+   " the",
+   -0.07
+  ],
+  [
+   " note",
+   -0.1191
+  ],
+  [
+   " number",
+   -0.0001
+  ],
+  [
+   " from",
+   -0.728
+  ],
+  [
+   " the",
+   -0.0002
+  ],
+  [
+   " very",
+   -0.0874
+  ],
+  [
+   " last",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0831
+  ],
+  [
+   " in",
+   -0.3172
+  ],
+  [
+   " the",
+   -0.0
+  ],
+  [
+   " provided",
+   -0.0389
+  ],
+  [
+   " text",
+   -0.0351
+  ],
+  [
+   ".",
+   -0.0001
+  ],
+  [
+   "\n",
+   -0.1566
+  ],
+  [
+   "Looking",
+   -0.4776
+  ],
+  [
+   " at",
+   -0.0002
+  ],
+  [
+   " the",
+   0
+  ],
+  [
+   " text",
+   -0.1681
+  ],
+  [
+   ",",
+   -0.1029
+  ],
+  [
+   " the",
+   -0.0032
+  ],
+  [
+   " last",
+   -0.0791
+  ],
+  [
+   " note",
+   -0.6212
+  ],
+  [
+   " is",
+   -0.0017
+  ],
+  [
+   ":",
+   -0.005
+  ],
+  [
+   "\n",
+   -0.001
+  ],
+  [
+   "\"",
+   -0.0041
+  ],
+  [
+   "New",
+   -0.0034
+  ],
+  [
+   " branch",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0
+  ]
+ ],
+ "log_hits": [
+  "1.05.726.903 I slot print_timing: id  0 | task 1 | prompt processing, n_tokens =   6144, progress = 0.87, t =  53.68 s / 114.46 tokens per second",
+  "1.13.973.851 I slot print_timing: id  0 | task 1 | prompt processing, n_tokens =   6928, progress = 0.98, t =  61.92 s / 111.88 tokens per second",
+  "1.15.359.565 I slot print_timing: id  0 | task 1 | prompt processing, n_tokens =   7056, progress = 1.00, t =  63.31 s / 111.45 tokens per second",
+  "1.18.434.574 I slot print_timing: id  0 | task 1 | prompt eval time =   63606.22 ms /  7060 tokens (    9.01 ms per token,   111.00 tokens per second)",
+  "1.18.434.581 I slot print_timing: id  0 | task 1 |        eval time =    2777.76 ms /    24 tokens (  120.77 ms per token,     8.28 tokens per second)",
+  "1.18.434.582 I slot print_timing: id  0 | task 1 |       total time =   66383.98 ms /  7084 tokens",
+  "1.18.434.588 I slot print_timing: id  0 | task 1 |    graphs reused =         48",
+  "1.18.434.802 I slot      release: id  0 | task 1 | stop processing: n_tokens = 7083, truncated = 0",
+  "1.18.526.882 I slot save_slot_ch: id  0 | task -1 | appended 2 context checkpoint(s) (125.627 MiB) to '/tmp/lh-kvtrim-qwen36-7k-cpu-fnl_zxmq/slots/old.bin'",
+  "1.18.535.133 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 1113047573",
+  "1.18.535.193 I slot launch_slot_: id  0 | task 36 | processing task, is_child = 0",
+  "1.27.044.347 I slot print_timing: id  0 | task 36 | prompt processing, n_tokens =   1024, progress = 0.14, t =   8.51 s / 120.34 tokens per second",
+  "1.35.878.974 I slot print_timing: id  0 | task 36 | prompt processing, n_tokens =   2048, progress = 0.29, t =  17.34 s / 118.08 tokens per second",
+  "1.44.964.349 I slot print_timing: id  0 | task 36 | prompt processing, n_tokens =   3072, progress = 0.43, t =  26.43 s / 116.24 tokens per second",
+  "1.54.014.583 I slot print_timing: id  0 | task 36 | prompt processing, n_tokens =   4096, progress = 0.57, t =  35.48 s / 115.45 tokens per second",
+  "2.03.271.537 I slot print_timing: id  0 | task 36 | prompt processing, n_tokens =   5120, progress = 0.72, t =  44.74 s / 114.45 tokens per second",
+  "2.12.686.080 I slot print_timing: id  0 | task 36 | prompt processing, n_tokens =   6144, progress = 0.86, t =  54.15 s / 113.46 tokens per second",
+  "2.21.101.520 I slot print_timing: id  0 | task 36 | prompt processing, n_tokens =   7011, progress = 0.98, t =  62.57 s / 112.06 tokens per second",
+  "2.22.403.802 I slot print_timing: id  0 | task 36 | prompt processing, n_tokens =   7139, progress = 1.00, t =  63.87 s / 111.78 tokens per second",
+  "2.27.554.327 I slot print_timing: id  0 | task 36 | prompt eval time =   64190.04 ms /  7143 tokens (    8.99 ms per token,   111.28 tokens per second)",
+  "2.27.554.334 I slot print_timing: id  0 | task 36 |        eval time =    4827.31 ms /    40 tokens (  123.78 ms per token,     8.08 tokens per second)",
+  "2.27.554.335 I slot print_timing: id  0 | task 36 |       total time =   69017.35 ms /  7183 tokens",
+  "2.27.554.336 I slot print_timing: id  0 | task 36 |    graphs reused =        111",
+  "2.27.554.506 I slot      release: id  0 | task 36 | stop processing: n_tokens = 7182, truncated = 0",
+  "2.27.618.321 I slot load_slot_ch: id  0 | task -1 | restored 2 context checkpoint(s) from '/tmp/lh-kvtrim-qwen36-7k-cpu-fnl_zxmq/slots/old.bin'",
+  "2.27.623.151 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.781 (> 0.100 thold), f_keep = 0.788",
+  "2.27.623.184 I slot launch_slot_: id  0 | task 87 | processing task, is_child = 0",
+  "2.35.967.991 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   1024, progress = 0.14, t =   8.34 s / 122.71 tokens per second",
+  "2.44.768.056 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   2048, progress = 0.29, t =  17.14 s / 119.45 tokens per second",
+  "2.53.603.604 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   3072, progress = 0.43, t =  25.98 s / 118.24 tokens per second",
+  "3.02.456.104 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   4096, progress = 0.57, t =  34.83 s / 117.59 tokens per second",
+  "3.11.434.523 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   5120, progress = 0.72, t =  43.81 s / 116.86 tokens per second",
+  "3.20.650.577 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   6144, progress = 0.86, t =  53.03 s / 115.86 tokens per second",
+  "3.28.702.231 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   7011, progress = 0.98, t =  61.08 s / 114.79 tokens per second",
+  "3.29.957.766 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   7139, progress = 1.00, t =  62.33 s / 114.53 tokens per second",
+  "3.35.242.806 I slot print_timing: id  0 | task 87 | prompt eval time =   62654.25 ms /  7143 tokens (    8.77 ms per token,   114.01 tokens per second)",
+  "3.35.242.815 I slot print_timing: id  0 | task 87 |        eval time =    4963.53 ms /    40 tokens (  127.27 ms per token,     7.86 tokens per second)",
+  "3.35.242.817 I slot print_timing: id  0 | task 87 |       total time =   67617.77 ms /  7183 tokens",
+  "3.35.242.818 I slot print_timing: id  0 | task 87 |    graphs reused =        174",
+  "3.35.242.983 I slot      release: id  0 | task 87 | stop processing: n_tokens = 7182, truncated = 0"
+ ],
+ "tmp": "/tmp/lh-kvtrim-qwen36-7k-cpu-fnl_zxmq"
+}

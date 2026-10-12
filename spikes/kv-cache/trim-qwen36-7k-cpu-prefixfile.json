@@ -1,0 +1,388 @@
+{
+ "label": "qwen36-7k-cpu-prefixfile",
+ "model": "Qwen3.6-35B-A3B.APEX-I-NanoPlus-noMTP.gguf",
+ "args": [
+  "-ngl",
+  "0",
+  "-t",
+  "6",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "-b",
+  "1024",
+  "-ub",
+  "128",
+  "-lv",
+  "4"
+ ],
+ "tokens": {
+  "old": 7060,
+  "branch": 7143,
+  "shared_start": 5582,
+  "ctx": 8561
+ },
+ "cold_branch": {
+  "wall_s": 68.62,
+  "prompt_n": 7143,
+  "cache_n": 0,
+  "prompt_s": 62.66,
+  "tokens_evaluated": 7143,
+  "tokens_cached": 7182,
+  "reply": "<think>\nThe user wants to find the code and the note number from the very last note in the provided text.\nLooking at the text, the last note is:\n\"New branch note"
+ },
+ "prefix_read": {
+  "wall_s": 64.78,
+  "prompt_n": 5582,
+  "cache_n": 0,
+  "prompt_s": 57.71,
+  "tokens_evaluated": 5582,
+  "tokens_cached": 5621,
+  "reply": "Entry 199: the market near the the window was noted on day 232 with code 75836.\nEntry 200: the forest near the"
+ },
+ "save": {
+  "ok": true,
+  "s": 0.22,
+  "resp": {
+   "id_slot": 0,
+   "filename": "prefix.bin",
+   "n_saved": 5621,
+   "n_written": 258907528,
+   "timings": {
+    "save_ms": 205.126
+   }
+  }
+ },
+ "file_bytes": 258907528,
+ "restore": {
+  "ok": true,
+  "s": 0.06,
+  "resp": {
+   "id_slot": 0,
+   "filename": "prefix.bin",
+   "n_restored": 5621,
+   "n_read": 258907528,
+   "timings": {
+    "restore_ms": 61.78
+   }
+  }
+ },
+ "restore_then_branch": {
+  "wall_s": 21.56,
+  "prompt_n": 1565,
+  "cache_n": 5578,
+  "prompt_s": 17.13,
+  "tokens_evaluated": 7143,
+  "tokens_cached": 7167,
+  "reply": "<think>\n\n</think>\n\nThe code is 47402 and the note number is 549."
+ },
+ "replies_equal": false,
+ "top1_cold_branch": [
+  [
+   "\n\n",
+   -0.0322
+  ],
+  [
+   "<think>",
+   -0.0316
+  ],
+  [
+   "\n",
+   -0.6331
+  ],
+  [
+   "The",
+   -0.2228
+  ],
+  [
+   " user",
+   -0.0163
+  ],
+  [
+   " wants",
+   -0.0036
+  ],
+  [
+   " to",
+   -0.0057
+  ],
+  [
+   " find",
+   -0.2125
+  ],
+  [
+   " the",
+   -0.002
+  ],
+  [
+   " code",
+   -0.0007
+  ],
+  [
+   " and",
+   -0.0249
+  ],
+  [
+   " the",
+   -0.07
+  ],
+  [
+   " note",
+   -0.1191
+  ],
+  [
+   " number",
+   -0.0001
+  ],
+  [
+   " from",
+   -0.728
+  ],
+  [
+   " the",
+   -0.0002
+  ],
+  [
+   " very",
+   -0.0874
+  ],
+  [
+   " last",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0831
+  ],
+  [
+   " in",
+   -0.3172
+  ],
+  [
+   " the",
+   -0.0
+  ],
+  [
+   " provided",
+   -0.0389
+  ],
+  [
+   " text",
+   -0.0351
+  ],
+  [
+   ".",
+   -0.0001
+  ],
+  [
+   "\n",
+   -0.1566
+  ],
+  [
+   "Looking",
+   -0.4776
+  ],
+  [
+   " at",
+   -0.0002
+  ],
+  [
+   " the",
+   0
+  ],
+  [
+   " text",
+   -0.1681
+  ],
+  [
+   ",",
+   -0.1029
+  ],
+  [
+   " the",
+   -0.0032
+  ],
+  [
+   " last",
+   -0.0791
+  ],
+  [
+   " note",
+   -0.6212
+  ],
+  [
+   " is",
+   -0.0017
+  ],
+  [
+   ":",
+   -0.005
+  ],
+  [
+   "\n",
+   -0.001
+  ],
+  [
+   "\"",
+   -0.0041
+  ],
+  [
+   "New",
+   -0.0034
+  ],
+  [
+   " branch",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0
+  ]
+ ],
+ "top1_restore_branch": [
+  [
+   "\n\n",
+   -0.0155
+  ],
+  [
+   "<think>",
+   -0.032
+  ],
+  [
+   "\n\n",
+   -0.6877
+  ],
+  [
+   "</think>",
+   0
+  ],
+  [
+   "\n\n",
+   -0.0
+  ],
+  [
+   "The",
+   -0.0044
+  ],
+  [
+   " code",
+   -0.0111
+  ],
+  [
+   " is",
+   -0.0982
+  ],
+  [
+   " ",
+   -0.0
+  ],
+  [
+   "4",
+   -0.0009
+  ],
+  [
+   "7",
+   -0.0
+  ],
+  [
+   "4",
+   -0.0012
+  ],
+  [
+   "0",
+   -0.0
+  ],
+  [
+   "2",
+   -0.0001
+  ],
+  [
+   " and",
+   -0.2193
+  ],
+  [
+   " the",
+   -0.0125
+  ],
+  [
+   " note",
+   -0.0321
+  ],
+  [
+   " number",
+   -0.0038
+  ],
+  [
+   " is",
+   -0.0
+  ],
+  [
+   " ",
+   -0.0005
+  ],
+  [
+   "5",
+   -0.0002
+  ],
+  [
+   "4",
+   -0.0002
+  ],
+  [
+   "9",
+   -0.0002
+  ],
+  [
+   ".",
+   -0.0001
+  ],
+  [
+   "",
+   -0.0041
+  ]
+ ],
+ "log_hits": [
+  "2.07.516.183 I slot create_check: id  0 | task 51 | created context checkpoint 2 of 32 (pos_min = 5577, pos_max = 5577, n_tokens = 5578, size = 62.813 MiB)",
+  "2.15.458.588 I slot print_timing: id  0 | task 51 | prompt eval time =   57709.71 ms /  5582 tokens (   10.34 ms per token,    96.73 tokens per second)",
+  "2.15.458.593 I slot print_timing: id  0 | task 51 |        eval time =    7056.88 ms /    40 tokens (  180.95 ms per token,     5.53 tokens per second)",
+  "2.15.458.594 I slot print_timing: id  0 | task 51 |       total time =   64766.58 ms /  5622 tokens",
+  "2.15.458.596 I slot print_timing: id  0 | task 51 |    graphs reused =        121",
+  "2.15.459.042 I slot      release: id  0 | task 51 | stop processing: n_tokens = 5621, truncated = 0",
+  "2.15.459.078 I srv  update_slots: all slots are idle",
+  "2.15.682.909 I slot save_slot_ch: id  0 | task -1 | appended 2 context checkpoint(s) (125.627 MiB) to '/tmp/lh-kvtrim-qwen36-7k-cpu-prefixfile-yq4eff50/slots/prefix.bin'",
+  "2.15.682.934 I srv  update_slots: all slots are idle",
+  "2.15.684.303 I slot prompt_clear: id  0 | task -1 | clearing prompt with 5621 tokens",
+  "2.15.690.304 I srv  update_slots: all slots are idle",
+  "2.15.753.095 I slot load_slot_ch: id  0 | task -1 | restored 2 context checkpoint(s) from '/tmp/lh-kvtrim-qwen36-7k-cpu-prefixfile-yq4eff50/slots/prefix.bin'",
+  "2.15.753.127 I srv  update_slots: all slots are idle",
+  "2.15.769.826 I slot get_availabl: id  0 | task -1 |  - checking sim = 0.781 (5582/7143) > 0.100",
+  "2.15.769.828 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.781 (> 0.100 thold), f_keep = 0.993",
+  "2.15.769.891 I slot launch_slot_: id  0 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist ",
+  "2.15.769.897 I slot launch_slot_: id  0 | task -1 | sampler params: ",
+  "2.15.769.906 I slot launch_slot_: id  0 | task 102 | processing task, is_child = 0",
+  "2.15.769.911 I slot   operator(): id  0 | task 102 | new prompt, n_ctx_slot = 8704, n_keep = 0, task.n_tokens = 7143",
+  "2.15.769.919 I slot   operator(): id  0 | task 102 | checking checkpoint with [5577, 5577] against 5582...",
+  "2.15.775.163 I slot   operator(): id  0 | task 102 | restored context checkpoint (pos_min = 5577, pos_max = 5577, n_tokens = 5578, n_past = 5578, size = 62.813 MiB)",
+  "2.15.775.168 I slot   operator(): id  0 | task 102 | cached n_tokens = 5578, memory_seq_rm [5578, end)",
+  "2.25.804.892 I slot print_timing: id  0 | task 102 | prompt processing, n_tokens =   1024, progress = 0.92, t =  10.03 s / 102.04 tokens per second",
+  "2.25.804.896 I slot   operator(): id  0 | task 102 | cached n_tokens = 6602, memory_seq_rm [6602, end)",
+  "2.30.860.732 I slot print_timing: id  0 | task 102 | prompt processing, n_tokens =   1433, progress = 0.98, t =  15.09 s / 94.96 tokens per second",
+  "2.30.860.737 I slot   operator(): id  0 | task 102 | cached n_tokens = 7011, memory_seq_rm [7011, end)",
+  "2.30.892.416 I slot create_check: id  0 | task 102 | created context checkpoint 3 of 32 (pos_min = 7010, pos_max = 7010, n_tokens = 7011, size = 62.813 MiB)",
+  "2.32.452.105 I slot print_timing: id  0 | task 102 | prompt processing, n_tokens =   1561, progress = 1.00, t =  16.68 s / 93.57 tokens per second",
+  "2.32.452.108 I slot   operator(): id  0 | task 102 | cached n_tokens = 7139, memory_seq_rm [7139, end)",
+  "2.32.452.936 I slot init_sampler: id  0 | task 102 | init sampler, took 0.81 ms, tokens: text = 7143, total = 7143",
+  "2.32.480.772 I slot create_check: id  0 | task 102 | created context checkpoint 4 of 32 (pos_min = 7138, pos_max = 7138, n_tokens = 7139, size = 62.813 MiB)",
+  "2.37.309.620 I slot print_timing: id  0 | task 102 | prompt eval time =   17134.67 ms /  1565 tokens (   10.95 ms per token,    91.34 tokens per second)",
+  "2.37.309.634 I slot print_timing: id  0 | task 102 |        eval time =    4402.15 ms /    25 tokens (  183.42 ms per token,     5.45 tokens per second)",
+  "2.37.309.635 I slot print_timing: id  0 | task 102 |       total time =   21536.82 ms /  1590 tokens",
+  "2.37.309.637 I slot print_timing: id  0 | task 102 |    graphs reused =        149",
+  "2.37.310.853 I slot      release: id  0 | task 102 | stop processing: n_tokens = 7167, truncated = 0",
+  "2.37.311.018 I srv  update_slots: all slots are idle",
+  "2.37.328.086 I common_memory_breakdown_print: | memory breakdown [MiB]          | total   free     self   model   context   compute    unaccounted |",
+  "2.37.328.090 I common_memory_breakdown_print: |   - CUDA0 (RTX 3050 Laptop GPU) |  3767 = 3348 + (  135 =     0 +       0 +     135) +         283 |",
+  "2.37.328.090 I common_memory_breakdown_print: |   - Host                        |                 12123 = 11962 +     153 +       8                |"
+ ],
+ "tmp": "/tmp/lh-kvtrim-qwen36-7k-cpu-prefixfile-yq4eff50"
+}

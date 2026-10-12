@@ -1,0 +1,468 @@
+{
+ "label": "minicpm-32k-cpu",
+ "model": "MiniCPM5-2B-Q4_K_M.gguf",
+ "args": [
+  "-ngl",
+  "0",
+  "-t",
+  "6"
+ ],
+ "tokens": {
+  "old": 32848,
+  "branch": 32849,
+  "shared_start": 25806,
+  "ctx": 37312
+ },
+ "cold_old_then_save": {
+  "wall_s": 56.06,
+  "prompt_n": 32848,
+  "cache_n": 0,
+  "prompt_s": 32.6,
+  "tokens_evaluated": 32848,
+  "tokens_cached": 32887,
+  "reply": "The code in the very last note is 91469, and the number of that note is 302.\n\nLet's check the last note: \"Entry 302: the anchor near the paper"
+ },
+ "save": {
+  "ok": true,
+  "s": 0.4,
+  "resp": {
+   "id_slot": 0,
+   "filename": "old.bin",
+   "n_saved": 32887,
+   "n_written": 1414931348,
+   "timings": {
+    "save_ms": 403.292
+   }
+  }
+ },
+ "file_bytes": 1414931348,
+ "cold_branch": {
+  "wall_s": 59.02,
+  "prompt_n": 32849,
+  "cache_n": 0,
+  "prompt_s": 35.12,
+  "tokens_evaluated": 32849,
+  "tokens_cached": 32888,
+  "reply": "The code in the very last note is 3335, and the number of that note is 796.\n\nThe user has provided a long list of notes, each with a code and a number"
+ },
+ "cold_branch_again": {
+  "wall_s": 56.58,
+  "prompt_n": 32849,
+  "cache_n": 0,
+  "prompt_s": 33.03,
+  "tokens_evaluated": 32849,
+  "tokens_cached": 32888,
+  "reply": "The code in the very last note is 3335, and the number of that note is 796.\n\nThe user has provided a long list of notes, each with a code and a number"
+ },
+ "restore": {
+  "ok": true,
+  "s": 0.27,
+  "resp": {
+   "id_slot": 0,
+   "filename": "old.bin",
+   "n_restored": 32887,
+   "n_read": 1414931348,
+   "timings": {
+    "restore_ms": 270.752
+   }
+  }
+ },
+ "restore_then_branch": {
+  "wall_s": 33.12,
+  "prompt_n": 7043,
+  "cache_n": 25806,
+  "prompt_s": 9.53,
+  "tokens_evaluated": 32849,
+  "tokens_cached": 32888,
+  "reply": "The code is 3335 and the number is 796.\n\nThe user has provided a long list of notes, each with a code and a number. The last note in the list is \""
+ },
+ "restore_then_old": {
+  "wall_s": 24.16,
+  "prompt_n": 1,
+  "cache_n": 32847,
+  "prompt_s": 0.6,
+  "tokens_evaluated": 32848,
+  "tokens_cached": 32887,
+  "reply": "The code in the very last note is 91469, and the number of that note is 302.\n\nThe user has provided a long list of notes, each with a code and a number"
+ },
+ "old_reply": "The code in the very last note is 91469, and the number of that note is 302.\n\nLet's check the last note: \"Entry 302: the anchor near the paper",
+ "replies_equal": false,
+ "logprobs_cold_vs_restore": {
+  "positions": 40,
+  "same_top_token_everywhere": false,
+  "max_abs_logprob_diff": 1.548149929381907
+ },
+ "logprobs_cold_vs_cold": {
+  "positions": 40,
+  "same_top_token_everywhere": true,
+  "max_abs_logprob_diff": 0.0
+ },
+ "cold_repeat_equal": true,
+ "top1_cold_branch": [
+  [
+   " The",
+   -0.2061
+  ],
+  [
+   " code",
+   -0.0073
+  ],
+  [
+   " in",
+   -0.6051
+  ],
+  [
+   " the",
+   -0.0001
+  ],
+  [
+   " very",
+   -0.0378
+  ],
+  [
+   " last",
+   -0.0001
+  ],
+  [
+   " note",
+   -0.0001
+  ],
+  [
+   " is",
+   -0.5764
+  ],
+  [
+   " ",
+   -0.0295
+  ],
+  [
+   "333",
+   -0.1077
+  ],
+  [
+   "5",
+   -0.0012
+  ],
+  [
+   ",",
+   -0.2472
+  ],
+  [
+   " and",
+   -0.0005
+  ],
+  [
+   " the",
+   -0.0335
+  ],
+  [
+   " number",
+   -0.0138
+  ],
+  [
+   " of",
+   -0.0036
+  ],
+  [
+   " that",
+   -0.0008
+  ],
+  [
+   " note",
+   -0.0
+  ],
+  [
+   " is",
+   -0.0
+  ],
+  [
+   " ",
+   -0.0027
+  ],
+  [
+   "796",
+   -0.0356
+  ],
+  [
+   ".\n",
+   -0.0086
+  ],
+  [
+   "\n",
+   -0.7145
+  ],
+  [
+   "The",
+   -1.5374
+  ],
+  [
+   " user",
+   -1.1101
+  ],
+  [
+   " has",
+   -1.2048
+  ],
+  [
+   " provided",
+   -0.8396
+  ],
+  [
+   " a",
+   -0.017
+  ],
+  [
+   " long",
+   -1.4336
+  ],
+  [
+   " list",
+   -0.2213
+  ],
+  [
+   " of",
+   -0.0003
+  ],
+  [
+   " notes",
+   -0.5549
+  ],
+  [
+   ",",
+   -0.3755
+  ],
+  [
+   " each",
+   -0.2695
+  ],
+  [
+   " with",
+   -0.7335
+  ],
+  [
+   " a",
+   -0.0732
+  ],
+  [
+   " code",
+   -1.4101
+  ],
+  [
+   " and",
+   -0.0583
+  ],
+  [
+   " a",
+   -0.0463
+  ],
+  [
+   " number",
+   -0.1933
+  ]
+ ],
+ "top1_restore_branch": [
+  [
+   " The",
+   -0.2627
+  ],
+  [
+   " code",
+   -0.0083
+  ],
+  [
+   " is",
+   -0.6595
+  ],
+  [
+   " ",
+   -0.025
+  ],
+  [
+   "333",
+   -0.0185
+  ],
+  [
+   "5",
+   -0.0011
+  ],
+  [
+   " and",
+   -0.2483
+  ],
+  [
+   " the",
+   -0.0075
+  ],
+  [
+   " number",
+   -0.3669
+  ],
+  [
+   " is",
+   -0.4408
+  ],
+  [
+   " ",
+   -0.0039
+  ],
+  [
+   "796",
+   -0.0174
+  ],
+  [
+   ".\n",
+   -0.0031
+  ],
+  [
+   "\n",
+   -1.0354
+  ],
+  [
+   "The",
+   -1.5619
+  ],
+  [
+   " user",
+   -0.5878
+  ],
+  [
+   " has",
+   -1.3727
+  ],
+  [
+   " provided",
+   -0.6297
+  ],
+  [
+   " a",
+   -0.0146
+  ],
+  [
+   " long",
+   -1.3836
+  ],
+  [
+   " list",
+   -0.2127
+  ],
+  [
+   " of",
+   -0.0003
+  ],
+  [
+   " notes",
+   -0.549
+  ],
+  [
+   ",",
+   -0.4831
+  ],
+  [
+   " each",
+   -0.2941
+  ],
+  [
+   " with",
+   -0.8039
+  ],
+  [
+   " a",
+   -0.0794
+  ],
+  [
+   " code",
+   -1.3417
+  ],
+  [
+   " and",
+   -0.0374
+  ],
+  [
+   " a",
+   -0.0414
+  ],
+  [
+   " number",
+   -0.1876
+  ],
+  [
+   ".",
+   -0.3478
+  ],
+  [
+   " The",
+   -0.0468
+  ],
+  [
+   " last",
+   -0.918
+  ],
+  [
+   " note",
+   -0.0925
+  ],
+  [
+   " in",
+   -0.6412
+  ],
+  [
+   " the",
+   -0.0015
+  ],
+  [
+   " list",
+   -0.0294
+  ],
+  [
+   " is",
+   -0.0982
+  ],
+  [
+   " \"",
+   -0.6598
+  ]
+ ],
+ "log_hits": [
+  "1.57.577.247 I slot      release: id  0 | task 60 | stop processing: n_tokens = 32888, truncated = 0",
+  "1.57.613.560 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 908381672",
+  "1.57.613.693 I slot launch_slot_: id  0 | task 118 | processing task, is_child = 0",
+  "2.01.528.941 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =   6144, progress = 0.19, t =   3.92 s / 1569.26 tokens per second",
+  "2.03.045.772 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =   8192, progress = 0.25, t =   5.43 s / 1508.09 tokens per second",
+  "2.04.675.282 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  10240, progress = 0.31, t =   7.06 s / 1450.11 tokens per second",
+  "2.06.417.302 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  12288, progress = 0.37, t =   8.80 s / 1395.80 tokens per second",
+  "2.08.275.421 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  14336, progress = 0.44, t =  10.66 s / 1344.63 tokens per second",
+  "2.10.241.775 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  16384, progress = 0.50, t =  12.63 s / 1297.43 tokens per second",
+  "2.12.324.728 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  18432, progress = 0.56, t =  14.71 s / 1252.94 tokens per second",
+  "2.14.520.348 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  20480, progress = 0.62, t =  16.91 s / 1211.36 tokens per second",
+  "2.16.825.445 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  22528, progress = 0.69, t =  19.21 s / 1172.62 tokens per second",
+  "2.19.418.194 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  24576, progress = 0.75, t =  21.80 s / 1127.11 tokens per second",
+  "2.21.942.876 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  26624, progress = 0.81, t =  24.33 s / 1094.33 tokens per second",
+  "2.24.582.028 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  28672, progress = 0.87, t =  26.97 s / 1063.17 tokens per second",
+  "2.27.340.023 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  30720, progress = 0.94, t =  29.73 s / 1033.43 tokens per second",
+  "2.30.249.809 I slot print_timing: id  0 | task 118 | prompt processing, n_tokens =  32768, progress = 1.00, t =  32.64 s / 1004.04 tokens per second",
+  "2.54.161.380 I slot print_timing: id  0 | task 118 | prompt eval time =   33027.31 ms / 32849 tokens (    1.01 ms per token,   994.60 tokens per second)",
+  "2.54.161.389 I slot print_timing: id  0 | task 118 |        eval time =   23519.51 ms /    40 tokens (  603.06 ms per token,     1.66 tokens per second)",
+  "2.54.161.390 I slot print_timing: id  0 | task 118 |       total time =   56546.82 ms / 32889 tokens",
+  "2.54.161.391 I slot print_timing: id  0 | task 118 |    graphs reused =        114",
+  "2.54.162.412 I slot      release: id  0 | task 118 | stop processing: n_tokens = 32888, truncated = 0",
+  "2.54.463.909 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.786 (> 0.100 thold), f_keep = 0.785",
+  "2.54.463.962 I slot launch_slot_: id  0 | task 177 | processing task, is_child = 0",
+  "2.59.777.636 I slot print_timing: id  0 | task 177 | prompt processing, n_tokens =   4096, progress = 0.91, t =   5.31 s / 770.85 tokens per second",
+  "3.02.594.859 I slot print_timing: id  0 | task 177 | prompt processing, n_tokens =   6144, progress = 0.97, t =   8.13 s / 755.64 tokens per second",
+  "3.27.563.356 I slot print_timing: id  0 | task 177 | prompt eval time =    9530.97 ms /  7043 tokens (    1.35 ms per token,   738.96 tokens per second)",
+  "3.27.563.360 I slot print_timing: id  0 | task 177 |        eval time =   23567.54 ms /    40 tokens (  604.30 ms per token,     1.65 tokens per second)",
+  "3.27.563.361 I slot print_timing: id  0 | task 177 |       total time =   33098.50 ms /  7083 tokens",
+  "3.27.563.362 I slot print_timing: id  0 | task 177 |    graphs reused =        152",
+  "3.27.564.435 I slot      release: id  0 | task 177 | stop processing: n_tokens = 32888, truncated = 0",
+  "3.27.864.528 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 1.000 (> 0.100 thold), f_keep = 0.999",
+  "3.27.864.579 I slot launch_slot_: id  0 | task 223 | processing task, is_child = 0",
+  "3.27.864.602 W slot   operator(): id  0 | task 223 | need to evaluate at least 1 token for each active slot (n_past = 32848, task.n_tokens() = 32848)",
+  "3.27.864.603 W slot   operator(): id  0 | task 223 | n_past was set to 32847",
+  "3.52.000.409 I slot print_timing: id  0 | task 223 | prompt eval time =     598.75 ms /     1 tokens (  598.75 ms per token,     1.67 tokens per second)",
+  "3.52.000.414 I slot print_timing: id  0 | task 223 |        eval time =   23536.18 ms /    40 tokens (  603.49 ms per token,     1.66 tokens per second)",
+  "3.52.000.416 I slot print_timing: id  0 | task 223 |       total time =   24134.93 ms /    41 tokens",
+  "3.52.000.417 I slot print_timing: id  0 | task 223 |    graphs reused =        192",
+  "3.52.001.483 I slot      release: id  0 | task 223 | stop processing: n_tokens = 32887, truncated = 0"
+ ],
+ "tmp": "/tmp/lh-kvtrim-minicpm-32k-cpu-vp9irbbx"
+}

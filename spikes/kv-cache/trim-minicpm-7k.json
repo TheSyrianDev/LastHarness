@@ -1,0 +1,141 @@
+{
+ "label": "minicpm-7k",
+ "model": "MiniCPM5-2B-Q4_K_M.gguf",
+ "args": [
+  "-ngl",
+  "99"
+ ],
+ "tokens": {
+  "old": 7152,
+  "branch": 7154,
+  "shared_start": 5582,
+  "ctx": 8561
+ },
+ "cold_old_then_save": {
+  "wall_s": 3.07,
+  "prompt_n": 7152,
+  "cache_n": 0,
+  "prompt_s": 2.66,
+  "tokens_evaluated": 7152,
+  "tokens_cached": 7180,
+  "reply": "The code is 22639 and the number is 66.\n</think>\n\nThe code is 22639 and the number is 66."
+ },
+ "save": {
+  "ok": true,
+  "s": 0.11,
+  "resp": {
+   "id_slot": 0,
+   "filename": "old.bin",
+   "n_saved": 7180,
+   "n_written": 308913380,
+   "timings": {
+    "save_ms": 113.594
+   }
+  }
+ },
+ "file_bytes": 308913380,
+ "cold_branch": {
+  "wall_s": 3.08,
+  "prompt_n": 7154,
+  "cache_n": 0,
+  "prompt_s": 2.64,
+  "tokens_evaluated": 7154,
+  "tokens_cached": 7182,
+  "reply": "The code is 82022 and the number is 566.\n</think>\n\nThe code is 82022 and the number is 566."
+ },
+ "cold_branch_again": {
+  "wall_s": 3.02,
+  "prompt_n": 7154,
+  "cache_n": 0,
+  "prompt_s": 2.64,
+  "tokens_evaluated": 7154,
+  "tokens_cached": 7182,
+  "reply": "The code is 82022 and the number is 566.\n</think>\n\nThe code is 82022 and the number is 566."
+ },
+ "restore": {
+  "ok": true,
+  "s": 0.08,
+  "resp": {
+   "id_slot": 0,
+   "filename": "old.bin",
+   "n_restored": 7180,
+   "n_read": 308913380,
+   "timings": {
+    "restore_ms": 82.948
+   }
+  }
+ },
+ "restore_then_branch": {
+  "wall_s": 1.16,
+  "prompt_n": 1572,
+  "cache_n": 5582,
+  "prompt_s": 0.7,
+  "tokens_evaluated": 7154,
+  "tokens_cached": 7186,
+  "reply": "The code is 82022, and the note number is 566.\n</think>\n\nThe code is 82022, and the note number is 566."
+ },
+ "restore_then_old": {
+  "wall_s": 0.41,
+  "prompt_n": 1,
+  "cache_n": 7151,
+  "prompt_s": 0.02,
+  "tokens_evaluated": 7152,
+  "tokens_cached": 7180,
+  "reply": "The code is 22639 and the number is 66.\n</think>\n\nThe code is 22639 and the number is 66."
+ },
+ "old_reply": "The code is 22639 and the number is 66.\n</think>\n\nThe code is 22639 and the number is 66.",
+ "replies_equal": false,
+ "logprobs_cold_vs_restore": {
+  "positions": 29,
+  "same_top_token_everywhere": false,
+  "max_abs_logprob_diff": 0.5486031025648117
+ },
+ "logprobs_cold_vs_cold": {
+  "positions": 29,
+  "same_top_token_everywhere": true,
+  "max_abs_logprob_diff": 0.0
+ },
+ "cold_repeat_equal": true,
+ "log_hits": [
+  "0.00.151.911 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)",
+  "0.00.869.251 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8704, kv_unified = 'false'",
+  "0.01.044.942 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1",
+  "0.01.044.978 I slot launch_slot_: id  0 | task 1 | processing task, is_child = 0",
+  "0.04.110.640 I slot print_timing: id  0 | task 1 | prompt eval time =    2663.22 ms /  7152 tokens (    0.37 ms per token,  2685.47 tokens per second)",
+  "0.04.110.642 I slot print_timing: id  0 | task 1 |        eval time =     401.80 ms /    29 tokens (   14.35 ms per token,    69.69 tokens per second)",
+  "0.04.110.643 I slot print_timing: id  0 | task 1 |       total time =    3065.02 ms /  7181 tokens",
+  "0.04.110.648 I slot print_timing: id  0 | task 1 |    graphs reused =         26",
+  "0.04.110.887 I slot      release: id  0 | task 1 | stop processing: n_tokens = 7180, truncated = 0",
+  "0.04.232.792 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 474474223",
+  "0.04.232.832 I slot launch_slot_: id  0 | task 36 | processing task, is_child = 0",
+  "0.07.302.494 I slot print_timing: id  0 | task 36 | prompt eval time =    2641.39 ms /  7154 tokens (    0.37 ms per token,  2708.43 tokens per second)",
+  "0.07.302.497 I slot print_timing: id  0 | task 36 |        eval time =     427.57 ms /    29 tokens (   15.27 ms per token,    65.49 tokens per second)",
+  "0.07.302.498 I slot print_timing: id  0 | task 36 |       total time =    3068.95 ms /  7183 tokens",
+  "0.07.302.499 I slot print_timing: id  0 | task 36 |    graphs reused =         52",
+  "0.07.302.752 I slot      release: id  0 | task 36 | stop processing: n_tokens = 7182, truncated = 0",
+  "0.07.311.079 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 477666088",
+  "0.07.311.113 I slot launch_slot_: id  0 | task 70 | processing task, is_child = 0",
+  "0.10.328.151 I slot print_timing: id  0 | task 70 | prompt eval time =    2635.06 ms /  7154 tokens (    0.37 ms per token,  2714.93 tokens per second)",
+  "0.10.328.155 I slot print_timing: id  0 | task 70 |        eval time =     381.31 ms /    29 tokens (   13.62 ms per token,    73.43 tokens per second)",
+  "0.10.328.156 I slot print_timing: id  0 | task 70 |       total time =    3016.37 ms /  7183 tokens",
+  "0.10.328.157 I slot print_timing: id  0 | task 70 |    graphs reused =         78",
+  "0.10.328.420 I slot      release: id  0 | task 70 | stop processing: n_tokens = 7182, truncated = 0",
+  "0.10.419.776 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.780 (> 0.100 thold), f_keep = 0.777",
+  "0.10.419.810 I slot launch_slot_: id  0 | task 105 | processing task, is_child = 0",
+  "0.11.575.174 I slot print_timing: id  0 | task 105 | prompt eval time =     704.26 ms /  1572 tokens (    0.45 ms per token,  2232.13 tokens per second)",
+  "0.11.575.178 I slot print_timing: id  0 | task 105 |        eval time =     450.39 ms /    33 tokens (   14.07 ms per token,    71.05 tokens per second)",
+  "0.11.575.179 I slot print_timing: id  0 | task 105 |       total time =    1154.65 ms /  1605 tokens",
+  "0.11.575.180 I slot print_timing: id  0 | task 105 |    graphs reused =        108",
+  "0.11.575.440 I slot      release: id  0 | task 105 | stop processing: n_tokens = 7186, truncated = 0",
+  "0.11.665.699 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 1.000 (> 0.100 thold), f_keep = 0.996",
+  "0.11.665.734 I slot launch_slot_: id  0 | task 141 | processing task, is_child = 0",
+  "0.11.665.744 W slot   operator(): id  0 | task 141 | need to evaluate at least 1 token for each active slot (n_past = 7152, task.n_tokens() = 7152)",
+  "0.11.665.745 W slot   operator(): id  0 | task 141 | n_past was set to 7151",
+  "0.12.065.602 I slot print_timing: id  0 | task 141 | prompt eval time =      15.24 ms /     1 tokens (   15.24 ms per token,    65.60 tokens per second)",
+  "0.12.065.606 I slot print_timing: id  0 | task 141 |        eval time =     383.92 ms /    29 tokens (   13.71 ms per token,    72.93 tokens per second)",
+  "0.12.065.607 I slot print_timing: id  0 | task 141 |       total time =     399.16 ms /    30 tokens",
+  "0.12.065.607 I slot print_timing: id  0 | task 141 |    graphs reused =        135",
+  "0.12.065.861 I slot      release: id  0 | task 141 | stop processing: n_tokens = 7180, truncated = 0"
+ ],
+ "tmp": "/tmp/lh-kvtrim-minicpm-7k-bn5oryej"
+}

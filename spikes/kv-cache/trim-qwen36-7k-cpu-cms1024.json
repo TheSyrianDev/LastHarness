@@ -1,0 +1,456 @@
+{
+ "label": "qwen36-7k-cpu-cms1024",
+ "model": "Qwen3.6-35B-A3B.APEX-I-NanoPlus-noMTP.gguf",
+ "args": [
+  "-ngl",
+  "0",
+  "-t",
+  "6",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "-b",
+  "1024",
+  "-ub",
+  "128",
+  "-cms",
+  "1024",
+  "-lv",
+  "4"
+ ],
+ "tokens": {
+  "old": 7060,
+  "branch": 7143,
+  "shared_start": 5582,
+  "ctx": 8561
+ },
+ "cold_old_then_save": {
+  "wall_s": 67.21,
+  "prompt_n": 7060,
+  "cache_n": 0,
+  "prompt_s": 63.92,
+  "tokens_evaluated": 7060,
+  "tokens_cached": 7083,
+  "reply": "<think>\n\n</think>\n\nThe code is 88022 and the note number is 49."
+ },
+ "save": {
+  "ok": true,
+  "s": 0.09,
+  "resp": {
+   "id_slot": 0,
+   "filename": "old.bin",
+   "n_saved": 7083,
+   "n_written": 274855024,
+   "timings": {
+    "save_ms": 91.873
+   }
+  }
+ },
+ "file_bytes": 274855024,
+ "cold_branch": {
+  "wall_s": 72.34,
+  "prompt_n": 7143,
+  "cache_n": 0,
+  "prompt_s": 66.65,
+  "tokens_evaluated": 7143,
+  "tokens_cached": 7182,
+  "reply": "<think>\nThe user wants to find the code and the note number from the very last note in the provided text.\nLooking at the text, the last note is:\n\"New branch note"
+ },
+ "restore": {
+  "ok": true,
+  "s": 0.07,
+  "resp": {
+   "id_slot": 0,
+   "filename": "old.bin",
+   "n_restored": 7083,
+   "n_read": 274855024,
+   "timings": {
+    "restore_ms": 64.487
+   }
+  }
+ },
+ "restore_then_branch": {
+  "wall_s": 77.31,
+  "prompt_n": 7143,
+  "cache_n": 0,
+  "prompt_s": 71.27,
+  "tokens_evaluated": 7143,
+  "tokens_cached": 7182,
+  "reply": "<think>\nThe user wants to find the code and the note number from the very last note in the provided text.\nLooking at the text, the last note is:\n\"New branch note"
+ },
+ "old_reply": "<think>\n\n</think>\n\nThe code is 88022 and the note number is 49.",
+ "replies_equal": true,
+ "logprobs_cold_vs_restore": {
+  "positions": 40,
+  "same_top_token_everywhere": true,
+  "max_abs_logprob_diff": 0.0
+ },
+ "top1_cold_branch": [
+  [
+   "\n\n",
+   -0.0322
+  ],
+  [
+   "<think>",
+   -0.0316
+  ],
+  [
+   "\n",
+   -0.6331
+  ],
+  [
+   "The",
+   -0.2228
+  ],
+  [
+   " user",
+   -0.0163
+  ],
+  [
+   " wants",
+   -0.0036
+  ],
+  [
+   " to",
+   -0.0057
+  ],
+  [
+   " find",
+   -0.2125
+  ],
+  [
+   " the",
+   -0.002
+  ],
+  [
+   " code",
+   -0.0007
+  ],
+  [
+   " and",
+   -0.0249
+  ],
+  [
+   " the",
+   -0.07
+  ],
+  [
+   " note",
+   -0.1191
+  ],
+  [
+   " number",
+   -0.0001
+  ],
+  [
+   " from",
+   -0.728
+  ],
+  [
+   " the",
+   -0.0002
+  ],
+  [
+   " very",
+   -0.0874
+  ],
+  [
+   " last",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0831
+  ],
+  [
+   " in",
+   -0.3172
+  ],
+  [
+   " the",
+   -0.0
+  ],
+  [
+   " provided",
+   -0.0389
+  ],
+  [
+   " text",
+   -0.0351
+  ],
+  [
+   ".",
+   -0.0001
+  ],
+  [
+   "\n",
+   -0.1566
+  ],
+  [
+   "Looking",
+   -0.4776
+  ],
+  [
+   " at",
+   -0.0002
+  ],
+  [
+   " the",
+   0
+  ],
+  [
+   " text",
+   -0.1681
+  ],
+  [
+   ",",
+   -0.1029
+  ],
+  [
+   " the",
+   -0.0032
+  ],
+  [
+   " last",
+   -0.0791
+  ],
+  [
+   " note",
+   -0.6212
+  ],
+  [
+   " is",
+   -0.0017
+  ],
+  [
+   ":",
+   -0.005
+  ],
+  [
+   "\n",
+   -0.001
+  ],
+  [
+   "\"",
+   -0.0041
+  ],
+  [
+   "New",
+   -0.0034
+  ],
+  [
+   " branch",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0
+  ]
+ ],
+ "top1_restore_branch": [
+  [
+   "\n\n",
+   -0.0322
+  ],
+  [
+   "<think>",
+   -0.0316
+  ],
+  [
+   "\n",
+   -0.6331
+  ],
+  [
+   "The",
+   -0.2228
+  ],
+  [
+   " user",
+   -0.0163
+  ],
+  [
+   " wants",
+   -0.0036
+  ],
+  [
+   " to",
+   -0.0057
+  ],
+  [
+   " find",
+   -0.2125
+  ],
+  [
+   " the",
+   -0.002
+  ],
+  [
+   " code",
+   -0.0007
+  ],
+  [
+   " and",
+   -0.0249
+  ],
+  [
+   " the",
+   -0.07
+  ],
+  [
+   " note",
+   -0.1191
+  ],
+  [
+   " number",
+   -0.0001
+  ],
+  [
+   " from",
+   -0.728
+  ],
+  [
+   " the",
+   -0.0002
+  ],
+  [
+   " very",
+   -0.0874
+  ],
+  [
+   " last",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0831
+  ],
+  [
+   " in",
+   -0.3172
+  ],
+  [
+   " the",
+   -0.0
+  ],
+  [
+   " provided",
+   -0.0389
+  ],
+  [
+   " text",
+   -0.0351
+  ],
+  [
+   ".",
+   -0.0001
+  ],
+  [
+   "\n",
+   -0.1566
+  ],
+  [
+   "Looking",
+   -0.4776
+  ],
+  [
+   " at",
+   -0.0002
+  ],
+  [
+   " the",
+   0
+  ],
+  [
+   " text",
+   -0.1681
+  ],
+  [
+   ",",
+   -0.1029
+  ],
+  [
+   " the",
+   -0.0032
+  ],
+  [
+   " last",
+   -0.0791
+  ],
+  [
+   " note",
+   -0.6212
+  ],
+  [
+   " is",
+   -0.0017
+  ],
+  [
+   ":",
+   -0.005
+  ],
+  [
+   "\n",
+   -0.001
+  ],
+  [
+   "\"",
+   -0.0041
+  ],
+  [
+   "New",
+   -0.0034
+  ],
+  [
+   " branch",
+   -0.0
+  ],
+  [
+   " note",
+   -0.0
+  ]
+ ],
+ "log_hits": [
+  "2.21.779.894 I slot get_availabl: id  0 | task -1 |  - checking sim = 0.781 (5582/7143) > 0.100",
+  "2.21.779.896 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.781 (> 0.100 thold), f_keep = 0.788",
+  "2.21.779.936 I slot launch_slot_: id  0 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist ",
+  "2.21.779.941 I slot launch_slot_: id  0 | task -1 | sampler params: ",
+  "2.21.779.943 I slot launch_slot_: id  0 | task 87 | processing task, is_child = 0",
+  "2.21.779.949 I slot   operator(): id  0 | task 87 | new prompt, n_ctx_slot = 8704, n_keep = 0, task.n_tokens = 7143",
+  "2.21.779.955 I slot   operator(): id  0 | task 87 | checking checkpoint with [7055, 7055] against 5582...",
+  "2.21.779.956 I slot   operator(): id  0 | task 87 | checking checkpoint with [6927, 6927] against 5582...",
+  "2.21.779.956 I slot   operator(): id  0 | task 87 | forcing full prompt re-processing due to lack of cache data (likely due to SWA or hybrid/recurrent memory, see https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)",
+  "2.21.779.958 I slot   operator(): id  0 | task 87 | erased invalidated context checkpoint (pos_min = 6927, pos_max = 6927, n_tokens = 6928, n_swa = 0, pos_next = 0, size = 62.813 MiB)",
+  "2.21.780.231 I slot   operator(): id  0 | task 87 | erased invalidated context checkpoint (pos_min = 7055, pos_max = 7055, n_tokens = 7056, n_swa = 0, pos_next = 0, size = 62.813 MiB)",
+  "2.21.780.427 I slot   operator(): id  0 | task 87 | cached n_tokens = 0, memory_seq_rm [0, end)",
+  "2.31.608.237 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   1024, progress = 0.14, t =   9.83 s / 104.19 tokens per second",
+  "2.31.608.240 I slot   operator(): id  0 | task 87 | cached n_tokens = 1024, memory_seq_rm [1024, end)",
+  "2.41.664.676 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   2048, progress = 0.29, t =  19.88 s / 102.99 tokens per second",
+  "2.41.664.680 I slot   operator(): id  0 | task 87 | cached n_tokens = 2048, memory_seq_rm [2048, end)",
+  "2.51.802.773 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   3072, progress = 0.43, t =  30.02 s / 102.32 tokens per second",
+  "2.51.802.776 I slot   operator(): id  0 | task 87 | cached n_tokens = 3072, memory_seq_rm [3072, end)",
+  "3.01.842.833 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   4096, progress = 0.57, t =  40.06 s / 102.24 tokens per second",
+  "3.01.842.835 I slot   operator(): id  0 | task 87 | cached n_tokens = 4096, memory_seq_rm [4096, end)",
+  "3.11.997.355 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   5120, progress = 0.72, t =  50.22 s / 101.96 tokens per second",
+  "3.11.997.358 I slot   operator(): id  0 | task 87 | cached n_tokens = 5120, memory_seq_rm [5120, end)",
+  "3.22.271.169 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   6144, progress = 0.86, t =  60.49 s / 101.57 tokens per second",
+  "3.22.271.172 I slot   operator(): id  0 | task 87 | cached n_tokens = 6144, memory_seq_rm [6144, end)",
+  "3.31.282.861 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   7011, progress = 0.98, t =  69.50 s / 100.87 tokens per second",
+  "3.31.282.864 I slot   operator(): id  0 | task 87 | cached n_tokens = 7011, memory_seq_rm [7011, end)",
+  "3.31.294.772 I slot create_check: id  0 | task 87 | created context checkpoint 1 of 32 (pos_min = 7010, pos_max = 7010, n_tokens = 7011, size = 62.813 MiB)",
+  "3.32.689.534 I slot print_timing: id  0 | task 87 | prompt processing, n_tokens =   7139, progress = 1.00, t =  70.91 s / 100.68 tokens per second",
+  "3.32.689.536 I slot   operator(): id  0 | task 87 | cached n_tokens = 7139, memory_seq_rm [7139, end)",
+  "3.32.690.201 I slot init_sampler: id  0 | task 87 | init sampler, took 0.65 ms, tokens: text = 7143, total = 7143",
+  "3.32.701.711 I slot create_check: id  0 | task 87 | created context checkpoint 2 of 32 (pos_min = 7138, pos_max = 7138, n_tokens = 7139, size = 62.813 MiB)",
+  "3.39.084.974 I slot print_timing: id  0 | task 87 | prompt eval time =   71274.99 ms /  7143 tokens (    9.98 ms per token,   100.22 tokens per second)",
+  "3.39.084.985 I slot print_timing: id  0 | task 87 |        eval time =    6028.12 ms /    40 tokens (  154.57 ms per token,     6.47 tokens per second)",
+  "3.39.084.987 I slot print_timing: id  0 | task 87 |       total time =   77303.11 ms /  7183 tokens",
+  "3.39.084.988 I slot print_timing: id  0 | task 87 |    graphs reused =        174",
+  "3.39.085.195 I slot      release: id  0 | task 87 | stop processing: n_tokens = 7182, truncated = 0",
+  "3.39.085.223 I srv  update_slots: all slots are idle",
+  "3.39.089.784 I common_memory_breakdown_print: | memory breakdown [MiB]          | total   free     self   model   context   compute    unaccounted |",
+  "3.39.089.788 I common_memory_breakdown_print: |   - CUDA0 (RTX 3050 Laptop GPU) |  3767 = 3317 + (  135 =     0 +       0 +     135) +         314 |",
+  "3.39.089.788 I common_memory_breakdown_print: |   - Host                        |                 12123 = 11962 +     153 +       8                |"
+ ],
+ "tmp": "/tmp/lh-kvtrim-qwen36-7k-cpu-cms1024-qqhaquyc"
+}
