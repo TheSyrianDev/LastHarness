@@ -7,8 +7,6 @@ use std::time::SystemTime;
 
 use serde::Deserialize;
 
-use crate::scene::SceneSpec;
-
 /// A colour with opacity, parsed from `#rgb`, `#rrggbb` or `#rrggbbaa`.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Color {
@@ -69,8 +67,6 @@ pub enum BackgroundKind {
     Solid,
     Gradient,
     Image,
-    /// A painted landscape made in memory from the `[scene]` table.
-    Scene,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -99,7 +95,8 @@ impl Default for RawColors {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 struct RawBackground {
-    kind: BackgroundKind,
+    /// `solid`, `gradient` or `image`. Read as text so an old file that says `scene` gets a notice, not an error.
+    kind: String,
     from: Option<String>,
     to: Option<String>,
     angle: f32,
@@ -108,7 +105,7 @@ struct RawBackground {
 }
 impl Default for RawBackground {
     fn default() -> Self {
-        Self { kind: BackgroundKind::Solid, from: None, to: None, angle: 0., image: None, image_opacity: 1. }
+        Self { kind: "solid".into(), from: None, to: None, angle: 0., image: None, image_opacity: 1. }
     }
 }
 
@@ -144,28 +141,6 @@ impl Default for RawAnimation {
     }
 }
 
-#[derive(Deserialize, Clone, Debug, Default)]
-#[serde(default, deny_unknown_fields)]
-struct RawScene {
-    sky: Option<Vec<String>>,
-    ground: Option<Vec<String>>,
-    hills: Option<Vec<String>>,
-    horizon: Option<f32>,
-    haze: Option<String>,
-    haze_strength: Option<f32>,
-    sun_x: Option<f32>,
-    sun_y: Option<f32>,
-    sun_size: Option<f32>,
-    sun_color: Option<String>,
-    flare: Option<bool>,
-    clouds: Option<u32>,
-    cloud_light: Option<String>,
-    cloud_shade: Option<String>,
-    stars: Option<u32>,
-    flowers: Option<u32>,
-    seed: Option<u32>,
-}
-
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 struct RawGlass {
@@ -174,11 +149,17 @@ struct RawGlass {
     rim: String,
     edge: String,
     sheen: f32,
+    /// Opacity of the fine diagonal hairlines on the glass; 0 for none.
+    lines: f32,
+    /// Distance between the hairlines, in pixels.
+    lines_gap: f32,
+    /// Opacity of the diagonal reflection in the top left corner of a pane; 0 for none.
+    reflection: f32,
 }
 impl Default for RawGlass {
     fn default() -> Self {
         let d = |s: &str| s.to_string();
-        Self { top: d("#ffffffd9"), bottom: d("#ffffff8c"), rim: d("#ffffffe6"), edge: d("#7fb8dd99"), sheen: 0.3 }
+        Self { top: d("#ffffffd9"), bottom: d("#ffffff8c"), rim: d("#ffffffe6"), edge: d("#7fb8dd99"), sheen: 0.3, lines: 0., lines_gap: 6., reflection: 0. }
     }
 }
 
@@ -237,7 +218,8 @@ struct Raw {
     shape: RawShape,
     effects: RawEffects,
     animation: RawAnimation,
-    scene: RawScene,
+    /// The painted-landscape table of older theme files. It is read and ignored.
+    scene: Option<toml::Value>,
     glass: Option<RawGlass>,
     gel: Option<RawGel>,
     focus: Option<RawFocus>,
@@ -268,8 +250,6 @@ pub struct Background {
     /// An absolute path, resolved against the theme file's folder.
     pub image: Option<PathBuf>,
     pub image_opacity: f32,
-    /// What to paint when `kind` is `Scene`.
-    pub scene: SceneSpec,
 }
 
 /// Glass panels: a translucent fill that is lighter at the top, a light line just inside the edge and a pale
@@ -282,6 +262,11 @@ pub struct Glass {
     pub edge: Color,
     /// Opacity of the white sheen over the top part of a panel.
     pub sheen: f32,
+    /// Opacity of the fine diagonal hairlines, the spacing between them in pixels, and the opacity of the diagonal
+    /// reflection in the top left corner. Zero opacity draws nothing.
+    pub lines: f32,
+    pub lines_gap: f32,
+    pub reflection: f32,
 }
 
 /// Gel buttons: a gradient with a glossy top half, a rim light and a glow when hovered.
@@ -331,44 +316,12 @@ pub struct Theme {
     pub gel: Option<Gel>,
     pub focus: Option<Focus>,
     pub motes: Option<Motes>,
+    /// Something the person should know about this file (an old setting that no longer exists), shown in Settings.
+    pub notice: Option<String>,
 }
 
 fn key(name: &str, v: &str) -> Result<Color, String> {
     Color::parse(v).map_err(|e| format!("{name}: {e}"))
-}
-
-fn parse_scene(r: &RawScene) -> Result<SceneSpec, String> {
-    let d = SceneSpec::default();
-    let list = |k: &str, v: &Option<Vec<String>>, d: &[Color]| -> Result<Vec<Color>, String> {
-        match v {
-            Some(l) => l.iter().map(|s| key(&format!("scene.{k}"), s)).collect(),
-            None => Ok(d.to_vec()),
-        }
-    };
-    let one = |k: &str, v: &Option<String>, d: Color| -> Result<Color, String> { v.as_ref().map_or(Ok(d), |s| key(&format!("scene.{k}"), s)) };
-    let frac = |k: &str, v: Option<f32>, d: f32, lo: f32, hi: f32| -> Result<f32, String> {
-        let x = v.unwrap_or(d);
-        if (lo..=hi).contains(&x) { Ok(x) } else { Err(format!("scene.{k} must be between {lo} and {hi}")) }
-    };
-    Ok(SceneSpec {
-        sky: list("sky", &r.sky, &d.sky)?,
-        ground: list("ground", &r.ground, &d.ground)?,
-        hills: list("hills", &r.hills, &d.hills)?,
-        horizon: frac("horizon", r.horizon, d.horizon, 0.2, 0.9)?,
-        haze: one("haze", &r.haze, d.haze)?,
-        haze_strength: frac("haze_strength", r.haze_strength, d.haze_strength, 0., 1.)?,
-        sun_x: frac("sun_x", r.sun_x, d.sun_x, 0., 1.)?,
-        sun_y: frac("sun_y", r.sun_y, d.sun_y, 0., 1.)?,
-        sun_size: frac("sun_size", r.sun_size, d.sun_size, 0.02, 0.6)?,
-        sun_color: one("sun_color", &r.sun_color, d.sun_color)?,
-        flare: r.flare.unwrap_or(d.flare),
-        clouds: r.clouds.unwrap_or(d.clouds).min(30),
-        cloud_light: one("cloud_light", &r.cloud_light, d.cloud_light)?,
-        cloud_shade: one("cloud_shade", &r.cloud_shade, d.cloud_shade)?,
-        stars: r.stars.unwrap_or(d.stars).min(600),
-        flowers: r.flowers.unwrap_or(d.flowers).min(300),
-        seed: r.seed.unwrap_or(d.seed),
-    })
 }
 
 fn col(key: &str, v: &str) -> Result<Color, String> {
@@ -403,9 +356,27 @@ impl Theme {
                 None => Ok(colors.background),
             }
         };
+        let mut notice = None;
+        let kind = match b.kind.trim().to_lowercase().as_str() {
+            "solid" => BackgroundKind::Solid,
+            "gradient" => BackgroundKind::Gradient,
+            "image" => BackgroundKind::Image,
+            // the painted landscape of earlier versions is gone: the file still loads, with a plain gradient
+            "scene" => {
+                notice = Some(format!("{}: the painted background (kind = \"scene\") no longer exists, so a plain gradient is used", raw.name.trim()));
+                BackgroundKind::Gradient
+            }
+            other => return Err(format!("background.kind must be solid, gradient or image, not \"{other}\"")),
+        };
         let from = bg("from", &b.from)?;
-        let to = bg("to", &b.to)?;
-        if b.kind == BackgroundKind::Image && b.image.is_none() {
+        let mut to = bg("to", &b.to)?;
+        let mut angle = b.angle;
+        if notice.is_some() && b.to.is_none() {
+            // a gradient the person never wrote: from the theme's own background toward its text colour
+            to = from.mix(colors.text, 0.22);
+            angle = 180.;
+        }
+        if kind == BackgroundKind::Image && b.image.is_none() {
             return Err("background.kind is \"image\" but background.image is not set".into());
         }
         if !(0.0..=1.0).contains(&b.image_opacity) {
@@ -418,9 +389,8 @@ impl Theme {
             Some(s) => Color::parse(s).map_err(|e| format!("effects.shadow_color: {e}"))?,
             None => Color { r: 0, g: 0, b: 0, a: 0 },
         };
-        let scene = parse_scene(&raw.scene)?;
         let glass = match &raw.glass {
-            Some(g) => Some(Glass { top: key("glass.top", &g.top)?, bottom: key("glass.bottom", &g.bottom)?, rim: key("glass.rim", &g.rim)?, edge: key("glass.edge", &g.edge)?, sheen: g.sheen.clamp(0., 1.) }),
+            Some(g) => Some(Glass { top: key("glass.top", &g.top)?, bottom: key("glass.bottom", &g.bottom)?, rim: key("glass.rim", &g.rim)?, edge: key("glass.edge", &g.edge)?, sheen: g.sheen.clamp(0., 1.), lines: g.lines.clamp(0., 1.), lines_gap: g.lines_gap.clamp(3., 24.), reflection: g.reflection.clamp(0., 1.) }),
             None => None,
         };
         let gel = match &raw.gel {
@@ -454,7 +424,7 @@ impl Theme {
             name: raw.name.trim().to_string(),
             mode: raw.mode,
             colors,
-            background: Background { kind: b.kind, from, to, angle: b.angle, image: b.image.as_ref().map(|i| dir.join(i)), image_opacity: b.image_opacity, scene },
+            background: Background { kind, from, to, angle, image: b.image.as_ref().map(|i| dir.join(i)), image_opacity: b.image_opacity },
             roundness: raw.shape.roundness,
             match_window: raw.shape.match_window,
             blur: raw.effects.blur,
@@ -466,6 +436,7 @@ impl Theme {
             gel,
             focus,
             motes,
+            notice,
         })
     }
 
@@ -485,7 +456,6 @@ impl Theme {
             BackgroundKind::Solid => self.colors.background.is_translucent(),
             BackgroundKind::Gradient => self.background.from.is_translucent() || self.background.to.is_translucent(),
             BackgroundKind::Image => self.background.image_opacity < 1.0 || self.colors.background.is_translucent(),
-            BackgroundKind::Scene => false,
         }
     }
 
@@ -516,6 +486,9 @@ pub fn builtin() -> Vec<Theme> {
 pub struct ThemeSet {
     pub themes: Vec<Theme>,
     pub problems: Vec<String>,
+    /// One line for the person when theme files use something that no longer exists (the painted background); `None`
+    /// when all is well. Shown once in Settings.
+    pub notice: Option<String>,
     dir: PathBuf,
     stamp: Option<SystemTime>,
     count: usize,
@@ -525,6 +498,7 @@ impl ThemeSet {
     pub fn load(dir: &Path) -> ThemeSet {
         let mut themes = builtin();
         let mut problems = vec![];
+        let mut old_background: Vec<String> = vec![];
         let mut stamp = None;
         let mut count = 0;
         let mut files: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
@@ -538,6 +512,9 @@ impl ThemeSet {
             let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             match std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|s| Theme::parse(&s, p.parent().unwrap_or(dir))) {
                 Ok(t) => {
+                    if t.notice.is_some() && !old_background.contains(&t.name) {
+                        old_background.push(t.name.clone());
+                    }
                     // a user's theme with the same label replaces the built-in one
                     if let Some(i) = themes.iter().position(|x| x.label() == t.label()) {
                         themes[i] = t;
@@ -548,7 +525,8 @@ impl ThemeSet {
                 Err(e) => problems.push(format!("{name}: {e}")),
             }
         }
-        ThemeSet { themes, problems, dir: dir.to_path_buf(), stamp, count }
+        let notice = (!old_background.is_empty()).then(|| format!("{} still ask{} for the painted background, which no longer exists. A plain gradient is used instead. Set kind to solid, gradient or image in the file to change it.", old_background.join(", "), if old_background.len() == 1 { "s" } else { "" }));
+        ThemeSet { themes, problems, notice, dir: dir.to_path_buf(), stamp, count }
     }
 
     /// Has any file in the folder changed since the last load?
@@ -705,49 +683,125 @@ mod tests {
         assert!(!by("Matte dark").is_translucent());
         assert!(by("Glass dark").is_translucent() && by("Glass dark").blur);
         assert!(by("Glass light").is_translucent());
-        assert_eq!(by("Frutiger Aero light").background.kind, BackgroundKind::Scene);
+        assert_eq!(by("Frutiger Aero light").background.kind, BackgroundKind::Gradient);
+        assert!(by("Frutiger Aero light").is_translucent() && by("Frutiger Aero dark").is_translucent());
         assert!(by("Glass light").roundness > by("Calm light").roundness, "glass is rounder than calm");
     }
 
     #[test]
-    fn frutiger_aero_is_glass_and_gel_over_a_painted_sky_in_both_modes() {
+    fn frutiger_aero_is_windows_7_style_glass_in_both_modes_with_no_picture() {
         let t = builtin();
         for label in ["Frutiger Aero light", "Frutiger Aero dark"] {
-            let x = t.iter().find(|x| x.label() == label).unwrap();
-            assert_eq!(x.background.kind, BackgroundKind::Scene, "{label}");
+            let x = t.iter().find(|x| x.label() == label).unwrap_or_else(|| panic!("{label} is built in"));
+            assert_eq!(x.background.kind, BackgroundKind::Gradient, "{label}: a tint over the desktop, not a picture");
+            assert!(x.background.image.is_none(), "{label} ships no wallpaper");
+            assert!(x.background.from.is_translucent() && x.background.to.is_translucent(), "{label}: the tint lets the desktop through");
+            assert!(x.is_translucent() && x.blur, "{label} is drawn over the compositor's blur");
+            assert!(!x.colors.background.is_translucent(), "{label} has a solid colour to sit on when nothing is translucent");
             assert!(x.glass.is_some() && x.gel.is_some() && x.focus.is_some(), "{label}");
-            assert!(x.motes.as_ref().is_some_and(|m| m.count > 0), "{label} has bubbles");
-            assert!(x.is_translucent(), "{label}");
-            assert!(x.roundness >= 12. && x.roundness <= 18., "{label} is rounded 12 to 18");
-            assert!(x.background.scene.sky.len() >= 4, "{label} has a sky with several stops");
+            assert!(x.motes.is_none(), "{label} has no bubbles: they belonged to the nature look");
+            assert!(x.roundness >= 6. && x.roundness <= 12., "{label} has the small corners of Windows 7 windows, not 16");
+            let g = x.glass.as_ref().unwrap();
+            assert!(g.reflection > 0. && g.lines > 0. && g.lines_gap >= 3., "{label} has the diagonal reflection and the hairlines");
+            assert!(g.rim.a >= 40 && g.rim.r > 200 && g.top.a < 255 && g.bottom.a < 255, "{label}: a light rim inside, translucent fill");
+            assert!(g.top.a >= g.bottom.a || x.mode == Mode::Dark, "{label}: lighter at the top");
+            assert_eq!(x.name, "Frutiger Aero");
+            // the blue glow on hover is blue, in both modes
+            let glow = x.gel.as_ref().unwrap().glow;
+            assert!(glow.b > glow.r && glow.b > 200, "{label}: a blue glow, not {glow:?}");
+            assert!(x.focus.as_ref().unwrap().to.b > 200, "{label}: the focus border is blue");
         }
         let light = t.iter().find(|x| x.label() == "Frutiger Aero light").unwrap();
-        assert_eq!(light.colors.text, Color::parse("#153141").unwrap(), "dark navy, not black");
-        let g = light.glass.as_ref().unwrap();
-        assert!((0.5..=0.72).contains(&(g.top.a as f32 / 255.)) && g.bottom.a < g.top.a, "55 to 70 percent, lighter at the top");
-        assert_eq!(light.focus.as_ref().unwrap().to, Color::parse("#6b60c4").unwrap(), "the border runs to violet");
+        let dark = t.iter().find(|x| x.label() == "Frutiger Aero dark").unwrap();
+        assert!(light.colors.text.r < 40 && dark.colors.text.r > 215, "dark text on light glass, light text on dark glass");
+        assert!(dark.glass.as_ref().unwrap().top.r < light.glass.as_ref().unwrap().top.r, "the dark glass is darker");
         // the other looks stay flat
         let calm = t.iter().find(|x| x.label() == "Calm light").unwrap();
         assert!(calm.glass.is_none() && calm.gel.is_none() && calm.focus.is_none() && calm.motes.is_none());
+        let plain = t.iter().find(|x| x.label() == "Glass light").unwrap();
+        let pg = plain.glass.as_ref();
+        assert!(pg.is_none() || (pg.unwrap().lines == 0. && pg.unwrap().reflection == 0.), "Glass does not get the Aero marks");
     }
 
     #[test]
-    fn scene_glass_gel_focus_and_motes_are_checked_with_the_key_that_is_wrong() {
-        let ok = Theme::parse("name = \"x\"\n[background]\nkind = \"scene\"\n[scene]\nsky = [\"#000\", \"#fff\"]\nclouds = 3\n[glass]\n[gel]\n[focus]\n[motes]\ncount = 4\n", Path::new("")).unwrap();
-        assert_eq!(ok.background.scene.sky.len(), 2);
-        assert_eq!(ok.background.scene.clouds, 3);
+    fn glass_gel_focus_and_motes_are_checked_with_the_key_that_is_wrong() {
+        let ok = Theme::parse("name = \"x\"\n[glass]\nlines = 0.1\nlines_gap = 5\nreflection = 0.3\n[gel]\n[focus]\n[motes]\ncount = 4\n", Path::new("")).unwrap();
         assert!(ok.glass.is_some() && ok.gel.is_some() && ok.focus.is_some());
         assert_eq!(ok.motes.unwrap().count, 4);
         let e = |src: &str| Theme::parse(&format!("name = \"x\"\n{src}"), Path::new("")).unwrap_err();
-        assert!(e("[scene]\nsky = [\"blue\"]").contains("scene.sky"));
-        assert!(e("[scene]\nhorizon = 3").contains("scene.horizon"));
         assert!(e("[glass]\ntop = \"x\"").contains("glass.top"));
         assert!(e("[gel]\nglow = \"x\"").contains("gel.glow"));
         assert!(e("[focus]\nfrom = \"x\"").contains("focus.from"));
         assert!(e("[motes]\ncolor = \"x\"").contains("motes.color"));
         assert!(e("[glass]\nshine = 1").contains("unknown field"));
+        assert!(e("[background]\nkind = \"wallpaper\"").contains("solid, gradient or image"));
         let capped = Theme::parse("name = \"x\"\n[motes]\ncount = 9999\n", Path::new("")).unwrap();
         assert_eq!(capped.motes.unwrap().count, 40, "bubbles are capped");
+        let g = Theme::parse("name = \"x\"\n[glass]\nlines = 7\nlines_gap = 1\nreflection = -2\n", Path::new("")).unwrap().glass.unwrap();
+        assert_eq!((g.lines, g.lines_gap, g.reflection), (1., 3., 0.), "the marks are kept inside their limits");
+        let plain = Theme::parse("name = \"x\"\n[glass]\n", Path::new("")).unwrap().glass.unwrap();
+        assert_eq!((plain.lines, plain.reflection), (0., 0.), "a glass table without them has none, as before");
+    }
+
+    #[test]
+    fn an_old_theme_that_asks_for_the_painted_scene_loads_with_a_plain_gradient_and_a_notice() {
+        let old = "name = \"Mine\"\nmode = \"dark\"\n[colors]\nbackground = \"#102030\"\ntext = \"#e0e0e0\"\n[background]\nkind = \"scene\"\n[scene]\nsky = [\"#000\", \"#fff\"]\nclouds = 3\nnothing_like_a_real_key = true\n[glass]\n[gel]\n";
+        let t = Theme::parse(old, Path::new("")).expect("an old file must still load");
+        assert_eq!(t.background.kind, BackgroundKind::Gradient);
+        assert_eq!(t.background.from, Color::parse("#102030").unwrap(), "from the theme's own background colour");
+        assert_ne!(t.background.to, t.background.from, "a visible gradient, not a flat fill");
+        assert!(t.glass.is_some() && t.gel.is_some(), "the rest of the file still counts");
+        assert!(t.notice.as_deref().is_some_and(|n| n.contains("Mine") && n.contains("scene")), "{:?}", t.notice);
+        // a gradient the person wrote themselves is kept
+        let own = Theme::parse("name = \"Own\"\n[background]\nkind = \"scene\"\nfrom = \"#112233\"\nto = \"#445566\"\n", Path::new("")).unwrap();
+        assert_eq!((own.background.from, own.background.to), (Color::parse("#112233").unwrap(), Color::parse("#445566").unwrap()));
+        assert!(own.notice.is_some());
+        // a leftover [scene] table with another kind is ignored without a fuss
+        let quiet = Theme::parse("name = \"Q\"\n[scene]\nclouds = 2\n", Path::new("")).unwrap();
+        assert!(quiet.notice.is_none() && quiet.background.kind == BackgroundKind::Solid);
+        // and no other kind has a notice
+        assert!(builtin().iter().all(|t| t.notice.is_none()));
+    }
+
+    #[test]
+    fn settings_shows_one_notice_for_all_old_theme_files() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-oldscene-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for n in ["one", "two"] {
+            std::fs::write(dir.join(format!("{n}.toml")), format!("name = \"Old {n}\"\n[background]\nkind = \"scene\"\n")).unwrap();
+        }
+        std::fs::write(dir.join("fine.toml"), "name = \"Fine\"\n").unwrap();
+        let set = ThemeSet::load(&dir);
+        assert!(set.problems.is_empty(), "{:?}", set.problems);
+        let n = set.notice.expect("one notice");
+        assert!(n.contains("Old one") && n.contains("Old two") && !n.contains("Fine") && n.matches("painted background").count() == 1, "{n}");
+        assert!(set.themes.iter().any(|t| t.name == "Old one"), "the theme is there and usable");
+        std::fs::remove_file(dir.join("one.toml")).unwrap();
+        std::fs::remove_file(dir.join("two.toml")).unwrap();
+        assert!(ThemeSet::load(&dir).notice.is_none(), "no old file, no notice");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_painted_scene_is_gone_from_the_source() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(!src.join("src").join("scene.rs").exists());
+        assert!(!src.join("examples").join("scene_preview.rs").exists());
+        // the needles are written in two halves so this test does not find itself
+        let needles = [concat!("crate::sc", "ene"), concat!("mod sc", "ene"), concat!("Background", "Kind::Sc", "ene"), concat!("lh_gui::sc", "ene"), concat!("Sc", "eneSpec")];
+        for entry in std::fs::read_dir(src.join("src")).unwrap().flatten() {
+            let p = entry.path();
+            if p.extension().is_some_and(|e| e == "rs") {
+                let text = std::fs::read_to_string(&p).unwrap();
+                for needle in needles {
+                    assert!(!text.contains(needle), "{} still has {needle}", p.display());
+                }
+            }
+        }
+        for t in ["frutiger-aero-light.toml", "frutiger-aero-dark.toml"] {
+            let text = std::fs::read_to_string(src.join("themes").join(t)).unwrap();
+            assert!(!text.contains("[scene]") && !text.contains("\"scene\""), "{t}");
+        }
     }
 
     #[test]

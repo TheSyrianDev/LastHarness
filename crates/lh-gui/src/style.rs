@@ -1,12 +1,11 @@
 //! The theme as the toolkit wants it: colours, radii, shadows, and the pieces every screen shares.
 
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::*;
 
-use lh_gui::scene::{self, SceneSpec};
+use lh_gui::sheen;
 use lh_gui::theme::{BackgroundKind, Color, Mode, Theme};
 
 pub fn hsla(c: Color) -> Hsla {
@@ -46,6 +45,9 @@ pub struct GlassP {
     pub rim: Hsla,
     pub edge: Hsla,
     pub sheen: f32,
+    pub lines: f32,
+    pub lines_gap: f32,
+    pub reflection: f32,
 }
 
 #[derive(Clone)]
@@ -73,29 +75,6 @@ pub enum Background {
     Solid(Hsla),
     Gradient { angle: f32, from: Hsla, to: Hsla },
     Image { path: std::path::PathBuf, opacity: f32, under: Hsla },
-    Scene { image: Arc<RenderImage>, under: Hsla },
-}
-
-const SCENE_SIZE: (usize, usize) = (1600, 900);
-
-/// The picture for a scene, made once and kept while the theme stays the same.
-fn scene_image(spec: &SceneSpec) -> Arc<RenderImage> {
-    static CACHE: Mutex<Vec<(SceneSpec, Arc<RenderImage>)>> = Mutex::new(Vec::new());
-    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((_, img)) = cache.iter().find(|(s, _)| s == spec) {
-        return img.clone();
-    }
-    let (w, h) = SCENE_SIZE;
-    let mut px = scene::render(spec, w, h);
-    // the toolkit wants blue, green, red
-    for p in px.as_chunks_mut::<4>().0 {
-        p.swap(0, 2);
-    }
-    let buf = image::RgbaImage::from_raw(w as u32, h as u32, px).expect("size matches");
-    let img = Arc::new(RenderImage::new(vec![image::Frame::new(buf)]));
-    cache.retain(|_| false);
-    cache.push((spec.clone(), img.clone()));
-    img
 }
 
 fn white(a: f32) -> Hsla {
@@ -119,7 +98,6 @@ impl Pal {
         let background = match t.background.kind {
             BackgroundKind::Solid => Background::Solid(hsla(c.background)),
             BackgroundKind::Gradient => Background::Gradient { angle: t.background.angle, from: hsla(t.background.from), to: hsla(t.background.to) },
-            BackgroundKind::Scene => Background::Scene { image: scene_image(&t.background.scene), under: hsla(c.background) },
             BackgroundKind::Image => match &t.background.image {
                 Some(p) => Background::Image { path: p.clone(), opacity: t.background.image_opacity, under: hsla(c.background) },
                 None => Background::Solid(hsla(c.background)),
@@ -143,7 +121,7 @@ impl Pal {
             anim: if reduce_motion { Duration::ZERO } else { Duration::from_millis(t.animation_ms) },
             dark: t.mode == Mode::Dark,
             background,
-            glass: t.glass.as_ref().map(|g| GlassP { top: hsla(g.top), bottom: hsla(g.bottom), rim: hsla(g.rim), edge: hsla(g.edge), sheen: g.sheen }),
+            glass: t.glass.as_ref().map(|g| GlassP { top: hsla(g.top), bottom: hsla(g.bottom), rim: hsla(g.rim), edge: hsla(g.edge), sheen: g.sheen, lines: g.lines, lines_gap: g.lines_gap, reflection: g.reflection }),
             gel: t.gel.as_ref().map(|g| GelP { top: hsla(g.top), bottom: hsla(g.bottom), primary_top: hsla(g.primary_top), primary_bottom: hsla(g.primary_bottom), gloss: g.gloss, rim: hsla(g.rim), edge: hsla(g.edge), glow: hsla(g.glow), press: g.press }),
             focus: t.focus.as_ref().map(|f| FocusP { from: hsla(f.from), to: hsla(f.to), width: f.width }),
             motes: t.motes.as_ref().filter(|m| m.count > 0 && !reduce_motion && t.animation_ms > 0).map(|m| (m.count, hsla(m.color))),
@@ -155,14 +133,13 @@ impl Pal {
         match &self.background {
             Background::Solid(c) => root.bg(*c),
             Background::Gradient { angle, from, to } => root.bg(linear_gradient(*angle, linear_color_stop(*from, 0.), linear_color_stop(*to, 1.))),
-            Background::Image { under, .. } | Background::Scene { under, .. } => root.bg(*under),
+            Background::Image { under, .. } => root.bg(*under),
         }
     }
 
     pub fn image_layer(&self) -> Option<AnyElement> {
         match &self.background {
             Background::Image { path, opacity, .. } => Some(img(path.clone()).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(*opacity).into_any_element()),
-            Background::Scene { image, .. } => Some(img(image.clone()).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()),
             _ => None,
         }
     }
@@ -214,9 +191,13 @@ impl PanelExt for $t {
             .border_1()
             .border_color(g.edge)
             // the shine over the top of the glass
-            .child(div().absolute().top_0().left_0().w_full().h(relative(0.42)).max_h(px(150.)).rounded_tl(px(inner)).rounded_tr(px(inner)).bg(linear_gradient(180., linear_color_stop(white(g.sheen), 0.), linear_color_stop(white(0.), 1.))))
-            // the light line just inside the edge
-            .child(div().absolute().top_0().left_0().size_full().rounded(px(inner)).border_1().border_color(g.rim));
+            .child(div().absolute().top_0().left_0().w_full().h(relative(0.42)).max_h(px(150.)).rounded_tl(px(inner)).rounded_tr(px(inner)).bg(linear_gradient(180., linear_color_stop(white(g.sheen), 0.), linear_color_stop(white(0.), 1.))));
+        // the diagonal reflection and the fine diagonal hairlines, for the looks that ask for them
+        if g.lines > 0. || g.reflection > 0. {
+            d = d.child(glass_marks(g.clone(), inner));
+        }
+        // the light line just inside the edge
+        d = d.child(div().absolute().top_0().left_0().size_full().rounded(px(inner)).border_1().border_color(g.rim));
         if let (true, Some(f)) = (focused, &p.focus) {
             d = d.child(focus_ring(f.clone(), px(inner)));
         }
@@ -228,6 +209,55 @@ impl PanelExt for $t {
 
 impl_panel!(Div);
 impl_panel!(Stateful<Div>);
+
+/// The marks of Windows 7 style glass, drawn over a pane with two paths: the reflection is two filled polygons with a
+/// fade from white to clear along the diagonal, and the hairlines are one stroked path of straight 45 degree lines
+/// (at most 220, see `sheen`), a pixel wide and a few percent white. Where they go is worked out in `sheen.rs`.
+fn glass_marks(g: GlassP, radius: f32) -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        move |b, _, window, _| {
+            let (w, h): (f32, f32) = (b.size.width.into(), b.size.height.into());
+            let (ox, oy): (f32, f32) = (b.left().into(), b.top().into());
+            let at = |x: f32, y: f32| point(px(ox + x), px(oy + y));
+            if g.reflection > 0. {
+                let [tri, band] = sheen::reflection(w, h, radius);
+                for (poly, strength) in [(tri, 1.0f32), (band, 0.55)] {
+                    if poly.len() < 3 {
+                        continue;
+                    }
+                    let mut pb = PathBuilder::fill();
+                    pb.move_to(at(poly[0].0, poly[0].1));
+                    for q in &poly[1..] {
+                        pb.line_to(at(q.0, q.1));
+                    }
+                    pb.close();
+                    if let Ok(path) = pb.build() {
+                        window.paint_path(path, linear_gradient(135., linear_color_stop(white(g.reflection * strength), 0.), linear_color_stop(white(0.), 1.)));
+                    }
+                }
+            }
+            if g.lines > 0. {
+                let (ax, ay, aw, ah) = sheen::hairline_area(w, h, radius);
+                let segs = sheen::hairlines(aw, ah, g.lines_gap);
+                if !segs.is_empty() {
+                    let mut pb = PathBuilder::stroke(px(1.));
+                    for (a, c) in segs {
+                        pb.move_to(at(ax + a.0, ay + a.1));
+                        pb.line_to(at(ax + c.0, ay + c.1));
+                    }
+                    if let Ok(path) = pb.build() {
+                        window.paint_path(path, white(g.lines));
+                    }
+                }
+            }
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+}
 
 /// A gradient border drawn on top of a panel, corner to corner.
 fn focus_ring(f: FocusP, radius: Pixels) -> impl IntoElement {
@@ -346,17 +376,37 @@ pub fn mix(a: Hsla, b: Hsla, t: f32) -> Hsla {
 
 #[cfg(test)]
 mod tests {
-    use super::{Background, Pal, PanelExt, SCENE_SIZE};
+    use super::{Pal, PanelExt};
     use lh_gui::theme::Theme;
-    use std::sync::Arc;
 
     fn aero() -> Theme {
         lh_gui::theme::builtin().into_iter().find(|t| t.label() == "Frutiger Aero light").unwrap()
     }
 
+    /// A look with bubbles: the built-in looks have none now, but the feature is still there until the user decides.
+    fn bubbly() -> Theme {
+        let mut t = aero();
+        t.motes = Some(lh_gui::theme::Motes { count: 5, color: lh_gui::theme::Color { r: 255, g: 255, b: 255, a: 255 } });
+        t
+    }
+
+    #[test]
+    fn the_aero_glass_carries_its_reflection_and_hairlines_into_the_paint_values() {
+        for label in ["Frutiger Aero light", "Frutiger Aero dark"] {
+            let t = lh_gui::theme::builtin().into_iter().find(|t| t.label() == label).unwrap();
+            let p = Pal::from(&t, None, false);
+            let g = p.glass.expect("glass");
+            assert!(g.lines > 0. && g.reflection > 0. && g.lines_gap >= 3., "{label}");
+            assert!(p.motes.is_none(), "{label} has no bubbles");
+            assert!(matches!(p.background, super::Background::Gradient { .. }), "{label} is a tint, not a picture");
+        }
+        let flat = Pal::from(&lh_gui::theme::builtin().remove(0), None, false);
+        assert!(flat.glass.is_none());
+    }
+
     #[test]
     fn bubbles_and_animation_stop_when_motion_is_reduced_or_the_theme_turns_it_off() {
-        let t = aero();
+        let t = bubbly();
         let normal = Pal::from(&t, None, false);
         assert!(normal.motes.is_some() && !normal.anim.is_zero());
         let reduced = Pal::from(&t, None, true);
@@ -367,20 +417,6 @@ mod tests {
         let mut none = t;
         none.motes.as_mut().unwrap().count = 0;
         assert!(Pal::from(&none, None, false).motes.is_none());
-    }
-
-    #[test]
-    fn a_scene_becomes_a_picture_of_the_right_size_and_is_made_only_once() {
-        let t = aero();
-        let a = Pal::from(&t, None, false);
-        let b = Pal::from(&t, None, false);
-        match (&a.background, &b.background) {
-            (Background::Scene { image: x, .. }, Background::Scene { image: y, .. }) => {
-                assert!(Arc::ptr_eq(x, y), "the same scene is not painted twice");
-                assert_eq!(x.size(0).width.0, SCENE_SIZE.0 as i32);
-            }
-            _ => panic!("the Frutiger Aero look paints a scene"),
-        }
     }
 
     #[test]

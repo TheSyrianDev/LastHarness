@@ -1,8 +1,11 @@
-# Built-in look: Frutiger Aero (about 2005 to 2013). Glossy, glass over a bright sky, rounded shapes.
-# The sky and meadow are painted by the app from the [scene] table below, so no photo is needed. Copy this
-# file to ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+# Built-in look: Frutiger Aero, the glass look of Windows 7 (about 2009). Panes of translucent blue glass over
+# whatever is behind the window, a white line just inside the edge and a darker line outside it, a diagonal
+# reflection in the top left corner of each pane, fine diagonal hairlines, glossy buttons that glow blue when the
+# pointer is over them, soft shadows. No picture ships with it: the desktop behind the window (blurred by the
+# compositor, which Hyprland does for you) is the background. Copy this file to ~/.config/lastharness/themes/
+# and edit it; changes show up while the app runs.
 #
-# To use a photo of your own instead, set in [background]:
+# To put a photo behind the glass inside the window instead, set in [background]:
 #   kind = "image"
 #   image = "/home/you/Pictures/sky.jpg"     # a full path, or one relative to this file
 #   image_opacity = 1
@@ -10,77 +13,61 @@ name = "Frutiger Aero"
 mode = "light"          # light or dark
 
 [colors]                        # "#rgb", "#rrggbb" or "#rrggbbaa" (the last two digits are opacity)
-background = "#1fb7f0"
-surface = "#ffffffa6"       # panels and bubbles, when a theme has no [glass]
-sunken = "#ffffffd0"        # input fields and replies
-text = "#153141"            # dark navy, not black
-muted = "#47718a"
-accent = "#1174a1"
+background = "#4a7db3"      # a solid blue: what the glass is drawn on when nothing translucent is available,
+                            # and the base the gradient below is chosen to sit on
+surface = "#e6f0faa6"       # panels and bubbles, for a pane without [glass]
+sunken = "#f7fbffeb"        # input fields and replies: near white, like a text box on a Windows 7 window
+text = "#0f1f2d"
+muted = "#3d586f"
+accent = "#2f7fc7"
 accent_text = "#ffffff"
-button = "#cfe9f8"
-button_hover = "#e9f6fe"
-border = "#ffffffcc"
-danger = "#c8372d"
+button = "#dbe7f3"
+button_hover = "#eef6fd"
+border = "#ffffffb8"
+danger = "#c0392b"
 
 [background]
-kind = "scene"                # solid, gradient, image or scene
-
-[scene]                       # the painted landscape; colour lists run top to bottom
-sky = ["#0a1fb8", "#0b57d6", "#1fb7f0", "#7fdcff", "#eafaff"]
-horizon = 0.64                # where the sky meets the meadow, 0 is the top and 1 the bottom
-haze = "#ffffff"              # the glow along the horizon
-haze_strength = 0.6
-ground = ["#b6e04a", "#7cc832", "#4aa626"]
-hills = ["#74bf3a", "#4f9f2c"]    # distant trees; leave the list empty for none
-sun_x = 0.14                  # position as a fraction of the window
-sun_y = 0.25
-sun_size = 0.2
-sun_color = "#fffbe0"
-flare = true                  # faint rings in a line away from the sun
-clouds = 6
-cloud_light = "#ffffff"
-cloud_shade = "#b8d4f0"
-flowers = 40
-stars = 0
-seed = 7                      # change it to move the clouds
+kind = "gradient"             # solid, gradient or image
+from = "#8cbfeb5c"            # a light blue tint, a third opaque, so the desktop shows through
+to = "#4f86bf5c"
+angle = 180
 
 [shape]
-roundness = 16                  # corner radius of panels, in pixels
+roundness = 9                   # corner radius of panes, in pixels (Windows 7 windows were about 8)
 match_window = false             # true: take the window's own radius when the desktop reports it
-                                 # (Hyprland does); controls inside panels follow the same curve
+                                 # (Hyprland does); controls inside panes follow the same curve
 
-[glass]                          # panels: lighter at the top, a light line inside the edge, a pale line outside
-top = "#e8f6ffa8"
-bottom = "#c6e6fb76"
-rim = "#ffffffe6"
-edge = "#9fcdeec0"
-sheen = 0.36                      # white shine over the top of a panel; 0 for none
+[glass]                          # panes: lighter at the top, a light line inside the edge, a darker line outside
+top = "#deedfbb0"
+bottom = "#b9d6efa0"
+rim = "#ffffffe0"                # the white line just inside the edge
+edge = "#5d7d9fcc"               # the darker line just outside it
+sheen = 0.2                      # white shine over the top of a pane; 0 for none
+reflection = 0.22                # the diagonal reflection in the top left corner; 0 for none
+lines = 0.055                    # fine diagonal hairlines, as opacity of white; 0 for none
+lines_gap = 4                    # pixels between the hairlines
 
 [gel]                            # buttons: glossy top half, rim light, glow on hover, darker when pressed
-top = "#f6fcff"
-bottom = "#b5dcf3"
-primary_top = "#1a62cc"          # the main button runs from blue ...
-primary_bottom = "#10a0e0"       # ... to cyan
-gloss = 0.45
-rim = "#ffffffd0"
-edge = "#2b7fb0"
-glow = "#4fd8ffc0"
-press = 0.18
+top = "#f5f9fd"
+bottom = "#c3d5e7"
+primary_top = "#78bdf3"          # the main button is blue glass
+primary_bottom = "#2b7fd0"
+gloss = 0.5
+rim = "#ffffffe6"
+edge = "#6b7c8e"
+glow = "#3ea8f0d0"               # the blue glow while the pointer is over a button
+press = 0.14
 
-[focus]                          # the border of the panel you are working in
-from = "#1174a1"
-to = "#6b60c4"
+[focus]                          # the border of the pane you are working in
+from = "#2f8fe0"
+to = "#86c6f6"
 width = 2
 
-[motes]                          # bubbles drifting slowly up; 0 turns them off. Off too when animation is 0
-count = 5
-color = "#ffffff"
-
 [effects]
-blur = false                     # ask the desktop to blur what is behind the window
-shadow_blur = 24
-shadow_y = 8
-shadow_color = "#0a3a7a55"
+blur = true                      # ask the desktop to blur what is behind the window (Hyprland blur needs nothing more)
+shadow_blur = 28
+shadow_y = 6
+shadow_color = "#00000066"
 
 [animation]
-duration_ms = 240           # 0 turns hover, press and bubbles off
+duration_ms = 160           # 0 turns hover and press fades off

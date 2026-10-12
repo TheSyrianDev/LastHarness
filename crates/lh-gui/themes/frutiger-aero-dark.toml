@@ -1,82 +1,65 @@
-# Built-in look: Frutiger Aero at night. Deep twilight sky, glass panels at lower opacity, glowing cyan.
-# The sky and meadow are painted by the app from the [scene] table. Copy this file to
-# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs. For a photo of your own set
-# kind = "image" and image = "/home/you/Pictures/night.jpg" in [background].
+# Built-in look: Frutiger Aero, dark. The black glass variant of the Windows 7 look: dark blue-grey panes of
+# translucent glass over whatever is behind the window, a pale line just inside the edge, a diagonal reflection and
+# fine hairlines, buttons that glow blue under the pointer. No picture ships with it. Copy this file to
+# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs. The keys are explained in
+# frutiger-aero-light.toml.
 name = "Frutiger Aero"
-mode = "dark"          # light or dark
+mode = "dark"
 
-[colors]                        # "#rgb", "#rrggbb" or "#rrggbbaa" (the last two digits are opacity)
-background = "#071258"
-surface = "#0b2a5c88"       # panels and bubbles, when a theme has no [glass]
-sunken = "#030c2e88"        # input fields and replies
-text = "#e8f6ff"
-muted = "#a3c6e0"
-accent = "#3fd9ff"
-accent_text = "#04202e"
-button = "#1c4f86"
-button_hover = "#2a6bb0"
+[colors]
+background = "#1b2a3b"      # a solid dark blue: what the glass is drawn on when nothing translucent is available
+surface = "#1b2a3ba6"
+sunken = "#0b131dd9"
+text = "#eef5fc"
+muted = "#9db4ca"
+accent = "#4aa3ee"
+accent_text = "#06121e"
+button = "#2b3d52"
+button_hover = "#3b5069"
 border = "#ffffff30"
-danger = "#ff8277"
+danger = "#e5584a"
 
 [background]
-kind = "scene"                # solid, gradient, image or scene
-
-[scene]                       # the painted landscape; colour lists run top to bottom
-sky = ["#02041a", "#071258", "#14308f", "#2a62c4", "#59a6e0"]
-horizon = 0.64
-haze = "#6fd0ff"
-haze_strength = 0.4
-ground = ["#1a6a58", "#0f4a40", "#082e2c"]
-hills = ["#13584c", "#0d4038"]
-sun_x = 0.14                  # the moon
-sun_y = 0.25
-sun_size = 0.12
-sun_color = "#cfefff"
-flare = true
-clouds = 5
-cloud_light = "#7ea4e0"
-cloud_shade = "#2a3f86"
-flowers = 0
-stars = 140
-seed = 7
+kind = "gradient"
+from = "#0c1b2d70"
+to = "#040d1870"
+angle = 180
 
 [shape]
-roundness = 16                  # corner radius of panels, in pixels
-match_window = false             # true: take the window's own radius when the desktop reports it
-                                 # (Hyprland does); controls inside panels follow the same curve
+roundness = 9
+match_window = false
 
-[glass]                          # panels: lighter at the top, a light line inside the edge, a pale line outside
-top = "#8cc4ff44"
-bottom = "#3f7fe020"
-rim = "#c8e8ff5c"
-edge = "#5fd0ff78"
-sheen = 0.12
+[glass]
+top = "#2b4058b4"
+bottom = "#142133c4"
+rim = "#ffffff3d"
+edge = "#000000b0"
+sheen = 0.1
+reflection = 0.14
+lines = 0.045
+lines_gap = 4
 
-[gel]                            # buttons: glossy top half, rim light, glow on hover, darker when pressed
-top = "#4a98e6"
-bottom = "#17509e"
-primary_top = "#5fe6ff"
-primary_bottom = "#0a96d6"
+[gel]
+top = "#4a647f"
+bottom = "#1f3043"
+primary_top = "#5aaef2"
+primary_bottom = "#1f68ba"
 gloss = 0.3
-rim = "#ffffff99"
-edge = "#7fe8ff"
-glow = "#3fe0ffd0"
-press = 0.22
+rim = "#ffffff45"
+edge = "#070d15"
+glow = "#58b6ffd8"
+press = 0.2
 
-[focus]                          # the border of the panel you are working in
-from = "#3fd9ff"
-to = "#9a7cff"
+[focus]
+from = "#4aa3ee"
+to = "#a4d6ff"
 width = 2
 
-[motes]                          # bubbles drifting slowly up; 0 turns them off. Off too when animation is 0
-count = 5
-color = "#bfeaff"
-
 [effects]
-blur = false                     # ask the desktop to blur what is behind the window
-shadow_blur = 24
+blur = true
+shadow_blur = 30
 shadow_y = 8
-shadow_color = "#00081a99"
+shadow_color = "#000000a0"
 
 [animation]
-duration_ms = 240           # 0 turns hover, press and bubbles off
+duration_ms = 160

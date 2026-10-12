@@ -232,6 +232,7 @@ impl App {
                 .child(div().flex().flex_wrap().gap_1().child(dir_btn).child(narrower).child(wider))
                 .child(div().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))
                 .children(self.themes.problems.iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Theme file problem: {e}"))))
+            .children(self.themes.notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
             .into_any_element()
     }
 

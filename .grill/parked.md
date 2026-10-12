@@ -159,8 +159,17 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 ## Frutiger Aero redo (build session, 2026-10-12)
 
 - **The plain-placeholder rule is lifted for this one look.** The user chose Frutiger Aero and said the first version did not look like it; the planning peer relayed that no branding or logo is allowed but the look should be faithful. Done in `crates/lh-gui/themes/frutiger-aero-*.toml` and described in `docs/milestone-8-report.md`.
-- **Bubbles cost about 4 percent of one core while the window is in use.** Recommended answer, taken: they ship on (five bubbles, 10 frames a second, only while the window is active, off for reduced motion or animation 0). The user can set `count = 0` in `[motes]`. If battery matters more than the look, flip the default to 0.
-- **Photos.** The reference wallpapers are stock photos of unknown licence, so none is in the repository; a theme may point to a path of the user's own (`kind = "image"`).
+- **Bubbles (superseded by the Windows 7 redo below).** They cost about 4 percent of one core. The built-in looks no longer turn them on.
+- **Photos.** None ships; a theme may point to a path of the user's own (`kind = "image"`).
+
+## Frutiger Aero as Windows 7 glass (build session, 2026-10-12)
+
+- **The painted scene is deleted.** The user said the nature style was the wrong idea (the look meant is Windows 7 Aero) and that the code should not be kept. `scene.rs`, `kind = "scene"`, the `[scene]` table, its parser, cache, preview example and tests are gone. A user theme that still says `kind = "scene"` loads with a plain gradient and one notice in Settings under Appearance.
+- **Question: keep the drifting bubbles (`[motes]`)?** The code is still there and works; no built-in look turns it on. Recommended answer: remove it, because it belonged to the nature look. Waiting for the user before deleting.
+- **Idea, not built: video backgrounds.** A tool such as mpvpaper can run a video behind the translucent window. Nothing in the app is needed.
+- **Question: the window cannot tell whether the desktop does transparency.** GPUI 0.3.8 gives no way to ask. The looks assume it does (Hyprland does); the solid `colors.background` is the colour used where nothing translucent is available. Recommended answer: leave it, and mention in the theme file comment.
+- **The diagonal marks are drawn with paths, not pictures.** One canvas per glass pane: two filled polygons for the reflection and one stroked path of at most 220 hairlines. Recommended answer, taken: it is cheap; if it shows in the frame time on a very large window, lower `lines` to 0 in the theme. The marks are only on the Aero looks (`reflection` and `lines` default to 0).
+- **Not seen in the real window.** The panes and buttons were checked as an SVG made from the theme numbers over four plain backdrops, not in the app. The first look may find spacing or contrast details.
 
 ## Chat tree (build session, 2026-10-12)
 
