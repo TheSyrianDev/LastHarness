@@ -3,6 +3,7 @@
 //! keeps the chosen row. It draws nothing, so it is tested without a window.
 
 use crate::chrome::{panel_label, DOCK_TABS};
+use crate::appearance::ModeChoice;
 use crate::layout::Panel;
 use crate::rtl::Direction;
 
@@ -15,7 +16,10 @@ pub enum Command {
     OpenTab(Panel),
     SwitchChat(u64),
     Model(String),
+    /// A family of looks, by its place in the list of families.
     Look(usize),
+    Mode(ModeChoice),
+    ToggleMode,
     Direction(Direction),
 }
 
@@ -39,9 +43,13 @@ pub struct Snapshot {
     /// Model names, and the one the chat uses.
     pub models: Vec<String>,
     pub current_model: String,
-    /// Labels of the looks, and the one in use.
+    /// The families of looks (Calm, Matte…), and the one in use.
     pub looks: Vec<String>,
     pub current_look: usize,
+    /// Light, dark or follow the system; whether dark is showing; whether the desktop says anything about it.
+    pub mode: ModeChoice,
+    pub dark: bool,
+    pub system_available: bool,
     pub direction: Direction,
 }
 
@@ -75,7 +83,16 @@ pub fn entries(s: &Snapshot) -> Vec<Entry> {
         v.push(entry(Command::Model(m.clone()), g_model, m.clone(), if *m == s.current_model { current } else { "" }));
     }
     for (i, l) in s.looks.iter().enumerate() {
-        v.push(entry(Command::Look(i), g_look, l.clone(), if i == s.current_look { current } else { "Ctrl+T" }));
+        v.push(entry(Command::Look(i), g_look, l.clone(), if i == s.current_look { current } else { "" }));
+    }
+    let g_mode = if ar { "نمط" } else { "Mode" };
+    let (to_dark, to_light) = (if ar { "التبديل إلى الداكن" } else { "Switch to dark" }, if ar { "التبديل إلى الفاتح" } else { "Switch to light" });
+    v.push(entry(Command::ToggleMode, g_mode, if s.dark { to_light } else { to_dark }, "Ctrl+T"));
+    for m in ModeChoice::ALL {
+        if m == ModeChoice::System && !s.system_available {
+            continue;
+        }
+        v.push(entry(Command::Mode(m), g_mode, m.label(ar), if m == s.mode { current } else { "" }));
     }
     for d in [Direction::Auto, Direction::Ltr, Direction::Rtl] {
         let title = match (d, ar) {
@@ -173,8 +190,11 @@ mod tests {
             current_chat: Some(1),
             models: vec!["Qwen3.6 35B".into(), "Tiel Coder".into()],
             current_model: "Qwen3.6 35B".into(),
-            looks: vec!["Calm light".into(), "Calm dark".into(), "Glass light".into()],
+            looks: vec!["Calm".into(), "Matte".into(), "Glass".into()],
             current_look: 1,
+            mode: ModeChoice::Light,
+            dark: false,
+            system_available: true,
             direction: Direction::Auto,
         }
     }
@@ -205,7 +225,9 @@ mod tests {
         assert_eq!(hint(Command::SwitchChat(1)), "current");
         assert_eq!(hint(Command::SwitchChat(2)), "");
         assert_eq!(hint(Command::Look(1)), "current");
-        assert_eq!(hint(Command::Look(0)), "Ctrl+T");
+        assert_eq!(hint(Command::Look(0)), "");
+        assert_eq!(hint(Command::ToggleMode), "Ctrl+T");
+        assert_eq!(hint(Command::Mode(ModeChoice::Light)), "current");
         assert_eq!(hint(Command::Model("Qwen3.6 35B".into())), "current");
         assert_eq!(hint(Command::Direction(Direction::Auto)), "current");
         assert_eq!(hint(Command::NewChat), "Ctrl+N");
@@ -220,15 +242,34 @@ mod tests {
         let r = titles(&e, &filter(&e, "settings"));
         assert_eq!(r, ["Settings"]);
         let r = titles(&e, &filter(&e, "calm"));
-        assert_eq!(r, ["Calm light", "Calm dark"]);
+        assert_eq!(r, ["Calm"], "one entry a family, not one a mode");
         // a word at the start of the title beats one in the middle
         let r = titles(&e, &filter(&e, "new"));
         assert_eq!(r[0], "New chat");
         // every word must match
-        assert_eq!(titles(&e, &filter(&e, "calm dark")), ["Calm dark"]);
+        assert_eq!(titles(&e, &filter(&e, "switch dark")), ["Switch to dark"]);
         assert!(filter(&e, "zzzz").is_empty());
         // the group name is searchable: "model" lists the models
         assert_eq!(titles(&e, &filter(&e, "model")), ["Qwen3.6 35B", "Tiel Coder"]);
+    }
+
+    #[test]
+    fn light_and_dark_are_one_switch_and_follow_the_system_only_when_the_desktop_says_something() {
+        let mut s = snap();
+        let e = entries(&s);
+        let mode_titles = |e: &[Entry]| e.iter().filter(|x| matches!(x.command, Command::Mode(_) | Command::ToggleMode)).map(|x| x.title.clone()).collect::<Vec<_>>();
+        assert_eq!(mode_titles(&e), ["Switch to dark", "Light", "Dark", "Follow the system"]);
+        s.dark = true;
+        s.mode = ModeChoice::Dark;
+        let e = entries(&s);
+        assert_eq!(mode_titles(&e)[0], "Switch to light", "the switch names where it goes");
+        assert_eq!(e.iter().find(|x| x.command == Command::Mode(ModeChoice::Dark)).unwrap().hint, "current");
+        s.system_available = false;
+        assert_eq!(mode_titles(&entries(&s)), ["Switch to light", "Light", "Dark"], "no desktop setting, no follow entry");
+        // no separate light and dark entries for each family any more
+        assert!(entries(&s).iter().filter(|x| matches!(x.command, Command::Look(_))).all(|x| !x.title.ends_with(" dark") && !x.title.ends_with(" light")));
+        s.rtl = true;
+        assert!(entries(&s).iter().filter(|x| matches!(x.command, Command::Mode(_) | Command::ToggleMode)).all(|x| !x.title.is_ascii()));
     }
 
     #[test]

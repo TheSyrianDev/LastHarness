@@ -22,7 +22,7 @@ target/release/lh              # chat
 target/release/lastharness-gui # or the desktop app (needs the core running)
 ```
 
-The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastharness/themes/` (the eight built-in ones are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat; the keys for everything else are in `docs/milestone-8-report.md`.
+The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastharness/themes/` (the eight built-in ones, four families each in light and dark, are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat; the keys for everything else are in `docs/milestone-8-report.md`.
 
 To start the core at every login: `lh service preview`, then `lh service install` (a systemd user service; no sudo; closing the terminal never stops the core).
 

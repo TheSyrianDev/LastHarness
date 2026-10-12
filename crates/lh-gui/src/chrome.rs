@@ -6,6 +6,44 @@ use crate::layout::{Layout, Panel};
 /// Width of the icon rail in pixels.
 pub const RAIL_WIDTH: f32 = 52.;
 
+/// How wide the Settings window is, at most, in pixels.
+pub const SETTINGS_WIDTH: f32 = 680.;
+
+/// How much the rest of the window is darkened while Settings is up. This is a plain dimming, not a blur: the toolkit
+/// cannot blur what is behind a panel. Strong enough that the page behind stops competing, a little stronger in a
+/// dark look where the page itself is dark.
+pub fn scrim_alpha(dark: bool) -> f32 {
+    if dark { 0.65 } else { 0.55 }
+}
+
+/// What Escape closes first: the thing drawn on top.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Layer {
+    Palette,
+    Settings,
+    ModelMenu,
+    ResumeQuestion,
+    DeleteQuestion,
+    Nothing,
+}
+
+/// Which open thing is on top, in the order they cover each other.
+pub fn topmost(palette: bool, settings: bool, model_menu: bool, resume: bool, delete: bool) -> Layer {
+    if palette {
+        Layer::Palette
+    } else if settings {
+        Layer::Settings
+    } else if model_menu {
+        Layer::ModelMenu
+    } else if resume {
+        Layer::ResumeQuestion
+    } else if delete {
+        Layer::DeleteQuestion
+    } else {
+        Layer::Nothing
+    }
+}
+
 /// What the rail offers. Chats shows or hides the chat list; the others open the side panel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RailItem {
@@ -47,21 +85,21 @@ impl RailItem {
         format!("{} ({})", self.label(rtl), self.shortcut())
     }
 
-    /// The side panel this item opens; `None` for the chat list.
+    /// The side panel this item opens; `None` for the chat list and for Settings, which is a window of its own.
     pub fn panel(self) -> Option<Panel> {
         match self {
-            RailItem::Chats => None,
+            RailItem::Chats | RailItem::Settings => None,
             RailItem::Departments => Some(Panel::Departments),
             RailItem::Memory => Some(Panel::Memory),
-            RailItem::Settings => Some(Panel::Settings),
         }
     }
 
-    /// Is the thing this item opens showing now?
-    pub fn pressed(self, l: &Layout) -> bool {
-        match self.panel() {
-            None => l.left_visible,
-            Some(p) => l.right_visible && l.panel == p,
+    /// Is the thing this item opens showing now? `settings_open` is whether the Settings window is up.
+    pub fn pressed(self, l: &Layout, settings_open: bool) -> bool {
+        match self {
+            RailItem::Chats => l.left_visible,
+            RailItem::Settings => settings_open,
+            _ => self.panel().is_some_and(|p| l.right_visible && l.panel == p),
         }
     }
 
@@ -90,7 +128,7 @@ pub fn chevron(open: bool, rtl: bool) -> Vec<Vec<(f32, f32)>> {
     }]
 }
 
-/// The tabs along the top of the side panel, in order. Settings has no tab: the rail opens it.
+/// The tabs along the top of the side panel, in order. Settings is not one: it opens as a window over everything.
 pub const DOCK_TABS: [Panel; 4] = [Panel::Content, Panel::Departments, Panel::Memory, Panel::Tree];
 
 /// The name of a side panel, for its tab and for a screen reader.
@@ -104,8 +142,6 @@ pub fn panel_label(p: Panel, rtl: bool) -> &'static str {
         (Panel::Memory, true) => "الذاكرة",
         (Panel::Tree, false) => "Tree",
         (Panel::Tree, true) => "الشجرة",
-        (Panel::Settings, false) => "Settings",
-        (Panel::Settings, true) => "الإعدادات",
     }
 }
 
@@ -223,17 +259,19 @@ mod tests {
     #[test]
     fn the_rail_shows_which_things_are_open() {
         let mut l = Layout::default();
-        assert!(RailItem::Chats.pressed(&l) && !RailItem::Memory.pressed(&l), "the chat list starts open, the side panel closed");
+        assert!(RailItem::Chats.pressed(&l, false) && !RailItem::Memory.pressed(&l, false), "the chat list starts open, the side panel closed");
         l.toggle_left();
-        assert!(!RailItem::Chats.pressed(&l));
+        assert!(!RailItem::Chats.pressed(&l, false));
         l.toggle_panel(Panel::Memory);
-        assert!(RailItem::Memory.pressed(&l) && !RailItem::Departments.pressed(&l) && !RailItem::Settings.pressed(&l));
+        assert!(RailItem::Memory.pressed(&l, false) && !RailItem::Departments.pressed(&l, false) && !RailItem::Settings.pressed(&l, false));
         l.toggle_panel(Panel::Tree);
-        assert!(RailItem::ALL.iter().all(|i| i.panel().is_none() || !i.pressed(&l)), "the branches tab is not on the rail, so no item looks pressed");
+        assert!(RailItem::ALL.iter().all(|i| i.panel().is_none() || !i.pressed(&l, false)), "the tree tab is not on the rail, so no item looks pressed");
         l.hide_right();
-        assert!(!RailItem::Memory.pressed(&l), "a hidden panel is not pressed");
+        assert!(!RailItem::Memory.pressed(&l, false), "a hidden panel is not pressed");
         assert_eq!(RailItem::Chats.panel(), None);
-        assert_eq!(RailItem::Settings.panel(), Some(Panel::Settings));
+        assert_eq!(RailItem::Settings.panel(), None, "settings is a window, not a side panel");
+        assert!(RailItem::Settings.pressed(&l, true) && !RailItem::Settings.pressed(&l, false), "pressed while its window is up");
+        assert!(!RailItem::Memory.pressed(&l, true), "the window being up presses only its own icon");
     }
 
     #[test]
@@ -250,8 +288,8 @@ mod tests {
                 }
             }
         }
-        for p in [Panel::Departments, Panel::Memory, Panel::Settings, Panel::Content, Panel::Tree] {
-            assert!(DOCK_TABS.contains(&p) || p == Panel::Settings, "{p:?} can be reached");
+        for p in [Panel::Departments, Panel::Memory, Panel::Content, Panel::Tree] {
+            assert!(DOCK_TABS.contains(&p), "{p:?} has a tab");
         }
     }
 
@@ -262,6 +300,18 @@ mod tests {
         assert!(ltr[0][1].0 > ltr[0][0].0, "closed points right");
         assert!(rtl[0][1].0 < rtl[0][0].0, "closed points left in right-to-left");
         assert!(open[0][1].1 > open[0][0].1, "open points down");
+    }
+
+    #[test]
+    fn the_dimming_is_strong_and_the_top_layer_closes_first() {
+        assert!(scrim_alpha(false) >= 0.5 && scrim_alpha(true) > scrim_alpha(false) && scrim_alpha(true) < 0.9);
+        assert_eq!(topmost(true, true, true, true, true), Layer::Palette, "the palette covers settings");
+        assert_eq!(topmost(false, true, true, true, true), Layer::Settings);
+        assert_eq!(topmost(false, false, true, true, true), Layer::ModelMenu);
+        assert_eq!(topmost(false, false, false, true, true), Layer::ResumeQuestion);
+        assert_eq!(topmost(false, false, false, false, true), Layer::DeleteQuestion);
+        assert_eq!(topmost(false, false, false, false, false), Layer::Nothing);
+        const { assert!(SETTINGS_WIDTH >= 560. && SETTINGS_WIDTH <= 800.) };
     }
 
     #[test]

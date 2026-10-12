@@ -24,7 +24,7 @@ New crates `lh-client` (the API client, moved out of `lh-tui`, which re-exports 
 
 **Right to left.** Direction is Auto (from the desktop language), Left to right or Right to left. Right to left mirrors the whole layout (list on the right, panel on the left, buttons swapped), right-aligns paragraphs that start in Arabic or Hebrew, and switches the main labels to Arabic. Typing Arabic into the message box worked and the answer came back right aligned. Not done: mirroring of direction-bearing icons (there are none yet) and cursor behaviour in mixed text, which belongs to the toolkit's input component.
 
-**Keyboard and screen reader.** Every main action has a key: Ctrl+N new chat, Ctrl+B chat list, Ctrl+Shift+D, M, S, O the panels, Ctrl+Shift+E expand, Ctrl+T next look, Ctrl+Shift+R direction, Ctrl+. stop, Ctrl+PageUp and PageDown between chats, Ctrl+Enter and Escape for the resume question. The AT-SPI tree shows named buttons, the chat list and its items, the conversation as a log, the message box as an entry and the Send button; icon-only buttons have spoken names ("Delete chat"). Orca itself is not installed here, so what is spoken was not tried.
+**Keyboard and screen reader.** Every main action has a key: Ctrl+N new chat, Ctrl+B chat list, Ctrl+Shift+D, M, S, O the panels, Ctrl+Shift+E expand, Ctrl+T light or dark, Ctrl+Shift+R direction, Ctrl+. stop, Ctrl+PageUp and PageDown between chats, Ctrl+Enter and Escape for the resume question. The AT-SPI tree shows named buttons, the chat list and its items, the conversation as a log, the message box as an entry and the Send button; icon-only buttons have spoken names ("Delete chat"). Orca itself is not installed here, so what is spoken was not tried.
 
 **Tray.** A tray icon through the StatusNotifierItem protocol, with Quit (it registered on this desktop). Show is not offered: a tray cannot raise the window from another thread yet.
 
@@ -37,6 +37,8 @@ New crates `lh-client` (the API client, moved out of `lh-tui`, which re-exports 
 ## System prompt size
 
 The GUI adds nothing to the prompt. The one change in this stretch is "built by LastSoftware" in the first line, the user's request: 146 tokens typical (was 139), 195 with the default tools (was 189), 240 with every tool line (was 234); limit 300. The test that keeps this under the limit is green.
+
+The first line now says what the provider is. With a known provider it reads "You are X, served by llama-swap, an endpoint made by someone else, not a harness. You work in LastHarness, the only harness here, made by LastSoftware." Models had been calling llama-swap a harness and crediting it to the maker of the model. The clause is only used when a provider is known, and the old "a local-first harness for one person's computer" was dropped to pay for it. Size: 150 tokens typical (the aim), 200 with the default tools, 288 with every tool line; limit 300. The budget test is green and the cap is unchanged.
 
 ## Numbers
 
@@ -152,6 +154,24 @@ The user approved a calmer window (mock: "LastHarness Redesign"). It is built in
 - A pressed button darkens at once. The mock also shrinks a pressed button to 0.97; GPUI cannot scale a box, so this is not done (parked).
 - "Open in panel" now shows under an answer that is over 400 characters, or holds a code block or a table whatever its length (a recommended default, not yet confirmed by the user).
 - Tests: `motion.rs` (numbers, curve, opening, closing, turning back mid-way, instant without animation, no slide on resize), `Layout::cycle_width`, `Content::worth_opening`.
+
+**Rail icons, second pass (user feedback).** The settings icon looked like a sun, so it is now a gear (one joined outline of eight teeth round a hub). The others were checked as pictures (`cargo run -p lh-gui --example rail_preview > icons.svg`, then `rsvg-convert`): a speech bubble for chats, a lead above two members for departments, a page with two lines for memory, a gear for settings. A test keeps the gear a joined outline with teeth.
+
+**Chat width (user feedback).** The column was too narrow at 640 px. It is now a setting, Chat width in Settings under Appearance, saved in `gui.toml` as `column` in the `[layout]` table: Comfortable (700 px, about 75 characters a line), Wide (860 px, about 100 characters, the default) or Full width (no limit, all the middle of the window). The questions and the message box follow the same width, and your bubble stays at most 80 percent of it. A window narrower than the choice simply uses what it has. Tests: the default is Wide and clearly over 640, each choice is wider than the last, the choice is saved, and an old file without it gets the default.
+
+**Light and dark as one switch (user feedback).** The eight look entries are now four families (Calm, Matte, Glass, Frutiger Aero), each with a light and a dark variant, and one mode picks the variant for all of them: Light, Dark, or Follow the system.
+- Where: Settings under Appearance (Look, then Mode), the Ctrl+K palette ("Switch to dark" or "Switch to light", plus one entry each for Light, Dark and Follow the system, and one entry a family), and Ctrl+T, which now flips light and dark (it used to step through the eight looks). A press of Ctrl+T while following the system makes the opposite an explicit choice.
+- Follow the system: the desktop's `color-scheme` setting is read with `gsettings` (works on this machine, where it says prefer-light). It is checked every 3 seconds, off the screen's thread, and only while Follow the system is chosen. It is offered only when the desktop says something. When it says nothing, the look is light.
+- Saved in `gui.toml` as `theme` (the family, "Calm") and `mode` ("light", "dark" or "system"). An old file with `theme = "Calm dark"` is read as family Calm and mode dark, and written in the new form the next time it is saved.
+- Your own theme files: a family is found by its `name`; its `mode` key says which variant a file is. A family with both modes switches like the built-in ones. A family with only one mode stays as it is under the switch (the Settings button says "one mode only"). Add the other file and it switches, live. A file with the same name and mode as a built-in one still replaces it.
+- Tests: `appearance.rs` (reading the setting, choosing, the key), families and variants and the one-mode family in `theme.rs`, the saved form and the old form in `prefs.rs`, the palette entries.
+
+**Settings as a window (user feedback).** Settings no longer lives in the side panel. The gear on the rail, Ctrl+Shift+S and the Ctrl+K palette open it as a window in the middle of the app, with everything behind it dimmed. A click outside it, the Close button, Escape, or the gear again closes it. Opened, Departments, Memory and Tree stay in the side panel.
+- **The dimming is not a blur.** The toolkit has no way to blur what is behind a panel: the only blur in its drawing is the soft edge of a shadow, there is no backdrop filter, and the finished picture of the window cannot be read back to blur it. The one real blur available is the compositor's, which blurs the desktop behind the whole window, not the app's own content. So the rest of the window is darkened strongly (55 percent in a light look, 65 in a dark one) and the window casts a large soft shadow so it lifts off the page. A second transparent window over the first could get a real compositor blur on Hyprland, but a program cannot place its own window on Wayland and it would only work on compositors that blur, so it is not done.
+- Keyboard and screen reader: the window is a dialog named "Settings". While it is up its buttons take keyboard focus (Tab, then Enter or Space), with a ring round the one in focus; focus is pulled back inside if it leaves, and Escape or the Close button gives it back to the message box. Buttons elsewhere stay mouse and shortcut only, because making them take focus would steal it from the message box when clicked. Right-to-left mirrors the header and the rows. The rail's gear shows pressed while the window is up.
+- Escape closes the top thing first: the palette, then Settings, then a menu, then a question (`chrome::topmost`, tested). Opening the palette puts Settings away and the other way round. The Y and N answer keys are off while Settings is up.
+- An old `gui.toml` that says the side panel was showing "settings" now shows Departments.
+- Tests: the dimming and the order Escape closes things (`chrome.rs`), the rail's pressed states with the window up, and reading an old layout file.
 
 ## What is not done
 

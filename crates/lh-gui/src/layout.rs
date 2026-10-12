@@ -12,14 +12,54 @@ pub const RIGHT_MAX: f32 = 900.;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Panel {
-    #[default]
-    Departments,
     Memory,
-    Settings,
     /// Things the agent opened: a page, a file, a table.
     Content,
     /// The branches of the chat that is open.
     Tree,
+    /// Last on purpose: a saved panel this version does not know (Settings used to be one; it is a window of its own
+    /// now) falls back to this one.
+    #[default]
+    #[serde(other)]
+    Departments,
+}
+
+/// How wide the conversation column is. Long lines are tiring to read, so even the widest fixed choice stops at a
+/// length a person can follow; Full uses all the room there is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ColumnWidth {
+    /// About 75 characters a line.
+    Comfortable,
+    /// About 100 characters a line.
+    #[default]
+    Wide,
+    /// The whole width of the middle of the window.
+    Full,
+}
+
+impl ColumnWidth {
+    pub const ALL: [ColumnWidth; 3] = [ColumnWidth::Comfortable, ColumnWidth::Wide, ColumnWidth::Full];
+
+    /// The widest the column gets, in pixels; `None` for no limit.
+    pub fn max_px(self) -> Option<f32> {
+        match self {
+            ColumnWidth::Comfortable => Some(700.),
+            ColumnWidth::Wide => Some(860.),
+            ColumnWidth::Full => None,
+        }
+    }
+
+    pub fn label(self, rtl: bool) -> &'static str {
+        match (self, rtl) {
+            (ColumnWidth::Comfortable, false) => "Comfortable",
+            (ColumnWidth::Wide, false) => "Wide",
+            (ColumnWidth::Full, false) => "Full width",
+            (ColumnWidth::Comfortable, true) => "مريح",
+            (ColumnWidth::Wide, true) => "عريض",
+            (ColumnWidth::Full, true) => "العرض الكامل",
+        }
+    }
 }
 
 /// What fills the middle.
@@ -41,13 +81,15 @@ pub struct Layout {
     /// The right panel takes the whole width except the chat list's.
     pub right_expanded: bool,
     pub panel: Panel,
+    /// How wide the conversation, its questions and the message box are.
+    pub column: ColumnWidth,
     #[serde(skip)]
     pub page: Page,
 }
 
 impl Default for Layout {
     fn default() -> Self {
-        Layout { left_visible: true, left_width: 260., right_visible: false, right_width: 380., right_expanded: false, panel: Panel::Departments, page: Page::Chat }
+        Layout { left_visible: true, left_width: 260., right_visible: false, right_width: 380., right_expanded: false, panel: Panel::Departments, column: ColumnWidth::default(), page: Page::Chat }
     }
 }
 
@@ -156,11 +198,11 @@ mod tests {
         let mut l = Layout::default();
         l.toggle_panel(Panel::Memory);
         assert!(l.right_visible && l.panel == Panel::Memory);
-        l.toggle_panel(Panel::Settings);
-        assert!(l.right_visible && l.panel == Panel::Settings, "another panel switches, not hides");
+        l.toggle_panel(Panel::Tree);
+        assert!(l.right_visible && l.panel == Panel::Tree, "another panel switches, not hides");
         l.toggle_expand();
         assert!(l.right_expanded);
-        l.toggle_panel(Panel::Settings);
+        l.toggle_panel(Panel::Tree);
         assert!(!l.right_visible && !l.right_expanded, "hiding also ends the expanded state");
     }
 
@@ -168,7 +210,7 @@ mod tests {
     fn something_the_assistant_opens_brings_the_side_panel_back_whatever_was_hidden() {
         let mut l = Layout::default();
         l.toggle_left();
-        l.toggle_panel(Panel::Settings);
+        l.toggle_panel(Panel::Memory);
         l.hide_right();
         assert!(!l.left_visible && !l.right_visible, "everything hidden");
         l.show_panel(Panel::Content);
@@ -194,6 +236,32 @@ mod tests {
         l.resize_right(500.);
         assert!(!l.right_expanded);
         assert_eq!(l.right_width, 500.);
+    }
+
+    #[test]
+    fn the_chat_column_starts_clearly_wider_than_before_and_has_three_sizes() {
+        let l = Layout::default();
+        assert_eq!(l.column, ColumnWidth::Wide);
+        assert!(l.column.max_px().unwrap() >= 800., "clearly wider than the old 640");
+        let px: Vec<Option<f32>> = ColumnWidth::ALL.iter().map(|c| c.max_px()).collect();
+        assert!(px[0].unwrap() > 640. && px[0].unwrap() < px[1].unwrap(), "each choice is wider than the one before");
+        assert_eq!(px[2], None, "full has no limit");
+        for rtl in [false, true] {
+            let mut names: Vec<&str> = ColumnWidth::ALL.iter().map(|c| c.label(rtl)).collect();
+            names.sort();
+            names.dedup();
+            assert_eq!(names.len(), 3);
+        }
+    }
+
+    #[test]
+    fn the_column_choice_is_saved_and_an_old_file_without_it_gets_the_default() {
+        let l = Layout { column: ColumnWidth::Full, ..Layout::default() };
+        let s = toml::to_string(&l).unwrap();
+        assert!(s.contains("column = \"full\""), "{s}");
+        assert_eq!(toml::from_str::<Layout>(&s).unwrap().column, ColumnWidth::Full);
+        assert_eq!(toml::from_str::<Layout>("left_visible = false\n").unwrap().column, ColumnWidth::Wide);
+        assert!(toml::from_str::<Layout>("column = \"nonsense\"\n").is_err(), "a bad word is an error, which Prefs turns into the defaults");
     }
 
     #[test]
@@ -263,14 +331,21 @@ mod tests {
     #[test]
     fn it_saves_and_reads_back_but_does_not_save_the_current_page() {
         let mut l = Layout::default();
-        l.show_panel(Panel::Settings);
+        l.show_panel(Panel::Memory);
         l.open_department("x");
         let s = toml::to_string(&l).unwrap();
         assert!(!s.contains("page"));
         let back: Layout = toml::from_str(&s).unwrap();
-        assert_eq!(back.panel, Panel::Settings);
+        assert_eq!(back.panel, Panel::Memory);
         assert_eq!(back.page, Page::Chat);
         let old: Layout = toml::from_str("left_visible = false\n").unwrap();
         assert!(!old.left_visible && old.left_width == 260., "missing keys take the defaults");
+    }
+
+    #[test]
+    fn a_file_saved_when_settings_was_a_side_panel_tab_still_reads() {
+        let old: Layout = toml::from_str("right_visible = true\npanel = \"settings\"\n").unwrap();
+        assert_eq!(old.panel, Panel::Departments, "settings is a window now, so the panel falls back");
+        assert!(old.right_visible);
     }
 }

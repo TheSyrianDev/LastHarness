@@ -40,7 +40,8 @@ async fn a_program_that_cannot_start_or_does_not_speak_mcp_gives_a_clear_error()
     let e = Connection::connect("x", Transport::Stdio { command: "/no/such/program".into(), args: vec![], env: Default::default() }).await.unwrap_err();
     assert!(e.to_string().contains("cannot start `/no/such/program`"), "{e}");
     let e = Connection::connect("x", Transport::Stdio { command: "true".into(), args: vec![], env: Default::default() }).await.unwrap_err();
-    assert!(e.to_string().contains("ended before it answered"), "{e}");
+    // `true` exits at once: either it is seen to end before answering, or our first write finds the pipe already closed
+    assert!(e.to_string().contains("ended before it answered") || e.to_string().contains("the server is gone"), "{e}");
 }
 
 /// Method, authorization header, session header of each request.

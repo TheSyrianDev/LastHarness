@@ -7,7 +7,7 @@ use gpui_component::input::{Input, Textarea};
 use gpui_component::text::TextView;
 
 use crate::app::{App, Focus, Pending};
-use lh_gui::chrome::{chevron, RailItem, TitleInfo, RAIL_WIDTH};
+use lh_gui::chrome::{chevron, scrim_alpha, topmost, Layer, RailItem, TitleInfo, RAIL_WIDTH, SETTINGS_WIDTH};
 use lh_gui::permissions::may_offer;
 use lh_gui::transcript::{self, work_label, Item, Step, StepKind};
 use lh_gui::layout::{Page, Panel};
@@ -16,7 +16,7 @@ use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::{mix, Look, PanelExt};
 
-actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, NextTheme, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette]);
+actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, ToggleMode, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette]);
 
 /// The keys for every action; also how the app is driven without a mouse.
 pub fn bind_keys(cx: &mut gpui::App) {
@@ -30,7 +30,7 @@ pub fn bind_keys(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-shift-o", ShowContent, None),
         KeyBinding::new("ctrl-shift-t", ShowTree, None),
         KeyBinding::new("ctrl-shift-e", ToggleExpand, None),
-        KeyBinding::new("ctrl-t", NextTheme, None),
+        KeyBinding::new("ctrl-t", ToggleMode, None),
         KeyBinding::new("ctrl-shift-r", CycleDirection, None),
         KeyBinding::new("ctrl-.", StopTurn, None),
         KeyBinding::new("ctrl-enter", ConfirmResume, None),
@@ -44,9 +44,6 @@ pub fn bind_keys(cx: &mut gpui::App) {
         KeyBinding::new("n", DenyAsk, Some("Asking")),
     ]);
 }
-
-/// How wide the conversation, the questions and the message box are.
-const COLUMN_WIDTH: f32 = 640.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Kind {
@@ -121,7 +118,9 @@ impl App {
         let animate = !self.pal.anim.is_zero() && self.hover_ever;
         let anim_key = SharedString::from(format!("{id}-{hovered}"));
         let on_click = cx.listener(move |this, _, window, cx| on_click(this, window, cx));
-        let base_el = div().id(id.clone()).role(Role::Button).aria_label(aria).px_3().py_1p5().rounded(p.inner).text_color(fg).cursor_pointer().on_hover(on_hover).on_click(on_click);
+        let focusable = self.tab_buttons;
+        let ring = BoxShadow { color: p.accent, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(2.), inset: false };
+        let base_el = div().id(id.clone()).role(Role::Button).aria_label(aria).when(focusable, |d| d.focusable().tab_stop(true).focus_visible(move |s| s.shadow(vec![ring]))).px_3().py_1p5().rounded(p.inner).text_color(fg).cursor_pointer().on_hover(on_hover).on_click(on_click);
 
         // gel: a glossy skin under the label, a rim light, a glow under the pointer and a dark veil while pressed
         if let Some(g) = &p.gel {
@@ -156,7 +155,7 @@ impl App {
         let l = self.layout().clone();
         let mut items: Vec<AnyElement> = vec![];
         for item in RailItem::ALL {
-            let on = item.pressed(&l);
+            let on = item.pressed(&l, self.settings_open);
             // settings sits at the bottom, away from the places you go to
             if item == RailItem::Settings {
                 items.push(div().flex_1().into_any_element());
@@ -178,13 +177,14 @@ impl App {
                     .bg(if on { p.surface } else { hsla(0., 0., 0., 0.) })
                     .hover(|s| s.bg(p.button))
                     .child(icon_view(item.icon(), if on { p.accent } else { p.muted }, 18.))
-                    .on_click(cx.listener(move |a, _, _, cx| match item.panel() {
-                        None => {
+                    .on_click(cx.listener(move |a, _, w, cx| match (item, item.panel()) {
+                        (RailItem::Settings, _) => a.toggle_settings(w, cx),
+                        (_, None) => {
                             a.layout_mut().toggle_left();
                             a.persist();
                             cx.notify();
                         }
-                        Some(panel) => a.open_panel(panel, cx),
+                        (_, Some(panel)) => a.open_panel(panel, cx),
                     }))
                     .into_any_element(),
             );
@@ -318,7 +318,7 @@ impl App {
             Block::User(t) => {
                 let is_rtl = rtl::paragraph_is_rtl(t);
                 div().flex().w_full().when(!rtl, |d| d.justify_end()).when(rtl, |d| d.justify_start()).child(
-                    div().id(SharedString::from(format!("u{key}-{i}"))).role(Role::Label).max_w(px(480.)).px_3().py_2().rounded(p.inner).bg(p.accent.opacity(0.18)).text_color(p.text).when(is_rtl, |d| d.text_right()).child(t.clone()),
+                    div().id(SharedString::from(format!("u{key}-{i}"))).role(Role::Label).max_w(relative(0.8)).px_3().py_2().rounded(p.inner).bg(p.accent.opacity(0.18)).text_color(p.text).when(is_rtl, |d| d.text_right()).child(t.clone()),
                 ).into_any_element()
             }
             Block::Assistant { .. } | Block::Tool { .. } => div().into_any_element(),
@@ -330,6 +330,55 @@ impl App {
             Block::Notice(t) => div().w_full().flex().justify_center().text_sm().text_color(p.muted).child(t.clone()).into_any_element(),
             Block::Error(t) => div().px_3().py_2().rounded(p.inner).border_1().border_color(p.danger).text_color(p.danger).child(t.clone()).into_any_element(),
         }
+    }
+
+    /// Settings as a window over the app: the rest is dimmed, the window is centred, a click outside or Escape closes it.
+    fn settings_view(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.settings_open {
+            return None;
+        }
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        self.tab_buttons = true;
+        let body = self.settings_body(cx);
+        let close = self.button("settings-close", if rtl { "إغلاق" } else { "Close" }, Kind::Ghost, cx, |a, w, cx| a.close_settings(w, cx));
+        self.tab_buttons = false;
+        let shadow = BoxShadow { color: hsla(0., 0., 0., 0.4), offset: point(px(0.), px(14.)), blur_radius: px(44.), spread_radius: px(0.), inset: false };
+        Some(
+            div()
+                .id("settings-scrim")
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .flex()
+                .justify_center()
+                .items_center()
+                .p_4()
+                .bg(hsla(0., 0., 0., scrim_alpha(p.dark)))
+                .on_mouse_down(MouseButton::Left, cx.listener(|a, _, w, cx| a.close_settings(w, cx)))
+                .child(
+                    div()
+                        .id("settings-window")
+                        .role(Role::Dialog)
+                        .aria_label(if rtl { "الإعدادات" } else { "Settings" })
+                        .track_focus(&self.settings_focus)
+                        .w(px(SETTINGS_WIDTH))
+                        .max_w_full()
+                        .max_h(relative(0.9))
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .p_3()
+                        .panel(&p, true)
+                        .shadow(vec![shadow])
+                        // clicks inside must not reach the dimmed area behind and close the window
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_2().child(div().flex_1().text_color(p.text).child(if rtl { "الإعدادات" } else { "Settings" })).child(div().text_xs().text_color(p.muted).child(if rtl { "Esc للإغلاق" } else { "Esc closes" })).child(close))
+                        .child(div().id("settings-body").flex_1().overflow_y_scroll().flex().flex_col().gap_2().child(body)),
+                )
+                .into_any_element(),
+        )
     }
 
     /// The command palette over everything else: a box to type in and the rows that match.
@@ -572,15 +621,16 @@ impl App {
         let composer = div().flex().when(rtl, |d| d.flex_row_reverse()).items_end().gap_2().p_2().panel(&p, false)
             .child(div().flex_1().child(Textarea::new(&self.composer).aria_label("Message")))
             .child(action);
-        // the conversation reads in one column about 640 px wide, in the middle
-        let column = div().flex().flex_col().gap_4().w_full().max_w(px(COLUMN_WIDTH))
+        // the conversation reads in one column in the middle; the person chooses how wide
+        let width = self.layout().column.max_px();
+        let column = div().flex().flex_col().gap_4().w_full().when_some(width, |d, w| d.max_w(px(w)))
             .when(empty, |d| d.child(div().flex().justify_center().text_color(p.muted).child(if rtl { "ابدأ بكتابة رسالة." } else { "Write a message to begin." })))
             .children(blocks);
         let scroll = div().id("chat-scroll").role(Role::Log).aria_label("Conversation").flex_1().overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().items_center().p_3().child(column);
         // on glass the conversation sits on a panel of its own, so text never lands straight on the sky
         let pane = div().flex().flex_col().flex_1().overflow_hidden().when(p.glass.is_some(), |d| d.panel(&p, self.focus == Focus::Chat)).child(scroll);
         // questions and the message box stay in view under the conversation, in the same column
-        let beneath = div().flex().flex_col().items_center().px_3().child(div().flex().flex_col().gap_2().w_full().max_w(px(COLUMN_WIDTH)).children(stack).child(composer));
+        let beneath = div().flex().flex_col().items_center().px_3().child(div().flex().flex_col().gap_2().w_full().when_some(width, |d, w| d.max_w(px(w))).children(stack).child(composer));
         div().flex().flex_col().flex_1().h_full().gap_2().overflow_hidden()
             .on_mouse_down(MouseButton::Left, cx.listener(|a, _, _, cx| a.focus_on(Focus::Chat, cx)))
             .child(pane)
@@ -625,7 +675,7 @@ impl Render for App {
             }))
             .on_action(cx.listener(|a, _: &ShowDepartments, _, cx| a.open_panel(Panel::Departments, cx)))
             .on_action(cx.listener(|a, _: &ShowMemory, _, cx| a.open_panel(Panel::Memory, cx)))
-            .on_action(cx.listener(|a, _: &ShowSettings, _, cx| a.open_panel(Panel::Settings, cx)))
+            .on_action(cx.listener(|a, _: &ShowSettings, w, cx| a.toggle_settings(w, cx)))
             .on_action(cx.listener(|a, _: &ShowContent, _, cx| a.open_panel(Panel::Content, cx)))
             .on_action(cx.listener(|a, _: &ShowTree, _, cx| a.open_panel(Panel::Tree, cx)))
             .on_action(cx.listener(|a, _: &ToggleExpand, _, cx| {
@@ -633,10 +683,7 @@ impl Render for App {
                 a.persist();
                 cx.notify();
             }))
-            .on_action(cx.listener(|a, _: &NextTheme, w, cx| {
-                let n = (a.active_theme + 1) % a.themes.themes.len();
-                a.set_theme(n, w, cx);
-            }))
+            .on_action(cx.listener(|a, _: &ToggleMode, w, cx| a.toggle_mode(w, cx)))
             .on_action(cx.listener(|a, _: &CycleDirection, _, cx| {
                 let n = a.prefs.direction.next();
                 a.set_direction(n);
@@ -668,15 +715,14 @@ impl Render for App {
                 }
             }))
             .on_action(cx.listener(|a, _: &Dismiss, w, cx| {
-                // Escape closes whatever is open on top: the palette, a menu, then the question about continuing a chat
-                if a.palette.is_some() {
-                    a.close_palette(w, cx);
-                } else if a.model_menu {
-                    a.model_menu = false;
-                } else if a.pending.is_some() {
-                    a.pending = None;
-                } else if a.confirm_delete.is_some() {
-                    a.confirm_delete = None;
+                // Escape closes whatever is on top: the palette, Settings, a menu, then a question
+                match topmost(a.palette.is_some(), a.settings_open, a.model_menu, a.pending.is_some(), a.confirm_delete.is_some()) {
+                    Layer::Palette => a.close_palette(w, cx),
+                    Layer::Settings => a.close_settings(w, cx),
+                    Layer::ModelMenu => a.model_menu = false,
+                    Layer::ResumeQuestion => a.pending = None,
+                    Layer::DeleteQuestion => a.confirm_delete = None,
+                    Layer::Nothing => {}
                 }
                 cx.notify();
             }))
@@ -694,12 +740,14 @@ impl Render for App {
             }));
         // the rail, the chat list, the chat under its title bar, and the side panel; right to left mirrors the order
         let main = div().relative().flex().flex_col().flex_1().h_full().overflow_hidden().child(top).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle)).children(menus);
+        let settings = self.settings_view(cx);
         let palette = self.palette_view(cx);
         root.children(p.image_layer())
             .children(p.motes_layer(self.mote_clock))
             .child(
                 div().size_full().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().p_2().overflow_hidden().child(rail).children(left).child(main).children(right),
             )
+            .children(settings)
             .children(palette)
     }
 }

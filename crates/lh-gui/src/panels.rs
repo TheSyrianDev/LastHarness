@@ -51,14 +51,12 @@ impl App {
         let body = match panel {
             Panel::Departments => self.departments_body(cx),
             Panel::Memory => self.memory_body(cx),
-            Panel::Settings => self.settings_body(cx),
             Panel::Content => self.content_body(cx),
             Panel::Tree => self.tree_body(cx),
         };
         // the tabs, then the size controls beneath them
         let tabs: Vec<AnyElement> = DOCK_TABS
             .into_iter()
-            .chain((panel == Panel::Settings).then_some(Panel::Settings))
             .map(|t| self.button(format!("dock-{}", panel_label(t, false)), panel_label(t, rtl), if t == panel { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.show_in_dock(t, cx)))
             .collect();
         let tab_row = div().id("dock-tabs").role(Role::TabList).aria_label(if rtl { "أقسام اللوحة" } else { "Side panel sections" }).flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_1().children(tabs);
@@ -170,18 +168,30 @@ impl App {
         col.into_any_element()
     }
 
-    fn settings_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub fn settings_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
+        let rtl = self.rtl;
         let mut col = div().flex().flex_col().gap_2();
         if let Some(e) = self.panels.settings_error.clone() {
             col = col.child(div().px_2().py_1().rounded(p.inner).border_1().border_color(p.danger).text_color(p.danger).child(e));
         }
         // how the app looks is the app's own setting, so it works even when the core is away
         col = col.child(div().text_sm().text_color(p.muted).child("appearance"));
-        let mut looks = div().flex().flex_wrap().gap_1();
-        for i in 0..self.themes.themes.len() {
-            let label = self.themes.themes[i].label();
-            looks = looks.child(self.button(format!("look-{i}"), label, if i == self.active_theme { Kind::Primary } else { Kind::Normal }, cx, move |a, w, cx| a.set_theme(i, w, cx)));
+        // a look is a family with a light and a dark variant; the mode below picks the variant for all of them
+        let mut looks = div().flex().flex_wrap().items_center().gap_1().child(div().text_sm().text_color(p.muted).child(if rtl { "المظهر" } else { "Look" }));
+        let current = self.family();
+        for f in self.themes.families() {
+            let one_mode = !self.themes.has_both(&f);
+            let (name, label) = (f.clone(), if one_mode { format!("{f} ({})", if rtl { "نمط واحد" } else { "one mode only" }) } else { f.clone() });
+            looks = looks.child(self.button(format!("look-{f}"), label, if f == current { Kind::Primary } else { Kind::Normal }, cx, move |a, w, cx| a.set_family(&name, w, cx)));
+        }
+        let mut modes = div().flex().flex_wrap().items_center().gap_1().child(div().text_sm().text_color(p.muted).child(if rtl { "النمط" } else { "Mode" }));
+        for m in lh_gui::appearance::ModeChoice::ALL {
+            if m == lh_gui::appearance::ModeChoice::System && self.system_dark.is_none() && lh_gui::appearance::system_dark().is_none() {
+                continue;
+            }
+            let on = self.prefs.mode == m;
+            modes = modes.child(self.button(format!("mode-{m:?}"), m.label(rtl), if on { Kind::Primary } else { Kind::Normal }, cx, move |a, w, cx| a.set_appearance(m, w, cx)));
         }
         let dir = match self.prefs.direction {
             lh_gui::rtl::Direction::Auto => "Direction: follow the desktop language",
@@ -205,10 +215,21 @@ impl App {
             a.persist();
             cx.notify();
         });
+        let mut widths = div().flex().flex_wrap().items_center().gap_1().child(div().text_sm().text_color(p.muted).child(if rtl { "عرض المحادثة" } else { "Chat width" }));
+        for c in lh_gui::layout::ColumnWidth::ALL {
+            let on = self.layout().column == c;
+            widths = widths.child(self.button(format!("column-{c:?}"), c.label(rtl), if on { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| {
+                a.layout_mut().column = c;
+                a.persist();
+                cx.notify();
+            }));
+        }
         col = col.child(
             div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
                 .id("appearance").role(Role::Group).aria_label("Appearance")
                 .child(looks)
+                .child(modes)
+                .child(widths)
                 .child(div().flex().flex_wrap().gap_1().child(dir_btn).child(narrower).child(wider))
                 .child(div().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))
                 .children(self.themes.problems.iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Theme file problem: {e}")))),

@@ -571,6 +571,35 @@ impl ThemeSet {
         *self = ThemeSet::load(&self.dir.clone());
     }
 
+    /// The families of looks, once each, in the order they first appear: "Calm", "Matte", "Glass", "Frutiger Aero",
+    /// then the person's own.
+    pub fn families(&self) -> Vec<String> {
+        let mut v: Vec<String> = vec![];
+        for t in &self.themes {
+            if !v.contains(&t.name) {
+                v.push(t.name.clone());
+            }
+        }
+        v
+    }
+
+    /// The look of a family in the wanted mode. A family with only one mode (a theme file the person wrote for
+    /// one) gives that one for both, so the switch leaves it as it is. `None` for a family that does not exist.
+    pub fn variant(&self, family: &str, dark: bool) -> Option<usize> {
+        let want = if dark { Mode::Dark } else { Mode::Light };
+        self.themes.iter().position(|t| t.name == family && t.mode == want).or_else(|| self.themes.iter().position(|t| t.name == family))
+    }
+
+    /// Does the family have both a light and a dark look?
+    pub fn has_both(&self, family: &str) -> bool {
+        [Mode::Light, Mode::Dark].iter().all(|m| self.themes.iter().any(|t| t.name == family && t.mode == *m))
+    }
+
+    /// The look to use for a saved family and mode; a family that is gone (a deleted file) gives the first look.
+    pub fn resolve(&self, family: &str, dark: bool) -> usize {
+        self.variant(family, dark).unwrap_or_else(|| self.variant(&self.themes[0].name, dark).unwrap_or(0))
+    }
+
     /// Where a saved theme label sits in the list; a label that is gone (a deleted file) gives the first look.
     pub fn index_of(&self, label: &str) -> usize {
         self.themes.iter().position(|t| t.label() == label).unwrap_or(0)
@@ -632,6 +661,40 @@ mod tests {
                 assert!(t.iter().any(|x| x.label() == format!("{name} {mode}")), "{name} {mode}");
             }
         }
+    }
+
+    #[test]
+    fn four_families_each_with_both_modes_and_the_mode_picks_the_variant() {
+        let set = ThemeSet::load(Path::new("/no/such/folder"));
+        assert_eq!(set.families(), ["Calm", "Matte", "Glass", "Frutiger Aero"]);
+        for f in set.families() {
+            assert!(set.has_both(&f), "{f}");
+            let (l, d) = (set.variant(&f, false).unwrap(), set.variant(&f, true).unwrap());
+            assert_eq!((set.themes[l].mode, set.themes[d].mode), (Mode::Light, Mode::Dark), "{f}");
+            assert_eq!((set.themes[l].name.as_str(), set.themes[d].name.as_str()), (f.as_str(), f.as_str()));
+        }
+        assert_eq!(set.themes[set.resolve("Glass", true)].label(), "Glass dark");
+        assert_eq!(set.themes[set.resolve("Nonesuch", false)].label(), "Calm light", "a family that is gone gives the first look");
+        assert_eq!(set.themes[set.resolve("Nonesuch", true)].label(), "Calm dark", "in the mode asked for");
+    }
+
+    #[test]
+    fn a_theme_with_one_mode_stays_as_it_is_when_the_mode_switches() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-onemode-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mine.toml"), "name = \"Mine\"\nmode = \"dark\"\n[colors]\naccent = \"#ff0066\"\n").unwrap();
+        let set = ThemeSet::load(&dir);
+        assert_eq!(set.families().last().unwrap(), "Mine");
+        assert!(!set.has_both("Mine"));
+        let (l, d) = (set.resolve("Mine", false), set.resolve("Mine", true));
+        assert_eq!(l, d, "light asked for, dark is all there is, so it stays");
+        assert_eq!(set.themes[l].label(), "Mine dark");
+        // adding the other mode later (live reload) makes the switch work for it
+        std::fs::write(dir.join("mine-light.toml"), "name = \"Mine\"\nmode = \"light\"\n").unwrap();
+        let set = ThemeSet::load(&dir);
+        assert!(set.has_both("Mine"));
+        assert_eq!(set.themes[set.resolve("Mine", false)].label(), "Mine light");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

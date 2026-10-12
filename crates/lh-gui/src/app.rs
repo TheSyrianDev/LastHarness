@@ -91,6 +91,8 @@ pub struct App {
     pub composer: Entity<TextareaState>,
     pub themes: ThemeSet,
     pub active_theme: usize,
+    /// What the desktop last said about dark or light, when it says.
+    pub system_dark: Option<bool>,
     pub prefs: Prefs,
     pub window_radius: Option<f32>,
     pub pal: Pal,
@@ -132,6 +134,12 @@ pub struct App {
     /// The chat list and the side panel sliding open and shut.
     pub left_reveal: lh_gui::motion::Reveal,
     pub right_reveal: lh_gui::motion::Reveal,
+    /// The Settings window, while it is up, and where keyboard focus lives inside it.
+    pub settings_open: bool,
+    pub settings_focus: FocusHandle,
+    /// While the Settings window is drawn its buttons can take keyboard focus (elsewhere they would steal it from
+    /// the message box when clicked).
+    pub tab_buttons: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -165,7 +173,8 @@ impl App {
     pub fn new(cfg: Config, window: &mut Window, cx: &mut Context<Self>) -> App {
         let prefs = Prefs::load(&cfg.prefs);
         let themes = ThemeSet::load(&cfg.themes);
-        let active_theme = themes.index_of(&prefs.theme);
+        let system_dark = lh_gui::appearance::system_dark();
+        let active_theme = themes.resolve(&prefs.theme, lh_gui::appearance::is_dark(prefs.mode, system_dark));
         let window_radius = theme::window_radius();
         let pal = Pal::from(&themes.themes[active_theme], window_radius, lh_gui::config::reduce_motion());
         apply_component_theme(&pal, cx);
@@ -190,9 +199,8 @@ impl App {
                 tick += 1;
                 let alive = this.update(cx, |app, cx| {
                     if app.themes.changed() {
-                        let label = app.themes.themes[app.active_theme].label();
                         app.themes.reload();
-                        app.active_theme = app.themes.index_of(&label);
+                        app.active_theme = app.themes.resolve(&app.prefs.theme, app.dark());
                         app.refresh_pal(cx);
                         cx.notify();
                     }
@@ -204,6 +212,28 @@ impl App {
                 if alive.is_err() {
                     break;
                 }
+            }
+        })
+        .detach();
+
+        // "follow the system": look at the desktop's setting every 3 s while that is chosen, off the screen's thread
+        cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| loop {
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            let follows = this.update(cx, |app, _| app.prefs.mode == lh_gui::appearance::ModeChoice::System);
+            match follows {
+                Err(_) => break,
+                Ok(false) => continue,
+                Ok(true) => {}
+            }
+            let now = cx.background_executor().spawn(async { lh_gui::appearance::system_dark() }).await;
+            let alive = this.update_in(cx, |app, window, cx| {
+                if app.system_dark != now {
+                    app.system_dark = now;
+                    app.reapply_look(window, cx);
+                }
+            });
+            if alive.is_err() {
+                break;
             }
         })
         .detach();
@@ -248,6 +278,14 @@ impl App {
             _ => {}
         })
         .detach();
+        // the Settings window keeps focus to itself: if it leaves (Tab past the last button), it is brought back
+        let settings_focus = cx.focus_handle();
+        cx.on_focus_out(&settings_focus, window, |this: &mut App, _, window, cx| {
+            if this.settings_open && !this.settings_focus.contains_focused(window, cx) {
+                this.settings_focus.focus(window, cx);
+            }
+        })
+        .detach();
         let locale = rtl::desktop_locale();
         let is_rtl = prefs.direction.is_rtl(&locale);
         let mut chats = Chats::default();
@@ -264,6 +302,7 @@ impl App {
             composer,
             themes,
             active_theme,
+            system_dark,
             prefs,
             window_radius,
             pal,
@@ -294,6 +333,9 @@ impl App {
             palette_input,
             left_reveal: Default::default(),
             right_reveal: Default::default(),
+            settings_open: false,
+            settings_focus,
+            tab_buttons: false,
         }
     }
 
@@ -302,7 +344,6 @@ impl App {
     }
 
     pub fn persist(&mut self) {
-        self.prefs.theme = self.themes.themes[self.active_theme].label();
         if let Some(c) = self.chats.current() {
             if !c.model.is_empty() {
                 self.prefs.model = c.model.clone();
@@ -324,16 +365,48 @@ impl App {
         apply_component_theme(&self.pal, cx);
     }
 
-    /// Switch the look. The window itself must be transparent when the look lets the desktop show through.
-    pub fn set_theme(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if idx >= self.themes.themes.len() {
-            return;
-        }
-        self.active_theme = idx;
+    /// Is the dark variant of the looks in use?
+    pub fn dark(&self) -> bool {
+        lh_gui::appearance::is_dark(self.prefs.mode, self.system_dark)
+    }
+
+    /// The family of looks in use ("Calm"), whatever mode it is showing in.
+    pub fn family(&self) -> String {
+        self.themes.themes[self.active_theme].name.clone()
+    }
+
+    /// Pick the look for the saved family and mode and show it. The window itself must be transparent when the look
+    /// lets the desktop show through.
+    pub fn reapply_look(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.active_theme = self.themes.resolve(&self.prefs.theme, self.dark());
         self.refresh_pal(cx);
         self.apply_window(window);
         self.persist();
         cx.notify();
+    }
+
+    /// Choose a family of looks (Calm, Matte, Glass, Frutiger Aero, or one of the person's own).
+    pub fn set_family(&mut self, family: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.themes.families().iter().any(|f| f == family) {
+            self.prefs.theme = family.to_string();
+            self.reapply_look(window, cx);
+        }
+    }
+
+    /// Light, dark, or follow the desktop.
+    pub fn set_appearance(&mut self, mode: lh_gui::appearance::ModeChoice, window: &mut Window, cx: &mut Context<Self>) {
+        if mode == lh_gui::appearance::ModeChoice::System {
+            self.system_dark = lh_gui::appearance::system_dark();
+        }
+        self.prefs.mode = mode;
+        self.reapply_look(window, cx);
+    }
+
+    /// The light/dark key.
+    pub fn toggle_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.system_dark = lh_gui::appearance::system_dark();
+        let next = lh_gui::appearance::toggled(self.prefs.mode, self.system_dark);
+        self.set_appearance(next, window, cx);
     }
 
     pub fn apply_window(&self, window: &mut Window) {
@@ -517,6 +590,7 @@ impl App {
         self.page() == &Page::Chat
             && self.chats.current().is_some_and(|c| !c.asks.is_empty())
             && self.palette.is_none()
+            && !self.settings_open
             && self.composer.read(cx).value().is_empty()
             && self.tree.prompt != lh_gui::treeview::Prompt::Label
     }
@@ -843,6 +917,37 @@ impl App {
         cx.notify();
     }
 
+    // ---- the settings window ------------------------------------------------------------------
+
+    /// Show Settings as a window over the app. Opening it puts the palette away; focus goes inside it.
+    pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.palette = None;
+        self.model_menu = false;
+        self.settings_open = true;
+        if self.connected {
+            self.load_panels();
+        }
+        self.settings_focus.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Put Settings away and give focus back to the message box.
+    pub fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.settings_open {
+            self.settings_open = false;
+            self.composer.update(cx, |s, cx| s.focus(window, cx));
+            cx.notify();
+        }
+    }
+
+    pub fn toggle_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.settings_open {
+            self.close_settings(window, cx);
+        } else {
+            self.open_settings(window, cx);
+        }
+    }
+
     // ---- the command palette ------------------------------------------------------------------
 
     /// Everything the palette lists, from what the app knows now.
@@ -853,8 +958,11 @@ impl App {
             current_chat: self.chats.current().map(|c| c.key),
             models: self.models.names().to_vec(),
             current_model: self.chats.current().map(|c| c.model.clone()).unwrap_or_default(),
-            looks: self.themes.themes.iter().map(|t| t.label()).collect(),
-            current_look: self.active_theme,
+            looks: self.themes.families(),
+            current_look: self.themes.families().iter().position(|f| *f == self.family()).unwrap_or(0),
+            mode: self.prefs.mode,
+            dark: self.dark(),
+            system_available: self.system_dark.is_some() || lh_gui::appearance::system_dark().is_some(),
             direction: self.prefs.direction,
         }
     }
@@ -872,6 +980,7 @@ impl App {
             return self.close_palette(window, cx);
         }
         self.palette = Some(Default::default());
+        self.settings_open = false;
         self.model_menu = false;
         self.palette_input.update(cx, |s, cx| {
             s.set_value("", window, cx);
@@ -908,7 +1017,7 @@ impl App {
         self.close_palette(window, cx);
         match command {
             Command::NewChat => self.new_chat(cx),
-            Command::Settings => self.show_in_dock(Panel::Settings, cx),
+            Command::Settings => self.open_settings(window, cx),
             Command::ToggleChatList => {
                 self.layout_mut().toggle_left();
                 self.persist();
@@ -916,7 +1025,13 @@ impl App {
             Command::OpenTab(p) => self.show_in_dock(p, cx),
             Command::SwitchChat(k) => self.select_chat(k, cx),
             Command::Model(m) => self.choose_model(&m, cx),
-            Command::Look(i) => self.set_theme(i, window, cx),
+            Command::Look(i) => {
+                if let Some(f) = self.themes.families().get(i).cloned() {
+                    self.set_family(&f, window, cx);
+                }
+            }
+            Command::Mode(m) => self.set_appearance(m, window, cx),
+            Command::ToggleMode => self.toggle_mode(window, cx),
             Command::Direction(d) => self.set_direction(d),
         }
         cx.notify();
