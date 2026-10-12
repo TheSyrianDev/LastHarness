@@ -146,6 +146,13 @@ The user approved a calmer window (mock: "LastHarness Redesign"). It is built in
 - Nothing is added to the system prompt. The Y and N answer keys are off while the palette is open.
 - Tests: `palette.rs` (everything reachable, current marks, ranking, Arabic, wrap-around, the visible stretch).
 
+**Slice d: the side panel and the motion rules.**
+- The side panel's header has the tabs (Opened, Departments, Memory, Tree) and under them three controls: Widen (normal, then wide at 560 px, then as wide as the window allows, then back), Pop out (for the Opened tab, in a window of its own) and Hide. The old minus, plus and Larger buttons are gone. The chat list's width is still set in Settings.
+- One rule for motion, in `motion.rs`: ease out (the curve `cubic-bezier(.22, 1, .36, 1)`), 140 ms for hover and press, 220 ms for the side panel and the chat list opening and closing. A panel slides rather than squeezing its text, and a window resize while it is open does not slide. A look with animation set to 0, and reduced motion (`LASTHARNESS_REDUCE_MOTION`, the desktop setting), turn all of it off: everything appears at once.
+- A pressed button darkens at once. The mock also shrinks a pressed button to 0.97; GPUI cannot scale a box, so this is not done (parked).
+- "Open in panel" now shows under an answer that is over 400 characters, or holds a code block or a table whatever its length (a recommended default, not yet confirmed by the user).
+- Tests: `motion.rs` (numbers, curve, opening, closing, turning back mid-way, instant without animation, no slide on resize), `Layout::cycle_width`, `Content::worth_opening`.
+
 ## What is not done
 
 See `.grill/parked.md`, section Milestone 8 (build session). Main points: agent-opened content is only opened by a button (the core has no "show this" tool yet, so nothing opens by itself); no web pages in the app (Servo waits); saving the model's KV cache per chat is parked, with measurements in `spikes/kv-cache/RESULT.md`; Orca was not run; drawing the app's own window frame for matching roundness on desktops that do not report a radius; showing the cost of a cloud resume (the core has no price list yet, so the warning gives tokens only); Windows, macOS and mobile are later milestones.

@@ -84,6 +84,24 @@ impl Layout {
         }
     }
 
+    /// The wide size the side panel takes between its normal width and the whole window.
+    pub const RIGHT_WIDE: f32 = 560.;
+
+    /// The Widen button: normal, then wide, then as wide as the window allows, then back to normal.
+    pub fn cycle_width(&mut self) {
+        if !self.right_visible {
+            return;
+        }
+        if self.right_expanded {
+            self.right_expanded = false;
+            self.right_width = 380.;
+        } else if self.right_width < Self::RIGHT_WIDE - 1. {
+            self.right_width = Self::RIGHT_WIDE;
+        } else {
+            self.right_expanded = true;
+        }
+    }
+
     pub fn resize_left(&mut self, w: f32) {
         self.left_width = w.clamp(LEFT_MIN, LEFT_MAX);
     }
@@ -176,6 +194,20 @@ mod tests {
         l.resize_right(500.);
         assert!(!l.right_expanded);
         assert_eq!(l.right_width, 500.);
+    }
+
+    #[test]
+    fn widen_goes_normal_wide_whole_window_and_back() {
+        let mut l = Layout::default();
+        l.cycle_width();
+        assert_eq!(l.right_width, 380., "nothing shown, nothing changes");
+        l.show_panel(Panel::Content);
+        l.cycle_width();
+        assert!(!l.right_expanded && l.right_width == Layout::RIGHT_WIDE);
+        l.cycle_width();
+        assert!(l.right_expanded);
+        l.cycle_width();
+        assert!(!l.right_expanded && l.right_width == 380.);
     }
 
     #[test]

@@ -34,22 +34,14 @@ impl App {
         let panel = self.layout().panel;
         let expanded = self.layout().right_expanded;
         let title = panel_label(panel, rtl);
-        let expand = self.button("panel-expand", if expanded { "Smaller" } else { "Larger" }, Kind::Ghost, cx, |a, _, cx| {
-            a.layout_mut().toggle_expand();
+        let widen = self.button("panel-widen", if expanded { if rtl { "تضييق" } else { "Narrow" } } else if rtl { "توسيع" } else { "Widen" }, Kind::Ghost, cx, |a, _, cx| {
+            a.layout_mut().cycle_width();
             a.persist();
             cx.notify();
         });
-        let narrower = self.button("panel-narrower", "−", Kind::Ghost, cx, |a, _, cx| {
-            let w = a.layout().right_width - 60.;
-            a.layout_mut().resize_right(w);
-            a.persist();
-            cx.notify();
-        });
-        let wider = self.button("panel-wider", "+", Kind::Ghost, cx, |a, _, cx| {
-            let w = a.layout().right_width + 60.;
-            a.layout_mut().resize_right(w);
-            a.persist();
-            cx.notify();
+        let popout = (panel == Panel::Content && !self.content.is_empty()).then(|| {
+            let item = self.content[self.content_index.min(self.content.len() - 1)].clone();
+            self.button("panel-popout", if rtl { "فصل في نافذة" } else { "Pop out" }, Kind::Ghost, cx, move |a, _, cx| a.pop_out(item.clone(), cx))
         });
         let hide = self.button("panel-hide", if rtl { "إخفاء" } else { "Hide" }, Kind::Ghost, cx, |a, _, cx| {
             a.layout_mut().hide_right();
@@ -70,11 +62,7 @@ impl App {
             .map(|t| self.button(format!("dock-{}", panel_label(t, false)), panel_label(t, rtl), if t == panel { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.show_in_dock(t, cx)))
             .collect();
         let tab_row = div().id("dock-tabs").role(Role::TabList).aria_label(if rtl { "أقسام اللوحة" } else { "Side panel sections" }).flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_1().children(tabs);
-        let mut controls = div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(div().flex_1());
-        if !expanded {
-            controls = controls.child(narrower).child(wider);
-        }
-        let controls = controls.child(expand).child(hide);
+        let controls = div().id("dock-controls").flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(div().flex_1()).child(widen).children(popout).child(hide);
         div()
             .id("right-panel")
             .role(Role::Group)
@@ -469,7 +457,6 @@ impl App {
             })
         }).collect();
         let item = self.content[cur].clone();
-        let pop = { let it = item.clone(); self.button("content-popout", "Pop out", Kind::Normal, cx, move |a, _, cx| a.pop_out(it.clone(), cx)) };
         let close = self.button("content-close", "Close", Kind::Ghost, cx, move |a, _, cx| {
             a.content.remove(cur);
             a.content_index = a.content_index.saturating_sub(1);
@@ -478,7 +465,7 @@ impl App {
             }
             cx.notify();
         });
-        col = col.child(div().flex().flex_wrap().gap_1().children(tabs)).child(div().flex().gap_2().child(pop).child(close)).child(if item.kind == ContentKind::Html { self.html_card(&item, cur, cx) } else { viewer(&item, "panel", &p) });
+        col = col.child(div().flex().flex_wrap().gap_1().children(tabs)).child(div().flex().gap_2().child(close)).child(if item.kind == ContentKind::Html { self.html_card(&item, cur, cx) } else { viewer(&item, "panel", &p) });
         col.into_any_element()
     }
 

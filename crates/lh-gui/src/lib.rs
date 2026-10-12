@@ -7,6 +7,7 @@ pub mod config;
 pub mod content;
 pub mod layout;
 pub mod model;
+pub mod motion;
 pub mod models;
 pub mod palette;
 pub mod permissions;

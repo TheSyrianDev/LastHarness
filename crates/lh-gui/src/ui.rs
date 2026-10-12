@@ -11,6 +11,7 @@ use lh_gui::chrome::{chevron, RailItem, TitleInfo, RAIL_WIDTH};
 use lh_gui::permissions::may_offer;
 use lh_gui::transcript::{self, work_label, Item, Step, StepKind};
 use lh_gui::layout::{Page, Panel};
+use lh_gui::motion;
 use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::{mix, Look, PanelExt};
@@ -53,6 +54,15 @@ pub enum Kind {
     Primary,
     Danger,
     Ghost,
+}
+
+/// A panel part way open: it shows `shown` pixels of itself and keeps the layout of its full width, so it slides
+/// instead of squeezing its text.
+fn slide(shown: f32, full: f32, child: AnyElement) -> AnyElement {
+    if (shown - full).abs() < 0.5 {
+        return child;
+    }
+    div().w(px(shown)).h_full().flex_none().overflow_hidden().child(child).into_any_element()
 }
 
 /// An icon drawn as lines, so no picture files are needed. `lines` are on a 24 by 24 grid.
@@ -122,19 +132,21 @@ impl App {
             let skin = g.skin(radius, if hovered { over } else { rest });
             let skin = if animate {
                 let g2 = g.clone();
-                skin.with_animation(anim_key, Animation::new(self.pal.anim).with_easing(ease_in_out), move |_, d| g2.skin(radius, Look::mix(from, to, d))).into_any_element()
+                skin.with_animation(anim_key, Animation::new(motion::press(self.pal.anim)).with_easing(motion::ease_out), move |_, d| g2.skin(radius, Look::mix(from, to, d))).into_any_element()
             } else {
                 skin.into_any_element()
             };
             let veil = div().id(SharedString::from(format!("veil-{id}"))).absolute().top_0().left_0().size_full().rounded(radius).group_active(group.clone(), move |s| s.bg(hsla(0.6, 0.6, 0.1, press)));
             return base_el.group(group).child(skin).child(veil).child(label).into_any_element();
         }
-        let el = base_el.bg(if hovered { hover } else { base }).child(label);
+        // pressing darkens the button a little more, answering at once
+        let pressed = mix(hover, p.text, 0.12);
+        let el = base_el.bg(if hovered { hover } else { base }).active(move |s| s.bg(pressed)).child(label);
         if !animate {
             return el.into_any_element();
         }
         let (from, to) = if hovered { (base, hover) } else { (hover, base) };
-        el.with_animation(anim_key, Animation::new(self.pal.anim).with_easing(ease_in_out), move |el, d| el.bg(mix(from, to, d))).into_any_element()
+        el.with_animation(anim_key, Animation::new(motion::press(self.pal.anim)).with_easing(motion::ease_out), move |el, d| el.bg(mix(from, to, d))).into_any_element()
     }
 
     /// The slim column of icons on the side: the chat list and the panels that are not the chat.
@@ -410,7 +422,7 @@ impl App {
         let open_btn = self.button(format!("open-{key}-{i}"), "Open in panel", Kind::Ghost, cx, move |a, _, cx| a.open_content(content.clone(), cx));
         div().id(SharedString::from(format!("a{key}-{i}"))).role(Role::Label).w_full().flex().flex_col().gap_2().text_color(p.text).when(is_rtl, |d| d.text_right())
             .child(TextView::markdown(SharedString::from(format!("md{key}-{i}")), text.to_string()))
-            .when(text.len() > 400, |d| d.child(div().flex().when(is_rtl, |d| d.flex_row_reverse()).child(open_btn)))
+            .when(lh_gui::content::Content::worth_opening(text), |d| d.child(div().flex().when(is_rtl, |d| d.flex_row_reverse()).child(open_btn)))
             .into_any_element()
     }
 
@@ -590,12 +602,19 @@ impl Render for App {
         let rail = self.rail(cx);
         let top = self.top_bar(cx);
         let menus = self.menus(cx);
-        let left = (left_w > 0.).then(|| self.sidebar(left_w, cx));
+        // the chat list and the side panel slide (ease out, 220 ms); with no animation they simply appear
+        let (now, dur) = (std::time::Instant::now(), motion::panel(p.anim));
+        let (left_now, right_now) = (self.left_reveal.width(left_w, now, dur), self.right_reveal.width(right_w, now, dur));
+        if self.left_reveal.animating(now, dur) || self.right_reveal.animating(now, dur) {
+            window.request_animation_frame();
+        }
+        let (left_full, right_full) = (self.left_reveal.full(), self.right_reveal.full());
+        let left = (left_now > 0.).then(|| slide(left_now, left_full, self.sidebar(left_full, cx)));
         let middle = match self.page().clone() {
             Page::Chat => self.chat_view(cx),
             Page::Department(name) => self.department_page(&name, cx),
         };
-        let right = (right_w > 0.).then(|| self.right_panel(right_w, cx));
+        let right = (right_now > 0.).then(|| slide(right_now, right_full, self.right_panel(right_full, cx)));
         let root = p.paint_background(div().size_full().relative().overflow_hidden().text_color(p.text))
             .key_context(if asking { "LastHarness Asking" } else { "LastHarness" })
             .on_action(cx.listener(|a, _: &NewChat, _, cx| a.new_chat(cx)))

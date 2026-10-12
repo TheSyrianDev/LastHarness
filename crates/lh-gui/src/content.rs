@@ -51,6 +51,12 @@ impl Content {
         Content { title: title.to_string(), kind, body, path: None }
     }
 
+    /// Should a reply offer "Open in panel"? Long replies, and any reply that holds a code block or a table
+    /// whatever its length, since those read better larger and apart from the chat.
+    pub fn worth_opening(reply: &str) -> bool {
+        reply.chars().count() > 400 || reply.contains("```") || has_table(reply)
+    }
+
     /// The local file a browser may be asked to open for this page, or nothing. Only a web page that came with a
     /// path the core approved, that is an absolute path to an existing `.html` or `.htm` file; never a web address.
     pub fn browser_target(&self) -> Option<std::path::PathBuf> {
@@ -67,6 +73,19 @@ impl Content {
     }
 }
 
+/// A markdown table: a row of cells followed by the divider row (`|---|---|`, with optional colons).
+fn has_table(text: &str) -> bool {
+    let mut lines = text.lines().map(str::trim);
+    let mut prev = lines.next().unwrap_or("");
+    for line in lines {
+        let divider = line.contains('-') && line.contains('|') && line.chars().all(|c| matches!(c, '|' | '-' | ':' | ' '));
+        if divider && prev.contains('|') {
+            return true;
+        }
+        prev = line;
+    }
+    false
+}
 
 #[cfg(test)]
 mod tests {
@@ -83,6 +102,21 @@ mod tests {
         assert_eq!(c.body, "fn main() {}");
         assert_eq!(Content::detect("t", "intro\n```x\ncode\n```\noutro").kind, ContentKind::Markdown, "text around code is markdown");
         assert_eq!(Content::detect("t", "/no/such/file.png").kind, ContentKind::Text, "an image path that does not exist is just text");
+    }
+
+    #[test]
+    fn a_reply_offers_the_panel_when_it_is_long_or_holds_code_or_a_table() {
+        assert!(!Content::worth_opening("Short and plain."));
+        assert!(!Content::worth_opening("a - b | c"), "a dash and a bar are not a table");
+        assert!(Content::worth_opening(&"word ".repeat(100)), "over 400 characters");
+        assert!(!Content::worth_opening(&"x".repeat(400)), "400 is not over");
+        assert!(Content::worth_opening("Try:\n```rust\nfn main() {}\n```"), "a code block, however short");
+        assert!(Content::worth_opening("| a | b |\n|---|---|\n| 1 | 2 |"), "a table, however short");
+        assert!(Content::worth_opening("Name | Age\n:--- | ---:\nAda | 36"), "a table without outer bars");
+        assert!(Content::worth_opening("intro\n\n| a | b |\n| :-: | --- |\n| 1 | 2 |\n\nafter"), "a table in the middle");
+        assert!(!Content::worth_opening("| only a row |"), "a row with no divider is not a table");
+        assert!(Content::worth_opening(&"ن".repeat(401)), "counted in characters, not bytes");
+        assert!(!Content::worth_opening(&"ن".repeat(300)), "300 Arabic letters are 600 bytes but short");
     }
 
     #[test]

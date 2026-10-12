@@ -129,6 +129,9 @@ pub struct App {
     /// The command palette, while it is open.
     pub palette: Option<lh_gui::palette::Palette>,
     pub palette_input: Entity<InputState>,
+    /// The chat list and the side panel sliding open and shut.
+    pub left_reveal: lh_gui::motion::Reveal,
+    pub right_reveal: lh_gui::motion::Reveal,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -289,6 +292,8 @@ impl App {
             always: Default::default(),
             palette: None,
             palette_input,
+            left_reveal: Default::default(),
+            right_reveal: Default::default(),
         }
     }
 

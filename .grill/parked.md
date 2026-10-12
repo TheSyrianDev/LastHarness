@@ -184,3 +184,6 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **The message box is not the mock's field yet** (mode chips, a round send button). That was not among the four approved items. Recommended: do it with the dock and motion slice if wanted.
 - **The palette searches names, not message text.** Recommended answer, taken: names of chats, models, looks and places only. Searching what was said needs the core's search and a result list; add it later if wanted.
 - **The palette has no "recent" section.** With nothing typed it lists places first, then chats in list order. Recommended: leave until the list is long enough to need it.
+- **Press scale 0.97 is not done.** GPUI draws boxes without a scale transform, so a pressed button darkens instead (140 ms, ease out). Recommended: keep the darkening. Faking the scale by changing padding would shift the text and the neighbours.
+- **The chat list's width has no drag handle;** it is set with the Chat list − and + buttons in Settings. The side panel is Widen / Narrow only. Recommended: add a drag handle if wanted, it is a small change.
+- **"Open in panel" also for code blocks and tables, whatever the length.** Recommended default relayed by the planning session; the user has not confirmed it. Change `Content::worth_opening` in `crates/lh-gui/src/content.rs` to undo it.
