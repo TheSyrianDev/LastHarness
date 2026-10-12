@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><title>JS test</title>
+<style>body{font:16px sans-serif;margin:1.5em;background:#101820;color:#e8f0f8}#log div{font:13px monospace}canvas{border:1px solid #456;border-radius:8px}</style>
+<h2>JavaScript test</h2><div id="status">starting</div><canvas id="c" width="300" height="140"></canvas><div id="log"></div>
+<script>
+const log = m => { const d = document.createElement('div'); d.textContent = m; document.getElementById('log').appendChild(d); };
+const t0 = performance.now();
+log('userAgent: ' + navigator.userAgent.slice(0, 80));
+log('Promise/async: ' + (async () => 1)().constructor.name);
+log('Map/Set/BigInt: ' + new Map([[1,2]]).size + ' ' + new Set([1,1,2]).size + ' ' + (2n ** 64n));
+log('JSON: ' + JSON.stringify({a:[1,2,{b:null}]}));
+log('Intl: ' + new Intl.NumberFormat('ar-EG').format(1234567.89) + '  ' + new Date(0).toLocaleDateString('en-GB', {timeZone:'UTC'}));
+const x = document.getElementById('c').getContext('2d'); let a = 0;
+(function frame(){ x.fillStyle='#101820'; x.fillRect(0,0,300,140); x.fillStyle='#6fa8ff'; x.beginPath(); x.arc(150+80*Math.cos(a),70+40*Math.sin(a),16,0,7); x.fill(); a+=.05; if(a<40) requestAnimationFrame(frame); else document.getElementById('status').textContent='animation finished'; })();
+let n = 0; const iv = setInterval(() => { document.getElementById('status').textContent = 'ticks: ' + (++n); if (n >= 10) clearInterval(iv); }, 100);
+fetch('/data.json').then(r => r.json()).then(j => log('fetch ok: ' + JSON.stringify(j))).catch(e => log('fetch failed: ' + e));
+let s = 0; for (let i = 0; i < 3e6; i++) s += i % 7; log('loop 3e6 sum=' + s + ' in ' + Math.round(performance.now() - t0) + ' ms');
+</script>

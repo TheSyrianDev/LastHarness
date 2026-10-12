@@ -1,0 +1,1 @@
+console.log([3,1,2].sort().map(function(x){return x*2;}).join(','));

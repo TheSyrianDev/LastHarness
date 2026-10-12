@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>js-start</title>
+<style>body{font:18px sans-serif;margin:24px}#out div{margin:4px 0}#box{width:120px;height:40px;background:#1b6ca8;color:#fff;padding:6px}</style>
+<h2>Script test</h2><div id="status">status: before</div><div id="box">box</div><div id="out"></div>
+<script>
+var out = document.getElementById('out');
+function line(t){ var d = document.createElement('div'); d.textContent = t; out.appendChild(d); }
+line('1 script ran');
+document.getElementById('status').textContent = 'status: script changed this';
+document.getElementById('box').style.background = '#c33';
+line('2 sum 1..100 = ' + (function(){var s=0;for(var i=1;i<=100;i++)s+=i;return s;})());
+var n = 0;
+var iv = setInterval(function(){ n++; document.getElementById('status').textContent = 'timer ticks: ' + n; if (n >= 5) { clearInterval(iv); line('3 timer finished after ' + n + ' ticks'); } }, 100);
+setTimeout(function(){ line('4 setTimeout 250 ms fired'); }, 250);
+line('5 end of script');
+</script>

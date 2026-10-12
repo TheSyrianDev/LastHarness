@@ -1,0 +1,1 @@
+setTimeout(function(){ console.log('setTimeout fired'); }, 10); console.log('typeof', typeof setTimeout);

@@ -1,0 +1,1 @@
+class A{ get v(){return 7;} } console.log(new A().v);

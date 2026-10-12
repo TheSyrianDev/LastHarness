@@ -1,0 +1,1 @@
+var p=(async function(){ return 1; })(); console.log(p instanceof Promise);

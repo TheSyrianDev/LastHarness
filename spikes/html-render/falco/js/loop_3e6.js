@@ -1,0 +1,1 @@
+var s=0,a=Date.now(); for (var i=0;i<3000000;i++) s+=i%7; console.log(s, (Date.now()-a)+' ms');

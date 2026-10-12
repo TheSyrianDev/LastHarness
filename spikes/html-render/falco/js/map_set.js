@@ -1,0 +1,1 @@
+console.log(new Map([[1,2]]).size, new Set([1,1,2]).size);

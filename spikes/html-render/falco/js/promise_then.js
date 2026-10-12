@@ -1,0 +1,1 @@
+Promise.resolve(1).then(function(){ console.log('promise callback ran'); }); console.log('scheduled');

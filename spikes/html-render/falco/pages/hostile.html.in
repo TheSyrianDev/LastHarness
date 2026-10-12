@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><title>hostile</title>
+<style>
+body{font:15px sans-serif;margin:16px;background:#fff url("http://127.0.0.1:@PORT@/css-body-bg") no-repeat}
+@import url("http://127.0.0.1:@PORT@/css-import.css");
+.a{background:url("http://127.0.0.1:@PORT@/css-bg-a")}
+@font-face{font-family:X;src:url("http://127.0.0.1:@PORT@/font.ttf")}
+.b{font-family:X, sans-serif}
+</style>
+<link rel="stylesheet" href="http://127.0.0.1:@PORT@/link.css">
+<link rel="stylesheet" href="file:///etc/passwd">
+<link rel="stylesheet" href="http://example.invalid/public.css">
+<h3>Network requests this page makes</h3>
+<p class="a b">css url() and font-face</p>
+<img src="http://127.0.0.1:@PORT@/img.png" width="20" height="20">
+<img src="file:///etc/passwd" width="20" height="20">
+<img src="http://example.invalid/pub.png" width="20" height="20">
+<script src="http://127.0.0.1:@PORT@/script.js"></script>
+<script src="file:///etc/passwd"></script>
+<iframe src="http://127.0.0.1:@PORT@/frame.html" width="200" height="40"></iframe>
+<iframe src="file:///etc/passwd" width="200" height="40"></iframe>
+<div id="log"></div>
+<script>
+var log = document.getElementById('log');
+function say(t){ var d=document.createElement('div'); d.textContent=t; log.appendChild(d); }
+try { var x = new XMLHttpRequest(); x.open('GET','http://127.0.0.1:@PORT@/xhr'); x.onload=function(){ say('xhr loaded '+x.status); }; x.onerror=function(){ say('xhr error'); }; x.send(); say('xhr sent'); } catch(e){ say('xhr threw '+e); }
+try { var y = new XMLHttpRequest(); y.open('GET','file:///etc/passwd'); y.onload=function(){ say('xhr file loaded '+y.responseText.length); }; y.onerror=function(){ say('xhr file error'); }; y.send(); say('xhr file sent'); } catch(e){ say('xhr file threw '+e); }
+try { fetch('http://127.0.0.1:@PORT@/fetch').then(function(r){ say('fetch ok '+r.status); }).catch(function(e){ say('fetch rejected '+e); }); say('fetch sent'); } catch(e){ say('fetch threw '+e); }
+try { fetch('file:///etc/passwd').then(function(r){ return r.text(); }).then(function(t){ say('fetch file ok '+t.length); }).catch(function(e){ say('fetch file rejected '+e); }); } catch(e){ say('fetch file threw '+e); }
+try { fetch('http://example.invalid/pub').then(function(r){ say('fetch public ok'); }).catch(function(e){ say('fetch public rejected '+e); }); } catch(e){ say('fetch public threw '+e); }
+try { var w = new WebSocket('ws://127.0.0.1:@PORT@/ws'); w.onopen=function(){ say('ws open'); }; w.onerror=function(){ say('ws error'); }; w.onclose=function(){ say('ws close'); }; say('ws created'); } catch(e){ say('ws threw '+e); }
+</script>

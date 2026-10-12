@@ -83,3 +83,102 @@ Blitz is a library. The panel would hold one parsed page per opened HTML item, d
 2. Optional add-on: Servo as a helper for pages that need JavaScript, as already recommended; unchanged.
 3. Drop litehtml: no grid, and no Arabic.
 4. Before building it for real: a short second spike that puts a Blitz page into the GPUI panel (scroll, click a link, resize), with a window run only if the user says so for that run.
+
+## Falco (tested 2026-10-12)
+
+Question: could Falco, a from-scratch browser engine in Rust (github.com/poxk/Falco, v1.0.0, commit f0b4028 of 2026-08-11, MIT, about 77,000 lines), replace Blitz as the side-panel page viewer? Same method as above: pages drawn to pixel buffers and PNGs, no window, every run in a sandbox with the network off (`unshare -rn`) except the one test that needs a local listener. Falco was cloned outside this repository, built offline, and driven by a 100-line Rust program (`falco/src/main.rs`) that calls its library the way the app would. Pictures are `out/falco-*.png`. The commands and pages are in `falco/`.
+
+### Short answer
+
+Not usable as the viewer today. It is small and fast, but a page with no script at all draws blank, grid, flex and tables lay out wrongly, Arabic comes out in the wrong direction, its JavaScript fails on ordinary code, the engine fetches things on its own with no way for the app to refuse, and it panics, overflows its stack or hangs on pages that are only mildly unusual. Blitz stays the recommendation.
+
+### Build and size
+
+* The build read no scripts of its own: Falco has no `build.rs`. Its default features include `real-video`, whose crate (`openh264`) downloads a prebuilt Cisco binary at build time; that was turned off (`--no-default-features`).
+* Offline build with `nice 19`: 1 min 34 s. 157 crates, pure Rust, no C or C++ compiler step, no system libraries beyond what the standard library needs. The command-line binary is 7.2 MB stripped with Falco's own release profile (which sets `panic = "abort"`). My test program was 10 MB unstripped.
+* Licences of every crate in that build: MIT, MIT or Apache-2.0, Apache-2.0, BSD-2 or BSD-3, Zlib, ISC, CC0, Unicode-3.0, 0BSD. Nothing copyleft. Falco itself is MIT.
+
+### Using it from Rust
+
+It is a library crate, so the app would add a path or git dependency and call `render_with_base_url(html, css, options, base_url)`, which returns an RGBA canvas (as tall as the page) and the list of paint commands. No FFI, no helper library. Notes for a real use:
+
+* The library does not pull `<style>` blocks out of the page; its command-line tool does, and the caller must do the same (a 15-line helper, copied in the test program).
+* One render is one shot: it parses, runs the page's scripts once, lays out and paints. There is no live document, so no scrolling state, no hit-testing for links, no repaint after a script timer. Repainting the stored paint commands for a scrolled view is possible and cheap (below).
+* It keeps global state (the base address for images), and its document types are `Rc`, so each page needs its own thread or process.
+* It chooses fonts itself: one sans and one mono, from a fixed list of paths (DejaVu, Liberation under `truetype/`, and the Windows and Mac paths). None of them exist on this Arch install, so it fell back to the first `.ttf` it found under `/usr/share/fonts`, which here is a monospace programmer font, and every page came out in monospace. The pictures marked "liberation" use a test-only patch (an environment variable naming the sans font file) in my copy of Falco. There is no CSS font-family lookup, no per-character fallback, and no system font discovery.
+
+### A page with no script draws blank
+
+Falco's own command line did this too: `<div style="background:#0a0;width:100px;height:30px"></div>` gives a white image. The same page with `<script>var a=1;</script>` added draws correctly (`out/falco-blank-without-script.png` shows the blank one). The path taken when a page has no script loses the document. Every number and picture below was made with a harmless script appended (`HR_FORCE_SCRIPT=1`); without it, five of my eight pages came out empty.
+
+### Quality, page by page (with that workaround)
+
+| Page | Result |
+|---|---|
+| `article.html` | Text, heading sizes, quote bar and gradient box draw, but there is no body margin, long paragraphs do not wrap (they run off the right edge), the table is drawn as one cell per row, and the gradient box has a solid black bar under it where its shadow should be. |
+| `layout.html` (grid and flex) | Grid is not applied: all five cards are stacked in one column, each with a doubled inner box. The flex row shows three boxes with only one label, overlapping. The tag pills have no text. Links are broken across lines. |
+| shadows and gradients | Linear gradients, rounded corners and opacity draw. Box shadows draw as hard blocks or halos in the wrong place, the inset shadow and the repeating gradient do not draw, rotate and clip-path are ignored. |
+| `arabic.html` | With the default monospace font no Arabic letter is drawn at all (blank gaps). With an Arabic font (Noto Naskh, via the test patch) the letters are shaped and joined correctly (it uses HarfBuzz through `rustybuzz`), but the paragraphs stay left-aligned and the order is left to right: no right-to-left layout, no mirrored table, list bullets missing. English words in an Arabic font show as empty boxes because there is no fallback. |
+| `index.html` (the user's cut-off file) | Blank, as it should be. |
+
+### JavaScript
+
+Run through `falco --js-run`, one feature per file (`falco/js/`): arrow functions, template strings, classes, `const` and `let`, destructuring, spread, optional chaining, `Symbol`, JSON and regular expressions work. These failed: `Map` and `Set` are not defined, `Promise.prototype.then` is missing, generators fail, `[3,1,2].sort().map(...)` fails, `Date.prototype.toISOString` fails, an `async function` does not return a Promise, `2n ** 64n` gives `undefined`, `localStorage`, `fetch`, `XMLHttpRequest` and `WebSocket` are not defined in that mode, there is no `eval`. A 3-million-step loop takes 1.4 s. In page mode my DOM test (change text, change a style, add elements, a timer) died on the first DOM call with "undefined is not a function" and the page stayed as written (`out/falco-js.png`). The README lists 34 web APIs, and says itself that several are stubs.
+
+### Memory and speed (900 x 1000 view, my test program, release build)
+
+| | Falco |
+|---|---|
+| Process memory before any page | 3.8 MB |
+| After parsing and drawing one page | 9 to 14 MB |
+| After 20 repaints | 15 to 24 MB |
+| Render, whole page (parse, style, layout, paint) | 3.5 ms (simple), 10 ms (article), 13 to 15 ms (grid, shadows) |
+| Repaint of the stored commands into a 900 x 1000 buffer | 0.1 to 11 ms |
+
+These are small numbers, but they are for pages that were mostly drawn wrongly.
+
+### Network and file access: the engine fetches by itself
+
+A page that asks for many things was served from a local listener on 127.0.0.1 inside a sandbox with only loopback (`falco/run_hostile.sh`). The listener saw, with no permission asked: `GET /script.js` for a `<script src>`, `GET /xhr` for an XMLHttpRequest, and `GET /img.png` for an `<img>`. The image request carried a made-up Chrome-on-Windows User-Agent; the script and XHR requests said `ureq/2.12.1`. An external script at a public name triggered a DNS lookup (it failed because the sandbox had no network). A `<link>` stylesheet, `@import`, `url()` backgrounds, `@font-face` and iframes were not requested in this run; `fetch` and `WebSocket` could not be tried because the script stops at the first missing object. There is no callback, allow-list or switch in the library for any of this. The only control is a Content-Security-Policy `<meta>` tag read from the page itself, which a hostile page will not include. So the safe way to use Falco would be to run it in a process that has no network (the `--sandbox` option exists but is a seccomp filter written by the project, not tested here), and that also blocks the images the app might want. The test of absolute `file://` addresses was inconclusive: Falco joined the page address and the file address into a broken URL, so nothing local was read.
+
+### Crashes, hangs and size limits (`falco/crash_driver.py`)
+
+Each page was run in a child process with a 20 s limit and a 6 GB memory cap, both through my test program (panics unwind) and through Falco's own binary (`panic = "abort"`). The parent survived every case, which is what a helper process is for.
+
+| Page | Result |
+|---|---|
+| Cut off in the middle of a tag, cut off in the middle of CSS, the user's cut-off `index.html`, bad UTF-8 (test program), 3 MB attribute, upper-case non-ASCII in a `<STYLE>` tag | Drew something and exited normally. (Falco's own command line refuses a file with bad UTF-8.) |
+| 4.7 MB of 70,000 `div` rows, 5.8 MB of 90,000 paragraphs | Panic at `paint/mod.rs:128` (index out of range on a very tall canvas); the abort build is killed by SIGABRT. |
+| 20,000 table rows (340 KB) | Aborted after about 9 s. |
+| 5,000 unclosed `div` elements | Stack overflow, process aborted (test program); the command line survived this one. |
+| 100,000 nested `div` elements | Hung past 20 s. |
+| `while(true){}` in a script, a script that fills memory | Hung past 20 s: there is no script time or memory limit. |
+| A script that recurses forever | Stack overflow, aborted at once. |
+
+A 5 MB page is a case the user asked about: Falco panics on it. Because Falco's own release profile aborts on a panic, an app that links it must either build it with unwinding and catch panics, or, better, run it in a helper process with a timeout and a memory cap, as above.
+
+### Reading the code first
+
+Before building I read the build files and the network code: no `build.rs`, no download step in the default build except the optional `openh264` (off), and the network calls are plain `ureq` calls spread over `lib.rs`, `net/`, `js_tjs.rs` and `web_runtime/` with no shared gate. The README's own status section says the HTML5 spec parser and the security module (SOP, CSP, seccomp, TLS chain) are "structurally complete, not wired into the renderer".
+
+## Blitz and Falco compared
+
+| | Blitz 0.3.0-beta.2 | Falco 1.0.0 |
+|---|---|---|
+| Memory with one page open | 20 to 26 MB whole process (includes the font index) | 9 to 14 MB after render, 15 to 24 MB after repaints |
+| Added binary size | 14 to 18 MB stripped | about 7 MB stripped (command line) |
+| First build | 139 s, 267 crates | 94 s, 157 crates |
+| JavaScript | None, on purpose; scripts are never run or fetched | A home-made engine that fails on `Map`, `then`, generators, most DOM calls; no time limit |
+| CSS | Grid, flex, shadows, gradients and tables drew correctly | Grid, flex and tables wrong; shadows partly wrong; no text wrapping; no margins |
+| Arabic and right-to-left | Correct shaping, direction, mirrored list and table (one bullet fault) | Shaping works with an Arabic font; direction wrong; no fallback font |
+| Network control | Every request goes to a function the app writes; all refused in the test | The engine fetches scripts, XHR and images by itself; no hook; no allow-list |
+| Safety on bad input | Not stress-tested beyond the cut-off file; advised to run on its own thread | Panics on 5 MB pages, stack overflow, hangs on loops and deep nesting; needs a helper process |
+| Blank-page bugs | None found | A page with no script draws blank |
+| Fonts | System fonts through fontconfig | One sans and one mono from a fixed path list; none exist here |
+| Maturity | Beta, actively developed upstream (DioxusLabs) | v1.0.0 from one author, own README lists stubs |
+| Licence | MIT or Apache-2.0 (Stylo and a few crates MPL-2.0) | MIT, all dependencies permissive |
+
+### Recommendation (not a decision)
+
+Keep Blitz as the default page viewer (no script, the app decides every request) and Servo as the optional add-on for pages that need JavaScript. Do not use Falco: it fails the basics (blank pages, wrong layout, no right-to-left, no network control) and its safety limits are weak. If the user still wants to track it, the things that would change this are: pages without scripts drawing, a request callback for the app, a script time limit, and right-to-left layout. Re-check after its next releases; the cost of re-testing is small because the test program and pages are kept in `falco/`.
+

@@ -1,0 +1,1 @@
+var o={a:null}; console.log(o.a?.b ?? 'x');

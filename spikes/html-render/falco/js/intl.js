@@ -1,0 +1,1 @@
+console.log(new Intl.NumberFormat('ar-EG').format(12345));

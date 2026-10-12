@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>js-start</title>
+<style>body{font:18px sans-serif;margin:24px}#out div{margin:4px 0}#box{width:120px;height:40px;background:#1b6ca8;color:#fff;padding:6px}</style>
+<h2>Script test</h2><div id="status">status: before</div><div id="box">box</div><div id="out"></div>
+<script>
+var out = document.getElementById('out');
+function line(t){ var d = document.createElement('div'); d.textContent = t; out.appendChild(d); }
+line('1 script ran');
+document.getElementById('status').textContent = 'status: script changed this';
+document.getElementById('box').style.background = '#c33';
+line('2 sum 1..100 = ' + (function(){var s=0;for(var i=1;i<=100;i++)s+=i;return s;})());
+var n = 0;
+var iv = setInterval(function(){ n++; document.title = 'ticks ' + n; document.getElementById('status').textContent = 'timer ticks: ' + n; if (n >= 5) { clearInterval(iv); line('3 timer finished after ' + n + ' ticks'); } }, 100);
+setTimeout(function(){ line('4 setTimeout 250 ms fired'); }, 250);
+try { var m = new Map([[1,2]]); line('5 Map ok ' + m.size); } catch(e){ line('5 Map failed ' + e); }
+try { line('6 class/arrow/template ok: ' + (class A{ get v(){return 7;} }, (x=>`v${x}`)(7))); } catch(e){ line('6 failed ' + e); }
+try { line('7 async: ' + ((async function(){ return 1; })() instanceof Promise)); } catch(e){ line('7 async failed ' + e); }
+try { line('8 Promise.then scheduled'); Promise.resolve(1).then(function(){ line('9 promise callback ran'); }); } catch(e){ line('8 failed ' + e); }
+try { line('10 querySelectorAll: ' + document.querySelectorAll('div').length); } catch(e){ line('10 failed ' + e); }
+try { line('11 localStorage: ' + (localStorage.setItem('a','b'), localStorage.getItem('a'))); } catch(e){ line('11 localStorage failed ' + e); }
+try { line('12 canvas 2d: ' + (document.createElement('canvas').getContext('2d') ? 'yes' : 'no')); } catch(e){ line('12 canvas failed ' + e); }
+try { line('13 BigInt: ' + (2n ** 64n)); } catch(e){ line('13 BigInt failed ' + e); }
+try { line('14 Intl: ' + new Intl.NumberFormat('ar-EG').format(12345)); } catch(e){ line('14 Intl failed ' + e); }
+try { line('15 performance.now: ' + (typeof performance.now())); } catch(e){ line('15 performance failed ' + e); }
+try { line('16 requestAnimationFrame: ' + typeof requestAnimationFrame); } catch(e){ line('16 failed ' + e); }
+</script>

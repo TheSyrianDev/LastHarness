@@ -1,0 +1,1 @@
+console.log(/(\d+)-(\w+)/.exec('12-ab')[2]);

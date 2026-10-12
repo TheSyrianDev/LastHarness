@@ -1,0 +1,13 @@
+# Throwaway spike harness: draw one page with the Falco engine into a pixel buffer, write a PNG, print numbers.
+# Falco is cloned outside this repository (see ../RESULT.md); this path is where it was cloned for the test.
+[package]
+name = "hr-falco"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+falco = { path = "/home/omar/AI/spikes-src/falco", default-features = false }
+anyhow = "1"
+
+[workspace]

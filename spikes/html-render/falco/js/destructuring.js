@@ -1,0 +1,1 @@
+var {a,b}={a:1,b:2}; var [c,d]=[3,4]; console.log(a+b+c+d);
