@@ -1,0 +1,10 @@
+[package]
+name = "hr-litehtml"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+litehtml = { version = "0.2.6", features = ["pixbuf"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[workspace]
