@@ -9,6 +9,8 @@ pub enum Block {
     Assistant { text: String, reasoning: String },
     Tool { id: String, name: String, arguments: String, result: Option<String> },
     Notice(String),
+    /// The assistant opened something beside the chat; the title lets the chat offer to open it again.
+    Shown(String),
     Error(String),
 }
 
@@ -159,7 +161,7 @@ impl Chat {
                     self.blocks.push(Block::Error(m.clone()));
                 }
             }
-            ServerEvent::Show { title, .. } => self.blocks.push(Block::Notice(format!("Opened \"{title}\" beside the chat."))),
+            ServerEvent::Show { title, .. } => self.blocks.push(Block::Shown(title.clone())),
             ServerEvent::Finish(_) | ServerEvent::Other => {}
         }
     }
@@ -274,7 +276,7 @@ mod tests {
         let mut c = Chat::new(1, "m");
         c.push_user("x");
         c.apply(&ServerEvent::Show { title: "Plan".into(), kind: "markdown".into(), content: "# Plan".into(), path: None });
-        assert_eq!(c.blocks.last(), Some(&Block::Notice("Opened \"Plan\" beside the chat.".into())));
+        assert_eq!(c.blocks.last(), Some(&Block::Shown("Plan".into())));
         assert!(c.busy, "showing something does not end the turn");
     }
 

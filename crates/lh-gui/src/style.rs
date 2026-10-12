@@ -210,7 +210,6 @@ impl PanelExt for $t {
         let Some(g) = &p.glass else { return d.bg(p.surface) };
         let inner = (f32::from(p.radius) - 1.).max(0.);
         let mut d = d
-            .relative()
             .bg(linear_gradient(180., linear_color_stop(g.top, 0.), linear_color_stop(g.bottom, 1.)))
             .border_1()
             .border_color(g.edge)

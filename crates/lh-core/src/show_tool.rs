@@ -26,7 +26,8 @@ fn kind_of_name(name: &str) -> &'static str {
     match ext.as_str() {
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" => "image",
         "md" | "markdown" => "markdown",
-        "rs" | "py" | "js" | "ts" | "c" | "h" | "cpp" | "go" | "java" | "sh" | "toml" | "json" | "yaml" | "yml" | "css" | "html" | "sql" | "lua" | "rb" | "php" => "code",
+        "html" | "htm" => "html",
+        "rs" | "py" | "js" | "ts" | "c" | "h" | "cpp" | "go" | "java" | "sh" | "toml" | "json" | "yaml" | "yml" | "css" | "sql" | "lua" | "rb" | "php" => "code",
         _ => "text",
     }
 }
@@ -37,8 +38,8 @@ pub(crate) fn plan(a: &Value, allow: impl Fn(&Path) -> bool, root: &Path) -> Res
     let title: String = title.chars().take(80).collect();
     let want = a["kind"].as_str().map(str::to_ascii_lowercase);
     if let Some(k) = &want {
-        if !["markdown", "code", "text", "image"].contains(&k.as_str()) {
-            return Err(ToolError::Args("`kind` must be markdown, code, text or image".into()));
+        if !["markdown", "code", "text", "image", "html"].contains(&k.as_str()) {
+            return Err(ToolError::Args("`kind` must be markdown, code, text, image or html".into()));
         }
     }
     match (a["content"].as_str(), a["path"].as_str()) {
@@ -69,7 +70,10 @@ pub(crate) fn plan(a: &Value, allow: impl Fn(&Path) -> bool, root: &Path) -> Res
             }
             let bytes = std::fs::read(&path).map_err(|e| ToolError::Failed(format!("cannot read {p}: {e}")))?;
             let text = String::from_utf8(bytes).map_err(|_| ToolError::Failed(format!("{p} is not text")))?;
-            Ok((kind, format!("{title}\n{text}"), None))
+            // a web page is not run here: the front end offers to open this very file in the person's browser,
+            // so the approved, resolved path travels with the source
+            let page = if kind == "html" { Some(path.canonicalize().map_err(|e| ToolError::Failed(e.to_string()))?) } else { None };
+            Ok((kind, format!("{title}\n{text}"), page))
         }
         _ => Err(ToolError::Args("give `content` (the text) or `path` (a file in the folder)".into())),
     }
@@ -80,7 +84,7 @@ impl ExtraTool for ShowTool {
         ToolDef {
             name: "show".into(),
             description: "Open text, a file or an image beside the chat so the user can read it properly. Give content, or a path inside the folder.".into(),
-            parameters: json!({"type": "object", "properties": {"title": {"type": "string"}, "content": {"type": "string"}, "path": {"type": "string"}, "kind": {"type": "string", "enum": ["markdown", "code", "text", "image"]}}, "required": ["title"]}),
+            parameters: json!({"type": "object", "properties": {"title": {"type": "string"}, "content": {"type": "string"}, "path": {"type": "string"}, "kind": {"type": "string", "enum": ["markdown", "code", "text", "image", "html"]}}, "required": ["title"]}),
         }
     }
     fn risk(&self) -> Risk {
@@ -151,7 +155,25 @@ mod tests {
     }
 
     #[test]
+    fn a_web_page_is_sent_as_source_with_the_approved_path() {
+        let d = std::env::temp_dir().join(format!("lh-show-html-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("index.html"), "<h1>Hi</h1>").unwrap();
+        let inside = |p: &Path| p.starts_with(&d);
+        let (k, body, page) = plan(&json!({"title": "Page", "path": "index.html"}), inside, &d).unwrap();
+        assert_eq!((k.as_str(), body.as_str()), ("html", "Page\n<h1>Hi</h1>"));
+        assert_eq!(page.unwrap(), d.join("index.html").canonicalize().unwrap(), "the front end gets the resolved file");
+        assert!(plan(&json!({"title": "x", "path": "/etc/hostname", "kind": "html"}), inside, &d).unwrap_err().to_string().contains("outside"), "no path outside the folder, whatever the kind");
+        let (k, _, page) = plan(&json!({"title": "Inline", "content": "<p>x</p>", "kind": "html"}), allow_all, &d).unwrap();
+        assert_eq!(k, "html");
+        assert!(page.is_none(), "text with no file has nothing to open in a browser");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn a_file_kind_follows_its_name() {
+        assert_eq!(kind_of_name("a.html"), "html");
+        assert_eq!(kind_of_name("A.HTM"), "html");
         assert_eq!(kind_of_name("a.PNG"), "image");
         assert_eq!(kind_of_name("a.rs"), "code");
         assert_eq!(kind_of_name("README.md"), "markdown");

@@ -12,7 +12,7 @@ ap.add_argument("--seconds", type=float, default=6)
 ap.add_argument("--type", dest="text", default="")
 ap.add_argument("--send", action="store_true")
 ap.add_argument("--wait", type=float, default=0, help="seconds to wait after sending")
-ap.add_argument("--steps", default="", help="semicolon list: key:ctrl+t, type:text, enter, wait:2, shot:name, move:X,Y (pointer, window coordinates), mem")
+ap.add_argument("--steps", default="", help="semicolon list: key:ctrl+t, type:text, enter, wait:2, shot:name, prefs, move:X,Y / click:X,Y (pointer, screenshot pixels), mem")
 ap.add_argument("--page", default="", help="seed one memory page: TITLE|TEXT")
 ap.add_argument("--provider", default="http://localhost:9292/v1")
 ap.add_argument("--port", type=int, default=7851)
@@ -43,6 +43,12 @@ def window():
             if c["pid"] == app.pid: return c
         time.sleep(0.2)
 def shot(w, n): subprocess.run(["grim", "-g", f"{w['at'][0]},{w['at'][1]} {w['size'][0]}x{w['size'][1]}", f"{out}/{a.name}-{n}.png"])
+def px_scale():
+    """Screenshot pixels per compositor unit: the width in the PNG header over the window's reported width."""
+    import struct
+    cur = next(c for c in json.loads(subprocess.check_output(["hyprctl", "clients", "-j"])) if c["pid"] == app.pid)
+    f = f"{out}/{a.name}-start.png"
+    return struct.unpack(">I", open(f, "rb").read(24)[16:20])[0] / cur["size"][0]
 def pss(pid): return round(next(int(l.split()[1]) for l in open(f"/proc/{pid}/smaps_rollup") if l.startswith("Pss:")) / 1024, 1)
 try:
     w = window(); time.sleep(a.seconds); shot(w, "start")
@@ -84,17 +90,23 @@ try:
                 os.makedirs(tmp + "/themes", exist_ok=True); open(f"{tmp}/themes/{fn}", "w").write(body.replace("\\n", "\n"))
             elif step.startswith("move:"):
                 # X,Y are pixels in the screenshots; the compositor works in scaled units
-                mons = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
-                scale = next((m["scale"] for m in mons if m["id"] == w.get("monitor")), 1.0)
+                scale = px_scale()
                 x, y = (int(v) for v in step[5:].split(","))
                 subprocess.run(["hyprctl", "dispatch", f"hl.dsp.cursor.move({{ x = {w['at'][0] + x / scale}, y = {w['at'][1] + y / scale} }})"], capture_output=True); time.sleep(0.6)
                 res.setdefault("cursor", []).append(subprocess.check_output(["hyprctl", "cursorpos"]).decode().strip())
+            elif step.startswith("click:"):
+                # a real left click at X,Y (screenshot pixels): move the pointer, then send the button to the app's window
+                scale = px_scale()
+                x, y = (int(v) for v in step[6:].split(","))
+                subprocess.run(["hyprctl", "dispatch", f"hl.dsp.cursor.move({{ x = {w['at'][0] + x / scale}, y = {w['at'][1] + y / scale} }})"], capture_output=True); time.sleep(0.3)
+                subprocess.run(["hyprctl", "dispatch", f'hl.dsp.send_shortcut({{ mods = "", key = "mouse:272", window = "pid:{app.pid}" }})'], capture_output=True); time.sleep(0.6)
             elif step.startswith("shot:"): shot(w, step[5:])
             elif step.startswith("shotall:"): subprocess.run(["grim", f"{out}/{a.name}-{step[8:]}.png"])
             elif step == "windows": res["windows"] = [c["class"] for c in json.loads(subprocess.check_output(["hyprctl", "clients", "-j"])) if c["pid"] == app.pid]
             elif step == "cpu":
                 f = lambda: (lambda x: (int(x[11]) + int(x[12])) / os.sysconf("SC_CLK_TCK"))(open(f"/proc/{app.pid}/stat").read().rsplit(")", 1)[1].split())
                 c0, t0 = f(), time.time(); time.sleep(10); res.setdefault("cpu_pct_10s", []).append(round(100 * (f() - c0) / (time.time() - t0), 2))
+            elif step == "prefs": res.setdefault("prefs", []).append(open(prefs).read().replace("\n", " ") if os.path.exists(prefs) else "(none)")
             elif step == "mem": res.setdefault("mem", []).append(pss(app.pid))
     res["pss_mb_after"] = pss(app.pid)
     print(json.dumps(res))

@@ -265,6 +265,63 @@ impl App {
         col.into_any_element()
     }
 
+    /// A web page is not run here. The card says so and offers the two honest things to do: open the file in the
+    /// person's own browser, or read its source.
+    fn html_card(&mut self, item: &Content, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let target = item.browser_target();
+        let key = (u64::MAX, index);
+        let source_shown = self.open_blocks.contains(&key);
+        let it = item.clone();
+        let open = target.is_some().then(|| self.button(format!("html-open-{index}"), "Open in your browser", Kind::Primary, cx, move |a, _, cx| a.open_in_browser(&it, cx)));
+        let source = self.button(format!("html-source-{index}"), if source_shown { "Hide source" } else { "View source" }, Kind::Normal, cx, move |a, _, cx| {
+            if !a.open_blocks.remove(&key) {
+                a.open_blocks.insert(key);
+            }
+            cx.notify();
+        });
+        let why = match &target {
+            Some(path) => format!("It is the file {}. LastHarness does not run web pages itself; your own browser opens this one file.", path.display()),
+            None => "LastHarness does not run web pages itself, and this one is not a file on this computer, so there is nothing to open in a browser. You can read its source.".to_string(),
+        };
+        div().flex().flex_col().gap_2()
+            .child(div().flex().flex_col().gap_2().p_3().rounded(p.inner).bg(p.sunken).text_color(p.text).id(SharedString::from(format!("html-card-{index}"))).role(Role::Group).aria_label("This is a web page")
+                .child(div().child("This is a web page"))
+                .child(div().text_sm().text_color(p.muted).child(why))
+                .when_some(self.content_note.clone(), |d, n| d.child(div().text_sm().text_color(p.danger).child(n)))
+                .child(div().flex().flex_wrap().gap_2().children(open).child(source)))
+            .when(source_shown, |d| d.child(code_view(&item.body, &format!("html-{index}"), &item.title, &p)))
+            .into_any_element()
+    }
+
+    /// Ask the desktop to open an approved local web page in the person's browser. Nothing else is ever opened.
+    pub fn open_in_browser(&mut self, item: &Content, cx: &mut Context<Self>) {
+        self.content_note = None;
+        match item.browser_target() {
+            None => self.content_note = Some("This page is not a local file, so it cannot be opened.".into()),
+            Some(path) => match std::process::Command::new("xdg-open").arg(&path).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+                Ok(mut child) => {
+                    // reap it when it ends, without waiting here
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                    });
+                }
+                Err(e) => self.content_note = Some(format!("Could not start the browser (xdg-open): {e}")),
+            },
+        }
+        cx.notify();
+    }
+
+    /// Bring the side panel back on a piece of content that was opened earlier, by its title.
+    pub fn show_content_again(&mut self, title: &str, cx: &mut Context<Self>) {
+        if let Some(i) = self.content.iter().rposition(|c| c.title == title) {
+            self.content_index = i;
+        }
+        self.layout_mut().show_panel(Panel::Content);
+        self.persist();
+        cx.notify();
+    }
+
     fn content_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let mut col = div().flex().flex_col().gap_2();
@@ -289,7 +346,7 @@ impl App {
             }
             cx.notify();
         });
-        col = col.child(div().flex().flex_wrap().gap_1().children(tabs)).child(div().flex().gap_2().child(pop).child(close)).child(viewer(&item, "panel", &p));
+        col = col.child(div().flex().flex_wrap().gap_1().children(tabs)).child(div().flex().gap_2().child(pop).child(close)).child(if item.kind == ContentKind::Html { self.html_card(&item, cur, cx) } else { viewer(&item, "panel", &p) });
         col.into_any_element()
     }
 
@@ -375,15 +432,18 @@ impl App {
     }
 }
 
+fn code_view(body: &str, scope: &str, title: &str, p: &crate::style::Pal) -> AnyElement {
+    let lines: Vec<AnyElement> = body.lines().enumerate().map(|(i, l)| div().flex().gap_3().child(div().w(px(36.)).flex().justify_end().text_color(p.muted).child((i + 1).to_string())).child(div().child(if l.is_empty() { " ".to_string() } else { l.to_string() })).into_any_element()).collect();
+    div().id(SharedString::from(format!("code-{scope}"))).role(Role::Document).aria_label(title.to_string()).p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).font_family("DejaVu Sans Mono").text_sm().overflow_x_scroll().children(lines).into_any_element()
+}
+
 /// The native viewer for a piece of content. Used in the panel and in a pop-out window.
 pub fn viewer(item: &Content, scope: &str, p: &crate::style::Pal) -> AnyElement {
     let rtl = lh_gui::rtl::paragraph_is_rtl(&item.body);
     match item.kind {
         ContentKind::Markdown => div().text_color(p.text).when(rtl, |d| d.text_right()).child(TextView::markdown(SharedString::from(format!("view-{scope}-{}", item.title)), item.body.clone())).into_any_element(),
-        ContentKind::Code => {
-            let lines: Vec<AnyElement> = item.body.lines().enumerate().map(|(i, l)| div().flex().gap_3().child(div().w(px(36.)).flex().justify_end().text_color(p.muted).child((i + 1).to_string())).child(div().child(if l.is_empty() { " ".to_string() } else { l.to_string() })).into_any_element()).collect();
-            div().id(SharedString::from(format!("code-{scope}"))).role(Role::Document).aria_label(item.title.clone()).p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).font_family("DejaVu Sans Mono").text_sm().overflow_x_scroll().children(lines).into_any_element()
-        }
+        ContentKind::Code => code_view(&item.body, scope, &item.title, p),
+        ContentKind::Html => div().flex().flex_col().gap_2().child(div().text_sm().text_color(p.muted).child("Web page source (open the page from the side panel).")).child(code_view(&item.body, scope, &item.title, p)).into_any_element(),
         ContentKind::Image => div().child(img(std::path::PathBuf::from(item.body.clone())).max_w_full().object_fit(ObjectFit::Contain)).into_any_element(),
         ContentKind::Text => div().text_color(p.text).when(rtl, |d| d.text_right()).child(item.body.clone()).into_any_element(),
     }

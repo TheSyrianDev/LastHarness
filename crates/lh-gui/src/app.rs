@@ -117,6 +117,8 @@ pub struct App {
     pub focus: Focus,
     /// Seconds the bubbles have drifted; only moves while the look has bubbles.
     pub mote_clock: f32,
+    /// A problem to show on the opened-content panel, such as a browser that would not start.
+    pub content_note: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -258,6 +260,7 @@ impl App {
             content_index: 0,
             focus: Focus::default(),
             mote_clock: 0.,
+            content_note: None,
         }
     }
 
@@ -294,6 +297,8 @@ impl App {
             return;
         }
         self.active_theme = idx;
+        // choosing from the menu closes it, so the next click on the button opens it again
+        self.theme_menu = false;
         self.refresh_pal(cx);
         self.apply_window(window);
         self.persist();

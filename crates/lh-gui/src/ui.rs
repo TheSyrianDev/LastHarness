@@ -91,7 +91,7 @@ impl App {
                 skin.into_any_element()
             };
             let veil = div().id(SharedString::from(format!("veil-{id}"))).absolute().top_0().left_0().size_full().rounded(radius).group_active(group.clone(), move |s| s.bg(hsla(0.6, 0.6, 0.1, press)));
-            return base_el.relative().group(group).child(skin).child(veil).child(label).into_any_element();
+            return base_el.group(group).child(skin).child(veil).child(label).into_any_element();
         }
         let el = base_el.bg(if hovered { hover } else { base }).child(label);
         if !animate {
@@ -113,6 +113,7 @@ impl App {
             .into_iter()
             .map(|(panel, label)| self.button(format!("tab-{label}"), label, if l.right_visible && l.panel == panel { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.open_panel(panel, cx)))
             .collect();
+        let opened = (!self.content.is_empty()).then(|| self.button("tab-opened", if rtl { "المفتوح" } else { "Opened" }, if l.right_visible && l.panel == Panel::Content { Kind::Primary } else { Kind::Ghost }, cx, |a, _, cx| a.open_panel(Panel::Content, cx)));
         let toggle_left = self.button("toggle-left", if rtl { "المحادثات" } else { "Chats" }, if l.left_visible { Kind::Normal } else { Kind::Ghost }, cx, |a, _, cx| {
             a.layout_mut().toggle_left();
             a.persist();
@@ -151,6 +152,7 @@ impl App {
             .child(div().flex_1().overflow_hidden().text_color(p.text).child(title))
             .when_some(ctx, |d, c| d.child(div().text_sm().text_color(p.muted).child(c)))
             .child(model_btn)
+            .children(opened)
             .children(tabs)
             .child(theme_btn)
             .child(dir_btn)
@@ -282,6 +284,11 @@ impl App {
                     .child(div().flex().items_center().gap_2().child(div().flex_1().child(head)).child(toggle))
                     .when(open, |d| d.child(div().text_color(p.text).child(body)).child(div().flex().child(open_btn)))
                     .into_any_element()
+            }
+            Block::Shown(title) => {
+                let t = title.clone();
+                let again = self.button(format!("shown-{key}-{i}"), if rtl { "عرض مرة أخرى" } else { "Show again" }, Kind::Normal, cx, move |a, _, cx| a.show_content_again(&t, cx));
+                div().w_full().flex().justify_center().items_center().gap_2().text_sm().text_color(p.muted).child(format!("Opened \"{title}\" beside the chat.")).child(again).into_any_element()
             }
             Block::Notice(t) => div().w_full().flex().justify_center().text_sm().text_color(p.muted).child(t.clone()).into_any_element(),
             Block::Error(t) => div().px_3().py_2().rounded(p.inner).border_1().border_color(p.danger).text_color(p.danger).child(t.clone()).into_any_element(),
