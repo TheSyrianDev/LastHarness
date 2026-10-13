@@ -266,7 +266,7 @@ pub fn matches(key: &str, d: &Described, query: &str) -> bool {
 }
 
 /// Words that find the Appearance page in the search box: the controls on it are drawn by the app, not listed by the core.
-pub const APPEARANCE_WORDS: &str = "appearance look theme mode light dark system direction left right language chat width wide column preset slider size chat list";
+pub const APPEARANCE_WORDS: &str = "appearance web page pages html browser inside look theme mode light dark system direction left right language chat width wide column preset slider size chat list";
 
 pub fn appearance_matches(query: &str) -> bool {
     query.split_whitespace().all(|w| APPEARANCE_WORDS.contains(&w.to_lowercase()))
@@ -444,6 +444,7 @@ mod tests {
         assert!(matches("kvcache.max_gb", &d, ""), "nothing typed matches everything");
         assert!(!matches("kvcache.max_gb", &d, "spending"));
         assert!(appearance_matches("dark") && appearance_matches("chat width") && !appearance_matches("sudo") && appearance_matches(""));
+        assert!(appearance_matches("web pages") && appearance_matches("html browser"), "the web page switch is on the Appearance page");
         // the words for permissions find the risky ones
         let hits: Vec<&str> = lh_config::SCHEMA.iter().filter(|s| matches(s.key, &describe(s.key, s.help), "sudo")).map(|s| s.key).collect();
         assert!(hits.contains(&"permissions.sudo"), "{hits:?}");

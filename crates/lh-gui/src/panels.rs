@@ -29,7 +29,7 @@ fn state_mark(s: StepState) -> &'static str {
 }
 
 impl App {
-    pub fn right_panel(&mut self, width: f32, cx: &mut Context<Self>) -> AnyElement {
+    pub fn right_panel(&mut self, width: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
         let panel = self.layout().panel;
@@ -52,7 +52,7 @@ impl App {
         let body = match panel {
             Panel::Departments => self.departments_body(cx),
             Panel::Memory => self.memory_body(cx),
-            Panel::Content => self.content_body(cx),
+            Panel::Content => self.content_body(window, cx),
             Panel::Tree => self.tree_body(cx),
         };
         // the tabs, then the size controls beneath them
@@ -224,11 +224,21 @@ impl App {
             cx.notify();
         });
         let widths = self.width_controls(cx);
+        let pages_switch = gpui_component::switch::Switch::new("pages-inside-switch")
+            .checked(!self.prefs.pages_off)
+            .label(if rtl { "عرض صفحات الويب داخل التطبيق" } else { "Show web pages inside the app" })
+            .on_click(cx.listener(|a, on: &bool, _, cx| {
+                a.prefs.pages_off = !*on;
+                a.persist();
+                cx.notify();
+            }));
+        let pages_note = div().text_xs().text_color(p.muted).child(if rtl { "لا تستطيع أي صفحة تحميل شيء من الإنترنت أو من هذا الحاسوب، ولا تعمل فيها سكربتات. الصفحات الأكبر من 2 ميغابايت تظهر كبطاقة." } else { "No page can load anything from the internet or from this computer, and no scripts run. Pages over 2 MB show as a card instead." });
         div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
                 .id("appearance").role(Role::Group).aria_label("Appearance")
                 .child(modes)
                 .child(looks)
                 .child(widths)
+                .child(div().flex().flex_col().gap_1().child(pages_switch).child(pages_note))
                 .child(div().flex().flex_wrap().gap_1().child(dir_btn).child(narrower).child(wider))
                 .child(div().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))
                 .children(self.themes.problems.iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Theme file problem: {e}"))))
@@ -405,10 +415,13 @@ impl App {
             Some(path) => format!("It is the file {}. LastHarness does not run web pages itself; your own browser opens this one file.", path.display()),
             None => "LastHarness does not run web pages itself, and this one is not a file on this computer, so there is nothing to open in a browser. You can read its source.".to_string(),
         };
+        // when the page could be drawn inside the app but was not, say why in plain words
+        let reason = self.page_reason(item);
         div().flex().flex_col().gap_2()
             .child(div().flex().flex_col().gap_2().p_3().rounded(p.inner).bg(p.sunken).text_color(p.text).id(SharedString::from(format!("html-card-{index}"))).role(Role::Group).aria_label("This is a web page")
                 .child(div().child("This is a web page"))
                 .child(div().text_sm().text_color(p.muted).child(why))
+                .when_some(reason, |d, r| d.child(div().text_sm().text_color(p.text).child(r)))
                 .when_some(self.content_note.clone(), |d, n| d.child(div().text_sm().text_color(p.danger).child(n)))
                 .child(div().flex().flex_wrap().gap_2().children(open).child(source)))
             .when(source_shown, |d| d.child(code_view(&item.body, &format!("html-{index}"), &item.title, &p)))
@@ -569,7 +582,7 @@ impl App {
         col.into_any_element()
     }
 
-    fn content_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn content_body(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let mut col = div().flex().flex_col().gap_2();
         if self.content.is_empty() {
@@ -592,7 +605,7 @@ impl App {
             }
             cx.notify();
         });
-        col = col.child(div().flex().flex_wrap().gap_1().children(tabs)).child(div().flex().gap_2().child(close)).child(if item.kind == ContentKind::Html { self.html_card(&item, cur, cx) } else { viewer(&item, "panel", &p) });
+        col = col.child(div().flex().flex_wrap().gap_1().children(tabs)).child(div().flex().gap_2().child(close)).child(if item.kind == ContentKind::Html { self.page_element(&item, window, cx).unwrap_or_else(|| self.html_card(&item, cur, cx)) } else { viewer(&item, "panel", &p) });
         col.into_any_element()
     }
 

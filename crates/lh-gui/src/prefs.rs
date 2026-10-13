@@ -21,6 +21,8 @@ pub struct Prefs {
     pub model: String,
     /// The page of the Settings window that was open last, by `Category::id`. Empty or unknown means the first.
     pub settings_page: String,
+    /// Web pages are shown as a card with a button for the browser, not drawn inside the app. Off by default.
+    pub pages_off: bool,
 }
 
 pub fn path() -> PathBuf {
@@ -171,6 +173,21 @@ mod tests {
         assert_eq!(Category::from_id(&Prefs::load(&p).settings_page), Category::Spending);
         std::fs::write(&p, "settings_page = \"a page from the future\"\n").unwrap();
         assert_eq!(Category::from_id(&Prefs::load(&p).settings_page), Category::Appearance, "unknown falls back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn showing_web_pages_inside_the_app_is_on_unless_switched_off_and_the_choice_is_kept() {
+        assert!(!Prefs::default().pages_off, "on by default");
+        let dir = std::env::temp_dir().join(format!("lh-gui-prefs-pages-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        assert!(!Prefs::load(&p).pages_off, "no file, on");
+        std::fs::write(&p, "theme = \"Calm\"\n").unwrap();
+        assert!(!Prefs::load(&p).pages_off, "an older file without the key, on");
+        let a = Prefs { pages_off: true, ..Default::default() };
+        a.save(&p).unwrap();
+        assert!(Prefs::load(&p).pages_off, "off is kept");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

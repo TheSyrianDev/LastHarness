@@ -1,0 +1,9 @@
+[package]
+name = "lh-pageview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The app side of the web page viewer: starts the page drawing helper (crates/lh-pageview-engine, which holds Blitz), gives it a page, and gets pictures, links and plain reasons for a fallback back. It holds no engine code itself."
+
+[dependencies]
+url = "2"

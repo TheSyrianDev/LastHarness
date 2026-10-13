@@ -236,3 +236,15 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **Question: a "glass softness" slider in Settings?** Recommended answer: no for now. The values are in the theme file, and the caps keep any file soft. Ask again if the user still finds the look off after trying this one.
 - **The Windows 7 button colours are from memory** (`#f2f2f2` to `#cfcfcf`, edge `#707070`, blue hover) and not verified. If the user sends screenshots of real Windows 7 windows, sample the colours from them.
 
+## Blitz page viewer (build session, 2026-10-13)
+
+- **Size cap: 2 MB of HTML.** Recommended answer, taken: an assistant-written page is a few KB to a few hundred KB; 2 MB leaves room for pages with inline images and costs about 25 MB of memory in the helper. Over it, the card says so in plain words. `Options::max_html_bytes`.
+- **Time limits: 5 s for the first parse and layout, 3 s for anything later.** Recommended answer, taken: normal pages take 30 ms to draw; the limits only catch loops. `Options::load_timeout`, `call_timeout`.
+- **A helper process was built, not just a thread.** A stack overflow cannot be caught inside a process and killed the test run for 3,000 unclosed `div` elements. The helper makes any engine failure a fallback card. Cost: a 23 MB program that must sit beside the app (`crates/lh-pageview-engine/build.sh`).
+- **The engine is its own cargo workspace.** stylo does not compile in the same build as GPUI (see the report). So `cargo build --workspace` does not build the helper. Recommended answer: add `crates/lh-pageview-engine/build.sh` to whatever builds the release, and run `cargo test` there as well. If the helper is missing the app says so on the card.
+- **Question: should a page be able to load files from its own folder?** Today it cannot (only `data:` addresses are served), so a page that links `style.css` or `logo.png` next to it shows without them. Recommended answer: no; the assistant can inline what it needs. If the user wants it, add an allow-list of that one folder to `net.rs` and nothing else.
+- **Links inside the page (`#top`) are ignored.** Recommended answer: scroll to the element later; not important for pages written by an assistant.
+- **Pop-out still shows the source of a web page.** Recommended answer: draw the page there too later; it needs the same state in a second window.
+- **Blitz 0.3.0-beta.3 (2026-10-12) is the next upgrade.** It touches `crates/lh-pageview-engine` only; re-run its tests and the memory numbers.
+- **Not seen in a real window:** selection, forms, animations, the cursor over links, high-density screens, a screen reader reading the page text, the list-bullet side on right-to-left pages. The user will try it.
+

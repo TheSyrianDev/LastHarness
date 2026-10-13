@@ -147,6 +147,8 @@ pub struct App {
     pub tab_buttons: bool,
     /// The chat width slider, number box and presets in Settings.
     pub width: crate::width::WidthControls,
+    /// The web page drawn inside the Opened tab, while it is shown.
+    pub page: Option<crate::page_ui::PageState>,
     /// The page shown in Settings, the box that searches all pages, and keyboard focus for the list of pages.
     pub settings_page: lh_gui::setting_names::Category,
     pub settings_search: Entity<InputState>,
@@ -241,6 +243,20 @@ impl App {
                 if app.system_dark != now {
                     app.system_dark = now;
                     app.reapply_look(window, cx);
+                }
+            });
+            if alive.is_err() {
+                break;
+            }
+        })
+        .detach();
+
+        // a web page in the Opened tab opens once the panel has a size and follows a resize once it stops changing
+        cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| loop {
+            cx.background_executor().timer(Duration::from_millis(120)).await;
+            let alive = this.update_in(cx, |app, window, cx| {
+                if app.page.is_some() {
+                    app.page_poll(window, cx);
                 }
             });
             if alive.is_err() {
@@ -374,6 +390,7 @@ impl App {
             settings_focus,
             tab_buttons: false,
             width: crate::width::WidthControls::new(window, cx, prefs_column, is_rtl),
+            page: None,
             settings_page,
             settings_search,
             settings_nav_focus: cx.focus_handle(),

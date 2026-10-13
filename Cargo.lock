@@ -4046,6 +4046,7 @@ dependencies = [
  "lh-core",
  "lh-learn",
  "lh-memory",
+ "lh-pageview",
  "lh-provider",
  "lh-spend",
  "lh-store",
@@ -4103,6 +4104,13 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "lh-pageview"
+version = "0.0.0"
+dependencies = [
+ "url",
 ]
 
 [[package]]

@@ -704,7 +704,10 @@ impl Render for App {
             Page::Chat => self.chat_view(cx),
             Page::Department(name) => self.department_page(&name, cx),
         };
-        let right = (right_now > 0.).then(|| slide(right_now, right_full, self.right_panel(right_full, cx)));
+        // a web page drawn inside the Opened tab is kept only while that tab is on screen; otherwise its helper ends
+        let showing_page = right_now > 0. && self.layout().panel == Panel::Content && self.content.get(self.content_index.min(self.content.len().saturating_sub(1))).is_some_and(|c| c.kind == lh_gui::content::ContentKind::Html);
+        self.page_release_if_hidden(showing_page, window);
+        let right = (right_now > 0.).then(|| slide(right_now, right_full, self.right_panel(right_full, window, cx)));
         let root = p.paint_background(div().size_full().relative().overflow_hidden().text_color(p.text))
             .key_context(if asking { "LastHarness Asking" } else { "LastHarness" })
             .on_action(cx.listener(|a, _: &NewChat, _, cx| a.new_chat(cx)))

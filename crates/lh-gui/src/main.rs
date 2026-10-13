@@ -1,6 +1,7 @@
 //! The desktop app: a thin front end for the core, drawn with GPUI.
 
 mod app;
+mod page_ui;
 mod panels;
 mod style;
 mod tray;
