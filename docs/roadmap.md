@@ -120,7 +120,7 @@ Throwaway code that answers the questions the design depends on.
 - [ ] Agents can propose new providers and keys; you approve.
 - [ ] MCP client: use MCP servers (for example Higgsfield's) as tools. Adding a server needs approval; its tools go through the permission tiers.
 - [ ] Skills in the open Agent Skills format (contents preview, scripts listed). MCP servers by link (remote) or command (local, exact command shown), tools first. Folder trust pop-up has a button to disable the folder's skills and MCP servers and use your own.
-- [ ] Themes: select custom themes (for example liquid glass, Frutiger Aero) and download community themes. On Omarchy, everything follows the Omarchy theme (template in `~/.config/omarchy/themed/`, hook in `theme-set.d`, translucency), live. Own theme format (colours, opacity, blur, etc.; field list to be written). Blur on Omarchy comes from Hyprland's settings.
+- [ ] Themes: select custom themes (for example liquid glass) and download community themes. On Omarchy, everything follows the Omarchy theme (template in `~/.config/omarchy/themed/`, hook in `theme-set.d`, translucency), live. Own theme format (colours, opacity, blur, etc.; field list to be written). Blur on Omarchy comes from Hyprland's settings.
 - [ ] Permission requests go up the chain (sudo, outside the folder): each level accepts, rejects or passes up; the top is the assistant, then the user, or away mode.
 - [ ] Parallelism is adjustable: sequential, queued, or N at a time.
 - [ ] Plugins as data bundles (workers, departments, themes; skills and MCP servers are separate), installed from a folder or link, with a contents preview and project trust. No code extensions in the first release (see spec §9.2).

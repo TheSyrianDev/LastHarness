@@ -190,4 +190,30 @@ mod tests {
         assert!(Prefs::load(&p).pages_off, "off is kept");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The Windows 7 glass look was tried and taken out on 2026-10-13. A saved choice of it must not crash anything:
+    /// the app uses the first look in the mode that was saved, and says so once.
+    #[test]
+    fn a_saved_choice_of_the_removed_look_falls_back_to_calm_in_the_same_mode_with_one_notice() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-prefs-removed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        let set = crate::theme::ThemeSet::load(std::path::Path::new("/no/such/folder"));
+        let families = set.families();
+        for (saved, mode_line, dark) in [("theme = \"Frutiger Aero dark\"\n", "", true), ("theme = \"Frutiger Aero\"\nmode = \"dark\"\n", "", true), ("theme = \"Frutiger Aero light\"\n", "", false), ("theme = \"Frutiger Aero\"\nmode = \"system\"\n", "", false)] {
+            std::fs::write(&p, format!("{saved}{mode_line}model = \"Q\"\n")).unwrap();
+            let prefs = Prefs::load(&p);
+            assert_eq!(prefs.theme, "Frutiger Aero", "the saved word is read as it is, no crash: {saved:?}");
+            // what the app does at start: no such look, so the first one, in the saved mode, and one line of notice
+            let notice = crate::theme::missing_look_notice(&prefs.theme, &families).expect("a notice");
+            assert!(notice.contains("Frutiger Aero") && notice.contains("Calm") && notice.lines().count() == 1, "{notice}");
+            let i = set.resolve("", dark);
+            assert_eq!(set.themes[i].label(), if dark { "Calm dark" } else { "Calm light" }, "{saved:?}");
+            assert_eq!(set.themes[set.resolve(&prefs.theme, dark)].label(), set.themes[i].label(), "resolving the saved word gives the same look");
+        }
+        // nothing saved, or a look that is there, gives no notice
+        assert_eq!(crate::theme::missing_look_notice("", &families), None);
+        assert_eq!(crate::theme::missing_look_notice("Matte", &families), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

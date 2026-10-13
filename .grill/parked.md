@@ -156,21 +156,6 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **KV cache and slotkeeper.** The per-chat cache works on a plain llama-server (0.12 s instead of 2.6 s for a 7k chat, measured) and does nothing for entries that run through the router's slotkeeper (57.5 s against 57.9 s on Qwen3.6), because slotkeeper restores its own snapshot into the slot and prefills again on each request. Recommended: set `kvcache.dir` only for entries with plain llama-server; or let the planning session decide whether slotkeeper should keep one session file per conversation (that tool lives in `~/AI/rig`, outside this repository).
 - **The app's own window frame** is left as it is. Reason: on Hyprland and other compositors that round windows themselves, a frame drawn by the app would be rounded twice and fight tiling; on macOS and Windows the system draws the frame. Only desktops that give square windows and no radius would gain, and none of those is on this machine to check. Recommended: keep `match_window` for desktops that report a radius (Hyprland) and the theme's radius elsewhere.
 
-## Frutiger Aero redo (build session, 2026-10-12)
-
-- **The plain-placeholder rule is lifted for this one look.** The user chose Frutiger Aero and said the first version did not look like it; the planning peer relayed that no branding or logo is allowed but the look should be faithful. Done in `crates/lh-gui/themes/frutiger-aero-*.toml` and described in `docs/milestone-8-report.md`.
-- **Bubbles (superseded by the Windows 7 redo below).** They cost about 4 percent of one core. The built-in looks no longer turn them on.
-- **Photos.** None ships; a theme may point to a path of the user's own (`kind = "image"`).
-
-## Frutiger Aero as Windows 7 glass (build session, 2026-10-12)
-
-- **The painted scene is deleted.** The user said the nature style was the wrong idea (the look meant is Windows 7 Aero) and that the code should not be kept. `scene.rs`, `kind = "scene"`, the `[scene]` table, its parser, cache, preview example and tests are gone. A user theme that still says `kind = "scene"` loads with a plain gradient and one notice in Settings under Appearance.
-- **Question: keep the drifting bubbles (`[motes]`)?** The code is still there and works; no built-in look turns it on. Recommended answer: remove it, because it belonged to the nature look. Waiting for the user before deleting.
-- **Idea, not built: video backgrounds.** A tool such as mpvpaper can run a video behind the translucent window. Nothing in the app is needed.
-- **Question: the window cannot tell whether the desktop does transparency.** GPUI 0.3.8 gives no way to ask. The looks assume it does (Hyprland does); the solid `colors.background` is the colour used where nothing translucent is available. Recommended answer: leave it, and mention in the theme file comment.
-- **The diagonal marks are drawn with paths, not pictures.** One canvas per glass pane: two filled polygons for the reflection and one stroked path of at most 220 hairlines. Recommended answer, taken: it is cheap; if it shows in the frame time on a very large window, lower `lines` to 0 in the theme. The marks are only on the Aero looks (`reflection` and `lines` default to 0).
-- **Not seen in the real window.** The panes and buttons were checked as an SVG made from the theme numbers over four plain backdrops, not in the app. The first look may find spacing or contrast details.
-
 ## Chat tree (build session, 2026-10-12)
 
 - **Memory and learning read only the active branch.** Recommended answer, taken. New learning signals come from what is sent, which is always on the active branch; the end-of-chat review reads the live history, which follows the branch; `GET /v1/chats` sizes and resume use the branch. Keyword search over past conversations still finds every branch, because it is the raw record. Change this only if you want search to skip other branches.
@@ -230,12 +215,6 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **Stop was checked and needs no fix.** A new core test drops the front end's stream against a fake model server that thinks for ever and sees the connection close within a fraction of a second, and the session accepts a new turn straight after. The real check against the user's server (slot `is_processing` going false) was not run, because the user is waiting on a run.
 - **Question: a per-chat "Think less" switch?** For small models that over-think: send `enable_thinking: false` (or a lower reasoning effort) for that chat. Recommended answer: yes, later, as a switch in the chat's model menu, off by default, remembered per chat. Not built.
 
-## Glass softness (build session, 2026-10-13)
-
-- **The first Windows 7 glass was too metallic and sharp.** The causes were the hard edge of the reflection and its stripe, the 1 px hairlines every 4 px, a bright white rim, a button gloss that stopped halfway, and a small shadow. All softened, hairlines off. Details are in `docs/milestone-8-report.md`.
-- **Question: a "glass softness" slider in Settings?** Recommended answer: no for now. The values are in the theme file, and the caps keep any file soft. Ask again if the user still finds the look off after trying this one.
-- **The Windows 7 button colours are from memory** (`#f2f2f2` to `#cfcfcf`, edge `#707070`, blue hover) and not verified. If the user sends screenshots of real Windows 7 windows, sample the colours from them.
-
 ## Blitz page viewer (build session, 2026-10-13)
 
 - **Size cap: 2 MB of HTML.** Recommended answer, taken: an assistant-written page is a few KB to a few hundred KB; 2 MB leaves room for pages with inline images and costs about 25 MB of memory in the helper. Over it, the card says so in plain words. `Options::max_html_bytes`.
@@ -247,4 +226,10 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **Pop-out still shows the source of a web page.** Recommended answer: draw the page there too later; it needs the same state in a second window.
 - **Blitz 0.3.0-beta.3 (2026-10-12) is the next upgrade.** It touches `crates/lh-pageview-engine` only; re-run its tests and the memory numbers.
 - **Not seen in a real window:** selection, forms, animations, the cursor over links, high-density screens, a screen reader reading the page text, the list-bullet side on right-to-left pages. The user will try it.
+
+## Frutiger Aero removed (build session, 2026-10-13)
+
+- **Removed on the user's decision ("Kill Frutiger Aero").** Both built-in looks, the glass panes, gel buttons, focus border, drifting bubbles and the diagonal marks code, and the preview examples. Calm, Matte and Glass are left, each light and dark.
+- **Answered by it:** the question whether to keep the drifting bubbles (removed), the "glass softness" slider in Settings (moot), the Windows 7 screenshots to sample colours from (moot), the question whether the window can tell if the desktop supports transparency (moot, no look needs it).
+- **Old files.** A user theme with `glass`, `gel`, `focus` or `motes` tables, or a painted background, loads and ignores them with one line naming the file under Appearance. A saved choice of the removed look falls back to Calm in the same mode with one line. Recommended answer, taken: the saved choice is reset to the default once the app has started, so the line shows once.
 

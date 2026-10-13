@@ -1,4 +1,4 @@
-//! Light or dark. A look is one family (Calm, Matte, Glass, Frutiger Aero) with a light and a dark variant, and one
+//! Light or dark. A look is one family (Calm, Matte, Glass) with a light and a dark variant, and one
 //! switch picks the variant for every family: Light, Dark, or follow the desktop. No window code here.
 
 use serde::{Deserialize, Serialize};
@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn old_saved_looks_split_into_family_and_mode() {
         assert_eq!(split_legacy("Calm dark"), Some(("Calm".into(), ModeChoice::Dark)));
-        assert_eq!(split_legacy("Frutiger Aero light"), Some(("Frutiger Aero".into(), ModeChoice::Light)));
+        assert_eq!(split_legacy("Glass light"), Some(("Glass".into(), ModeChoice::Light)));
         assert_eq!(split_legacy("Calm"), None);
     }
 

@@ -18,7 +18,6 @@ pub mod rtl;
 pub mod runs;
 pub mod setting_names;
 pub mod settings;
-pub mod sheen;
 pub mod theme;
 pub mod thinking;
 pub mod transcript;

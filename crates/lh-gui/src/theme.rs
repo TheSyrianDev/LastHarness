@@ -1,5 +1,5 @@
 //! Themes: a TOML file sets colours, background, roundness, blur, shadows and animation. Eight come with
-//! the app (Calm, Matte, Glass and Frutiger Aero, each light and dark); users add their own in a folder and
+//! the app (Calm, Matte and Glass, each light and dark); users add their own in a folder and
 //! changes are picked up while the app runs. This module knows nothing about the window toolkit.
 
 use std::path::{Path, PathBuf};
@@ -51,12 +51,6 @@ impl Color {
         (self.r as u32) << 24 | (self.g as u32) << 16 | (self.b as u32) << 8 | self.a as u32
     }
 }
-
-/// Limits that keep glass soft however a theme file is written: hairlines can only be faint and far apart, and the
-/// reflection can never be a strong white shape.
-pub const HAIRLINE_MAX_OPACITY: f32 = 0.05;
-pub const HAIRLINE_MIN_GAP: f32 = 8.;
-pub const REFLECTION_MAX_OPACITY: f32 = 0.3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -147,73 +141,6 @@ impl Default for RawAnimation {
     }
 }
 
-#[derive(Deserialize, Clone, Debug)]
-#[serde(default, deny_unknown_fields)]
-struct RawGlass {
-    top: String,
-    bottom: String,
-    rim: String,
-    edge: String,
-    sheen: f32,
-    /// Opacity of the fine diagonal hairlines on the glass; 0 for none.
-    lines: f32,
-    /// Distance between the hairlines, in pixels.
-    lines_gap: f32,
-    /// Opacity of the diagonal reflection in the top left corner of a pane; 0 for none.
-    reflection: f32,
-}
-impl Default for RawGlass {
-    fn default() -> Self {
-        let d = |s: &str| s.to_string();
-        Self { top: d("#ffffffd9"), bottom: d("#ffffff8c"), rim: d("#ffffffe6"), edge: d("#7fb8dd99"), sheen: 0.3, lines: 0., lines_gap: 8., reflection: 0. }
-    }
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(default, deny_unknown_fields)]
-struct RawGel {
-    top: Option<String>,
-    bottom: Option<String>,
-    primary_top: Option<String>,
-    primary_bottom: Option<String>,
-    gloss: f32,
-    rim: String,
-    edge: String,
-    glow: String,
-    press: f32,
-}
-impl Default for RawGel {
-    fn default() -> Self {
-        let d = |s: &str| s.to_string();
-        Self { top: None, bottom: None, primary_top: None, primary_bottom: None, gloss: 0.5, rim: d("#ffffffcc"), edge: d("#3d86b8"), glow: d("#46d4ffcc"), press: 0.18 }
-    }
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(default, deny_unknown_fields)]
-struct RawFocus {
-    from: String,
-    to: String,
-    width: f32,
-}
-impl Default for RawFocus {
-    fn default() -> Self {
-        Self { from: "#1174a1".into(), to: "#6b60c4".into(), width: 2. }
-    }
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(default, deny_unknown_fields)]
-struct RawMotes {
-    count: u32,
-    color: String,
-}
-impl Default for RawMotes {
-    fn default() -> Self {
-        Self { count: 0, color: "#ffffff".into() }
-    }
-}
-
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(default, deny_unknown_fields)]
 struct Raw {
@@ -226,10 +153,12 @@ struct Raw {
     animation: RawAnimation,
     /// The painted-landscape table of older theme files. It is read and ignored.
     scene: Option<toml::Value>,
-    glass: Option<RawGlass>,
-    gel: Option<RawGel>,
-    focus: Option<RawFocus>,
-    motes: Option<RawMotes>,
+    /// The tables of looks that no longer exist (glass panes, gel buttons, a focus border, drifting bubbles). They are
+    /// read and ignored, and the person is told once.
+    glass: Option<toml::Value>,
+    gel: Option<toml::Value>,
+    focus: Option<toml::Value>,
+    motes: Option<toml::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -258,53 +187,6 @@ pub struct Background {
     pub image_opacity: f32,
 }
 
-/// Glass panels: a translucent fill that is lighter at the top, a light line just inside the edge and a pale
-/// line outside it. A theme without a `[glass]` table has plain flat panels.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Glass {
-    pub top: Color,
-    pub bottom: Color,
-    pub rim: Color,
-    pub edge: Color,
-    /// Opacity of the white sheen over the top part of a panel.
-    pub sheen: f32,
-    /// Opacity of the fine diagonal hairlines, the spacing between them in pixels, and the opacity of the diagonal
-    /// reflection in the top left corner. Zero opacity draws nothing.
-    pub lines: f32,
-    pub lines_gap: f32,
-    pub reflection: f32,
-}
-
-/// Gel buttons: a gradient with a glossy top half, a rim light and a glow when hovered.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Gel {
-    pub top: Color,
-    pub bottom: Color,
-    pub primary_top: Color,
-    pub primary_bottom: Color,
-    pub gloss: f32,
-    pub rim: Color,
-    pub edge: Color,
-    pub glow: Color,
-    /// How much a pressed button darkens, 0 to 1.
-    pub press: f32,
-}
-
-/// The border of the focused panel: a gradient from one colour to another, corner to corner.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Focus {
-    pub from: Color,
-    pub to: Color,
-    pub width: f32,
-}
-
-/// Soft bubbles drifting up the window.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Motes {
-    pub count: u32,
-    pub color: Color,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
     pub name: String,
@@ -318,16 +200,9 @@ pub struct Theme {
     pub shadow_y: f32,
     pub shadow_color: Color,
     pub animation_ms: u64,
-    pub glass: Option<Glass>,
-    pub gel: Option<Gel>,
-    pub focus: Option<Focus>,
-    pub motes: Option<Motes>,
-    /// Something the person should know about this file (an old setting that no longer exists), shown in Settings.
-    pub notice: Option<String>,
-}
-
-fn key(name: &str, v: &str) -> Result<Color, String> {
-    Color::parse(v).map_err(|e| format!("{name}: {e}"))
+    /// What in this file no longer exists and is ignored (the painted background, glass panes, gel buttons, a focus
+    /// border, bubbles). Settings tells the person once, naming the file.
+    pub ignored: Vec<&'static str>,
 }
 
 fn col(key: &str, v: &str) -> Result<Color, String> {
@@ -362,22 +237,30 @@ impl Theme {
                 None => Ok(colors.background),
             }
         };
-        let mut notice = None;
+        let mut ignored: Vec<&'static str> = vec![];
+        let mut was_scene = false;
         let kind = match b.kind.trim().to_lowercase().as_str() {
             "solid" => BackgroundKind::Solid,
             "gradient" => BackgroundKind::Gradient,
             "image" => BackgroundKind::Image,
             // the painted landscape of earlier versions is gone: the file still loads, with a plain gradient
             "scene" => {
-                notice = Some(format!("{}: the painted background (kind = \"scene\") no longer exists, so a plain gradient is used", raw.name.trim()));
+                was_scene = true;
+                ignored.push("a painted background");
                 BackgroundKind::Gradient
             }
             other => return Err(format!("background.kind must be solid, gradient or image, not \"{other}\"")),
         };
+        // tables of looks that no longer exist: ignored, and the person is told once
+        for (table, what) in [(&raw.glass, "glass panes"), (&raw.gel, "gel buttons"), (&raw.focus, "a focus border"), (&raw.motes, "drifting bubbles")] {
+            if table.is_some() {
+                ignored.push(what);
+            }
+        }
         let from = bg("from", &b.from)?;
         let mut to = bg("to", &b.to)?;
         let mut angle = b.angle;
-        if notice.is_some() && b.to.is_none() {
+        if was_scene && b.to.is_none() {
             // a gradient the person never wrote: from the theme's own background toward its text colour
             to = from.mix(colors.text, 0.22);
             angle = 180.;
@@ -395,37 +278,6 @@ impl Theme {
             Some(s) => Color::parse(s).map_err(|e| format!("effects.shadow_color: {e}"))?,
             None => Color { r: 0, g: 0, b: 0, a: 0 },
         };
-        let glass = match &raw.glass {
-            Some(g) => Some(Glass { top: key("glass.top", &g.top)?, bottom: key("glass.bottom", &g.bottom)?, rim: key("glass.rim", &g.rim)?, edge: key("glass.edge", &g.edge)?, sheen: g.sheen.clamp(0., 1.), lines: g.lines.clamp(0., HAIRLINE_MAX_OPACITY), lines_gap: g.lines_gap.clamp(HAIRLINE_MIN_GAP, 24.), reflection: g.reflection.clamp(0., REFLECTION_MAX_OPACITY) }),
-            None => None,
-        };
-        let gel = match &raw.gel {
-            Some(g) => {
-                let opt = |k: &str, v: &Option<String>, d: Color| -> Result<Color, String> { v.as_ref().map_or(Ok(d), |s| key(k, s)) };
-                let white = Color { r: 255, g: 255, b: 255, a: 255 };
-                let black = Color { r: 0, g: 0, b: 0, a: 255 };
-                Some(Gel {
-                    top: opt("gel.top", &g.top, colors.button.mix(white, 0.45))?,
-                    bottom: opt("gel.bottom", &g.bottom, colors.button.mix(black, 0.06))?,
-                    primary_top: opt("gel.primary_top", &g.primary_top, colors.accent.mix(white, 0.2))?,
-                    primary_bottom: opt("gel.primary_bottom", &g.primary_bottom, colors.accent.mix(black, 0.1))?,
-                    gloss: g.gloss.clamp(0., 1.),
-                    rim: key("gel.rim", &g.rim)?,
-                    edge: key("gel.edge", &g.edge)?,
-                    glow: key("gel.glow", &g.glow)?,
-                    press: g.press.clamp(0., 1.),
-                })
-            }
-            None => None,
-        };
-        let focus = match &raw.focus {
-            Some(f) => Some(Focus { from: key("focus.from", &f.from)?, to: key("focus.to", &f.to)?, width: f.width.clamp(0.5, 8.) }),
-            None => None,
-        };
-        let motes = match &raw.motes {
-            Some(m) => Some(Motes { count: m.count.min(40), color: key("motes.color", &m.color)? }),
-            None => None,
-        };
         Ok(Theme {
             name: raw.name.trim().to_string(),
             mode: raw.mode,
@@ -438,11 +290,7 @@ impl Theme {
             shadow_y: raw.effects.shadow_y,
             shadow_color,
             animation_ms: raw.animation.duration_ms,
-            glass,
-            gel,
-            focus,
-            motes,
-            notice,
+            ignored,
         })
     }
 
@@ -454,7 +302,7 @@ impl Theme {
     /// Does anything in the look let the desktop show through? Then the window must be transparent.
     pub fn is_translucent(&self) -> bool {
         let c = &self.colors;
-        self.background_is_translucent() || c.surface.is_translucent() || self.blur || self.glass.is_some()
+        self.background_is_translucent() || c.surface.is_translucent() || self.blur
     }
 
     fn background_is_translucent(&self) -> bool {
@@ -479,8 +327,6 @@ const BUILTIN: &[(&str, &str)] = &[
     ("matte-dark", include_str!("../themes/matte-dark.toml")),
     ("glass-light", include_str!("../themes/glass-light.toml")),
     ("glass-dark", include_str!("../themes/glass-dark.toml")),
-    ("frutiger-aero-light", include_str!("../themes/frutiger-aero-light.toml")),
-    ("frutiger-aero-dark", include_str!("../themes/frutiger-aero-dark.toml")),
 ];
 
 /// The themes that ship with the app. Calm light is first, and is what a fresh install uses.
@@ -492,8 +338,8 @@ pub fn builtin() -> Vec<Theme> {
 pub struct ThemeSet {
     pub themes: Vec<Theme>,
     pub problems: Vec<String>,
-    /// One line for the person when theme files use something that no longer exists (the painted background); `None`
-    /// when all is well. Shown once in Settings.
+    /// One line for the person when theme files use something that no longer exists (a painted background, glass panes,
+    /// gel buttons, a focus border, drifting bubbles), naming each file; `None` when all is well. Shown once in Settings.
     pub notice: Option<String>,
     dir: PathBuf,
     stamp: Option<SystemTime>,
@@ -504,7 +350,7 @@ impl ThemeSet {
     pub fn load(dir: &Path) -> ThemeSet {
         let mut themes = builtin();
         let mut problems = vec![];
-        let mut old_background: Vec<String> = vec![];
+        let mut old_things: Vec<(String, Vec<&'static str>)> = vec![];
         let mut stamp = None;
         let mut count = 0;
         let mut files: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
@@ -518,8 +364,8 @@ impl ThemeSet {
             let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             match std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|s| Theme::parse(&s, p.parent().unwrap_or(dir))) {
                 Ok(t) => {
-                    if t.notice.is_some() && !old_background.contains(&t.name) {
-                        old_background.push(t.name.clone());
+                    if !t.ignored.is_empty() && !old_things.iter().any(|(n, _)| *n == t.name) {
+                        old_things.push((t.name.clone(), t.ignored.clone()));
                     }
                     // a user's theme with the same label replaces the built-in one
                     if let Some(i) = themes.iter().position(|x| x.label() == t.label()) {
@@ -531,7 +377,10 @@ impl ThemeSet {
                 Err(e) => problems.push(format!("{name}: {e}")),
             }
         }
-        let notice = (!old_background.is_empty()).then(|| format!("{} still ask{} for the painted background, which no longer exists. A plain gradient is used instead. Set kind to solid, gradient or image in the file to change it.", old_background.join(", "), if old_background.len() == 1 { "s" } else { "" }));
+        let notice = (!old_things.is_empty()).then(|| {
+            let files: Vec<String> = old_things.iter().map(|(n, what)| format!("{n} ({})", what.join(", "))).collect();
+            format!("{} {} something that no longer exists. It is ignored and the rest of the file still counts.", files.join(", "), if old_things.len() == 1 { "uses" } else { "use" })
+        });
         ThemeSet { themes, problems, notice, dir: dir.to_path_buf(), stamp, count }
     }
 
@@ -555,7 +404,7 @@ impl ThemeSet {
         *self = ThemeSet::load(&self.dir.clone());
     }
 
-    /// The families of looks, once each, in the order they first appear: "Calm", "Matte", "Glass", "Frutiger Aero",
+    /// The families of looks, once each, in the order they first appear: "Calm", "Matte", "Glass",
     /// then the person's own.
     pub fn families(&self) -> Vec<String> {
         let mut v: Vec<String> = vec![];
@@ -592,6 +441,17 @@ impl ThemeSet {
     pub fn find(&self, label: &str) -> Option<&Theme> {
         self.themes.iter().find(|t| t.label() == label)
     }
+}
+
+/// What to tell the person when their saved look is not among the looks there are now (a look that was taken out, or
+/// a theme file they deleted): the app uses the first look instead. `None` when nothing was saved or it is there.
+pub fn missing_look_notice(saved: &str, families: &[String]) -> Option<String> {
+    let saved = saved.trim();
+    if saved.is_empty() || families.iter().any(|f| f == saved) {
+        return None;
+    }
+    let first = families.first().map(String::as_str).unwrap_or("Calm");
+    Some(format!("The look \"{saved}\" is not there any more, so {first} is used. Pick another in the list above if you like."))
 }
 
 /// The user's theme folder: `$XDG_CONFIG_HOME/lastharness/themes` or `~/.config/lastharness/themes`.
@@ -632,25 +492,26 @@ mod tests {
     }
 
     #[test]
-    fn all_eight_built_in_themes_load_and_have_unique_labels() {
+    fn all_six_built_in_themes_load_and_have_unique_labels() {
         let t = builtin();
-        assert_eq!(t.len(), 8);
+        assert_eq!(t.len(), 6);
         let mut labels: Vec<String> = t.iter().map(|t| t.label()).collect();
         labels.sort();
         labels.dedup();
-        assert_eq!(labels.len(), 8);
+        assert_eq!(labels.len(), 6);
         assert_eq!(t[0].label(), "Calm light", "the plain default comes first");
-        for name in ["Calm", "Matte", "Glass", "Frutiger Aero"] {
+        for name in ["Calm", "Matte", "Glass"] {
             for mode in ["light", "dark"] {
                 assert!(t.iter().any(|x| x.label() == format!("{name} {mode}")), "{name} {mode}");
             }
         }
+        assert!(t.iter().all(|x| x.ignored.is_empty()), "no built-in look uses anything that no longer exists");
     }
 
     #[test]
-    fn four_families_each_with_both_modes_and_the_mode_picks_the_variant() {
+    fn three_families_each_with_both_modes_and_the_mode_picks_the_variant() {
         let set = ThemeSet::load(Path::new("/no/such/folder"));
-        assert_eq!(set.families(), ["Calm", "Matte", "Glass", "Frutiger Aero"]);
+        assert_eq!(set.families(), ["Calm", "Matte", "Glass"]);
         for f in set.families() {
             assert!(set.has_both(&f), "{f}");
             let (l, d) = (set.variant(&f, false).unwrap(), set.variant(&f, true).unwrap());
@@ -689,213 +550,88 @@ mod tests {
         assert!(!by("Matte dark").is_translucent());
         assert!(by("Glass dark").is_translucent() && by("Glass dark").blur);
         assert!(by("Glass light").is_translucent());
-        assert_eq!(by("Frutiger Aero light").background.kind, BackgroundKind::Gradient);
-        assert!(by("Frutiger Aero light").is_translucent() && by("Frutiger Aero dark").is_translucent());
         assert!(by("Glass light").roundness > by("Calm light").roundness, "glass is rounder than calm");
     }
 
     #[test]
-    fn frutiger_aero_is_windows_7_style_glass_in_both_modes_with_no_picture() {
-        let t = builtin();
-        for label in ["Frutiger Aero light", "Frutiger Aero dark"] {
-            let x = t.iter().find(|x| x.label() == label).unwrap_or_else(|| panic!("{label} is built in"));
-            assert_eq!(x.background.kind, BackgroundKind::Gradient, "{label}: a tint over the desktop, not a picture");
-            assert!(x.background.image.is_none(), "{label} ships no wallpaper");
-            assert!(x.background.from.is_translucent() && x.background.to.is_translucent(), "{label}: the tint lets the desktop through");
-            assert!(x.is_translucent() && x.blur, "{label} is drawn over the compositor's blur");
-            assert!(!x.colors.background.is_translucent(), "{label} has a solid colour to sit on when nothing is translucent");
-            assert!(x.glass.is_some() && x.gel.is_some() && x.focus.is_some(), "{label}");
-            assert!(x.motes.is_none(), "{label} has no bubbles: they belonged to the nature look");
-            assert!(x.roundness >= 6. && x.roundness <= 12., "{label} has the small corners of Windows 7 windows, not 16");
-            let g = x.glass.as_ref().unwrap();
-            assert!(g.reflection > 0., "{label} has the soft diagonal reflection");
-            assert!(g.rim.a >= 80 && g.rim.r > 200 && g.top.a < 255 && g.bottom.a < 255, "{label}: a light rim inside, translucent fill");
-            assert!(g.top.a >= g.bottom.a || x.mode == Mode::Dark, "{label}: lighter at the top");
-            assert_eq!(x.name, "Frutiger Aero");
-            // the blue glow on hover is blue, in both modes
-            let glow = x.gel.as_ref().unwrap().glow;
-            assert!(glow.b > glow.r && glow.b > 200, "{label}: a blue glow, not {glow:?}");
-            assert!(x.focus.as_ref().unwrap().to.b > 200, "{label}: the focus border is blue");
-        }
-        let light = t.iter().find(|x| x.label() == "Frutiger Aero light").unwrap();
-        let dark = t.iter().find(|x| x.label() == "Frutiger Aero dark").unwrap();
-        assert!(light.colors.text.r < 40 && dark.colors.text.r > 215, "dark text on light glass, light text on dark glass");
-        assert!(dark.glass.as_ref().unwrap().top.r < light.glass.as_ref().unwrap().top.r, "the dark glass is darker");
-        // the other looks stay flat
-        let calm = t.iter().find(|x| x.label() == "Calm light").unwrap();
-        assert!(calm.glass.is_none() && calm.gel.is_none() && calm.focus.is_none() && calm.motes.is_none());
-        let plain = t.iter().find(|x| x.label() == "Glass light").unwrap();
-        let pg = plain.glass.as_ref();
-        assert!(pg.is_none() || (pg.unwrap().lines == 0. && pg.unwrap().reflection == 0.), "Glass does not get the Aero marks");
-    }
-
-    #[test]
-    fn glass_gel_focus_and_motes_are_checked_with_the_key_that_is_wrong() {
-        let ok = Theme::parse("name = \"x\"\n[glass]\nlines = 0.04\nlines_gap = 12\nreflection = 0.2\n[gel]\n[focus]\n[motes]\ncount = 4\n", Path::new("")).unwrap();
-        assert!(ok.glass.is_some() && ok.gel.is_some() && ok.focus.is_some());
-        assert_eq!(ok.motes.unwrap().count, 4);
+    fn a_theme_with_a_bad_value_is_still_reported_with_the_key_that_is_wrong() {
         let e = |src: &str| Theme::parse(&format!("name = \"x\"\n{src}"), Path::new("")).unwrap_err();
-        assert!(e("[glass]\ntop = \"x\"").contains("glass.top"));
-        assert!(e("[gel]\nglow = \"x\"").contains("gel.glow"));
-        assert!(e("[focus]\nfrom = \"x\"").contains("focus.from"));
-        assert!(e("[motes]\ncolor = \"x\"").contains("motes.color"));
-        assert!(e("[glass]\nshine = 1").contains("unknown field"));
         assert!(e("[background]\nkind = \"wallpaper\"").contains("solid, gradient or image"));
-        let capped = Theme::parse("name = \"x\"\n[motes]\ncount = 9999\n", Path::new("")).unwrap();
-        assert_eq!(capped.motes.unwrap().count, 40, "bubbles are capped");
-        let g = Theme::parse("name = \"x\"\n[glass]\nlines = 7\nlines_gap = 1\nreflection = -2\n", Path::new("")).unwrap().glass.unwrap();
-        assert_eq!((g.lines, g.lines_gap, g.reflection), (HAIRLINE_MAX_OPACITY, HAIRLINE_MIN_GAP, 0.), "the marks are kept inside their limits");
-        let strong = Theme::parse("name = \"x\"\n[glass]\nreflection = 1\n", Path::new("")).unwrap().glass.unwrap();
-        assert_eq!(strong.reflection, REFLECTION_MAX_OPACITY, "the reflection can never be a strong white shape");
-        let plain = Theme::parse("name = \"x\"\n[glass]\n", Path::new("")).unwrap().glass.unwrap();
-        assert_eq!((plain.lines, plain.reflection), (0., 0.), "a glass table without them has none, as before");
+        assert!(e("[effects]\nblurr = true").contains("unknown field"));
     }
 
-    /// WCAG relative luminance of an opaque colour, 0 to 1.
-    fn luminance(c: [f32; 3]) -> f32 {
-        let lin = |v: f32| {
-            let v = v / 255.;
-            if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
-        };
-        0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
-    }
-
-    fn over(top: Color, back: [f32; 3]) -> [f32; 3] {
-        let a = top.a as f32 / 255.;
-        [top.r as f32 * a + back[0] * (1. - a), top.g as f32 * a + back[1] * (1. - a), top.b as f32 * a + back[2] * (1. - a)]
-    }
-
-    fn contrast(a: [f32; 3], b: [f32; 3]) -> f32 {
-        let (x, y) = (luminance(a), luminance(b));
-        (x.max(y) + 0.05) / (x.min(y) + 0.05)
-    }
-
+    /// Looks that were taken out. A user's file that still has their tables must load, ignore them, and say so.
     #[test]
-    fn the_aero_glass_is_soft_not_metal() {
-        let t = builtin();
-        for label in ["Frutiger Aero light", "Frutiger Aero dark"] {
-            let x = t.iter().find(|x| x.label() == label).unwrap();
-            let g = x.glass.as_ref().unwrap();
-            // no fine hairlines, or only faint and far apart ones
-            assert!(g.lines <= HAIRLINE_MAX_OPACITY && (g.lines == 0. || g.lines_gap >= HAIRLINE_MIN_GAP), "{label}");
-            // the diagonal glow is faint, and the pane's own sheen too; nothing is a bright white shape
-            assert!(g.reflection > 0. && g.reflection <= 0.18, "{label}: reflection {}", g.reflection);
-            assert!(g.sheen <= 0.14, "{label}: sheen {}", g.sheen);
-            // the inner line is about half white at most, the outer one a dark neutral under half black
-            let rim = g.rim.a as f32 / 255.;
-            assert!((0.3..=0.55).contains(&rim) && g.rim.r >= 250 && g.rim.g >= 250 && g.rim.b >= 250, "{label}: inner line {rim}");
-            let edge = g.edge.a as f32 / 255.;
-            assert!((0.35..=0.55).contains(&edge) && g.edge.r == 0 && g.edge.g == 0 && g.edge.b == 0, "{label}: outer line {edge}");
-            // shadows are wide and faint
-            assert!(x.shadow_blur >= 40. && x.shadow_color.a as f32 / 255. <= 0.5, "{label}: shadow {} {}", x.shadow_blur, x.shadow_color.a);
-            // buttons: the gloss fades (the drawing code ends it at nothing), and the gradient is smooth
-            let gel = x.gel.as_ref().unwrap();
-            assert!(gel.gloss <= 0.4, "{label}: gloss {}", gel.gloss);
-            let steps = |a: Color, b: Color| (a.r as i32 - b.r as i32).abs().max((a.g as i32 - b.g as i32).abs()).max((a.b as i32 - b.b as i32).abs());
-            assert!(steps(gel.top, gel.bottom) <= 120, "{label}: the button gradient is gentle");
-            assert!(gel.rim.a < 230, "{label}: no bright white button rim");
-            // no colour in the glass is fully opaque white
-            for c in [g.top, g.bottom, g.rim] {
-                assert!(!(c.r == 255 && c.g == 255 && c.b == 255 && c.a >= 230), "{label}: {c:?}");
-            }
-        }
-        let light = t.iter().find(|x| x.label() == "Frutiger Aero light").unwrap();
-        let dark = t.iter().find(|x| x.label() == "Frutiger Aero dark").unwrap();
-        // lighter and more transparent than the first try (it was about 66 percent at the top)
-        assert!((light.glass.as_ref().unwrap().top.a as f32 / 255.) <= 0.65);
-        // the windows 7 button: a grey gradient with a mid-grey edge, blue glow under the pointer
-        let gl = light.gel.as_ref().unwrap();
-        assert_eq!((gl.top, gl.edge), (Color::parse("#f2f2f2").unwrap(), Color::parse("#707070").unwrap()));
-        assert!(gl.glow.b > gl.glow.r);
-        let _ = dark;
-    }
-
-    #[test]
-    fn body_text_stays_readable_on_the_glass_over_ordinary_backdrops() {
-        let t = builtin();
-        let backdrops: [(&str, [f32; 3], &[&str]); 4] = [
-            ("dark desktop", [26., 32., 40.], &["Frutiger Aero light", "Frutiger Aero dark"]),
-            ("blue wallpaper", [46., 111., 168.], &["Frutiger Aero light", "Frutiger Aero dark"]),
-            ("mid grey", [122., 122., 122.], &["Frutiger Aero light", "Frutiger Aero dark"]),
-            ("white", [255., 255., 255.], &["Frutiger Aero light", "Frutiger Aero dark"]),
-        ];
-        for (name, back, labels) in backdrops {
-            for label in labels {
-                let x = t.iter().find(|x| x.label() == *label).unwrap();
-                let g = x.glass.as_ref().unwrap();
-                let text = [x.colors.text.r as f32, x.colors.text.g as f32, x.colors.text.b as f32];
-                // the tint of the window under the pane counts too, as a layer over the blurred backdrop
-                let under = over(x.background.from, back);
-                for (part, fill) in [("top", g.top), ("bottom", g.bottom)] {
-                    let pane = over(fill, under);
-                    let c = contrast(text, pane);
-                    assert!(c >= 4.5, "{label} over {name}, {part} of a pane: contrast {c:.2}");
-                }
-                // input fields are nearly opaque
-                let field = over(x.colors.sunken, over(g.bottom, under));
-                assert!(contrast(text, field) >= 7., "{label} over {name}: input field {:.2}", contrast(text, field));
-            }
-        }
-    }
-
-    #[test]
-    fn an_old_theme_that_asks_for_the_painted_scene_loads_with_a_plain_gradient_and_a_notice() {
-        let old = "name = \"Mine\"\nmode = \"dark\"\n[colors]\nbackground = \"#102030\"\ntext = \"#e0e0e0\"\n[background]\nkind = \"scene\"\n[scene]\nsky = [\"#000\", \"#fff\"]\nclouds = 3\nnothing_like_a_real_key = true\n[glass]\n[gel]\n";
+    fn an_old_theme_with_removed_tables_or_the_painted_scene_loads_and_says_what_it_ignored() {
+        let old = "name = \"Mine\"\nmode = \"dark\"\n[colors]\nbackground = \"#102030\"\ntext = \"#e0e0e0\"\n[background]\nkind = \"scene\"\n[scene]\nsky = [\"#000\", \"#fff\"]\nnothing_like_a_real_key = true\n[glass]\ntop = \"#ffffff80\"\nsheen = 0.2\n[gel]\ngloss = 0.4\n[focus]\nfrom = \"#123456\"\n[motes]\ncount = 5\n[shape]\nroundness = 12\n";
         let t = Theme::parse(old, Path::new("")).expect("an old file must still load");
         assert_eq!(t.background.kind, BackgroundKind::Gradient);
         assert_eq!(t.background.from, Color::parse("#102030").unwrap(), "from the theme's own background colour");
         assert_ne!(t.background.to, t.background.from, "a visible gradient, not a flat fill");
-        assert!(t.glass.is_some() && t.gel.is_some(), "the rest of the file still counts");
-        assert!(t.notice.as_deref().is_some_and(|n| n.contains("Mine") && n.contains("scene")), "{:?}", t.notice);
+        assert_eq!(t.roundness, 12., "the rest of the file still counts");
+        assert_eq!(t.ignored, ["a painted background", "glass panes", "gel buttons", "a focus border", "drifting bubbles"]);
         // a gradient the person wrote themselves is kept
         let own = Theme::parse("name = \"Own\"\n[background]\nkind = \"scene\"\nfrom = \"#112233\"\nto = \"#445566\"\n", Path::new("")).unwrap();
         assert_eq!((own.background.from, own.background.to), (Color::parse("#112233").unwrap(), Color::parse("#445566").unwrap()));
-        assert!(own.notice.is_some());
         // a leftover [scene] table with another kind is ignored without a fuss
         let quiet = Theme::parse("name = \"Q\"\n[scene]\nclouds = 2\n", Path::new("")).unwrap();
-        assert!(quiet.notice.is_none() && quiet.background.kind == BackgroundKind::Solid);
-        // and no other kind has a notice
-        assert!(builtin().iter().all(|t| t.notice.is_none()));
+        assert!(quiet.ignored.is_empty() && quiet.background.kind == BackgroundKind::Solid);
+        // each of the removed tables alone is noticed, and none is an error, even empty
+        for (table, what) in [("glass", "glass panes"), ("gel", "gel buttons"), ("focus", "a focus border"), ("motes", "drifting bubbles")] {
+            let t = Theme::parse(&format!("name = \"x\"\n[{table}]\n"), Path::new("")).unwrap();
+            assert_eq!(t.ignored, [what], "{table}");
+        }
     }
 
     #[test]
-    fn settings_shows_one_notice_for_all_old_theme_files() {
-        let dir = std::env::temp_dir().join(format!("lh-gui-oldscene-{}", std::process::id()));
+    fn settings_shows_one_notice_naming_every_old_theme_file() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-oldtables-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        for n in ["one", "two"] {
-            std::fs::write(dir.join(format!("{n}.toml")), format!("name = \"Old {n}\"\n[background]\nkind = \"scene\"\n")).unwrap();
-        }
+        std::fs::write(dir.join("one.toml"), "name = \"Old one\"\n[background]\nkind = \"scene\"\n").unwrap();
+        std::fs::write(dir.join("two.toml"), "name = \"Old two\"\n[glass]\n[motes]\ncount = 3\n").unwrap();
         std::fs::write(dir.join("fine.toml"), "name = \"Fine\"\n").unwrap();
         let set = ThemeSet::load(&dir);
         assert!(set.problems.is_empty(), "{:?}", set.problems);
         let n = set.notice.expect("one notice");
-        assert!(n.contains("Old one") && n.contains("Old two") && !n.contains("Fine") && n.matches("painted background").count() == 1, "{n}");
-        assert!(set.themes.iter().any(|t| t.name == "Old one"), "the theme is there and usable");
+        assert!(n.contains("Old one (a painted background)") && n.contains("Old two (glass panes, drifting bubbles)") && !n.contains("Fine"), "{n}");
+        assert_eq!(n.lines().count(), 1, "one line");
+        assert!(set.themes.iter().any(|t| t.name == "Old one") && set.themes.iter().any(|t| t.name == "Old two"), "the themes are there and usable");
         std::fs::remove_file(dir.join("one.toml")).unwrap();
         std::fs::remove_file(dir.join("two.toml")).unwrap();
         assert!(ThemeSet::load(&dir).notice.is_none(), "no old file, no notice");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The glass look of Windows 7 was tried and taken out on 2026-10-13. Nothing in the code, the built-in themes or
+    /// the readme may name it, except the code that reads an old saved choice of it (prefs.rs and its tests).
     #[test]
-    fn the_painted_scene_is_gone_from_the_source() {
-        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        assert!(!src.join("src").join("scene.rs").exists());
-        assert!(!src.join("examples").join("scene_preview.rs").exists());
-        // the needles are written in two halves so this test does not find itself
-        let needles = [concat!("crate::sc", "ene"), concat!("mod sc", "ene"), concat!("Background", "Kind::Sc", "ene"), concat!("lh_gui::sc", "ene"), concat!("Sc", "eneSpec")];
-        for entry in std::fs::read_dir(src.join("src")).unwrap().flatten() {
-            let p = entry.path();
-            if p.extension().is_some_and(|e| e == "rs") {
-                let text = std::fs::read_to_string(&p).unwrap();
-                for needle in needles {
-                    assert!(!text.contains(needle), "{} still has {needle}", p.display());
-                }
+    fn the_removed_look_is_named_nowhere_but_the_code_that_reads_an_old_saved_choice() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        // written in halves so this test does not find itself
+        let needles = [concat!("frut", "iger"), concat!("ae", "ro")];
+        let mut files: Vec<std::path::PathBuf> = vec![];
+        for dir in ["src", "themes", "examples", "tests"] {
+            for e in std::fs::read_dir(root.join(dir)).into_iter().flatten().flatten() {
+                files.push(e.path());
             }
         }
-        for t in ["frutiger-aero-light.toml", "frutiger-aero-dark.toml"] {
-            let text = std::fs::read_to_string(src.join("themes").join(t)).unwrap();
-            assert!(!text.contains("[scene]") && !text.contains("\"scene\""), "{t}");
+        files.push(root.join("Cargo.toml"));
+        files.push(root.join("../../README.md"));
+        let mut checked = 0;
+        for p in files.into_iter().filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "rs" || e == "toml" || e == "md")) {
+            if p.file_name().is_some_and(|n| n == "prefs.rs") {
+                continue;
+            }
+            checked += 1;
+            let text = std::fs::read_to_string(&p).unwrap().to_lowercase();
+            for n in needles {
+                assert!(!text.contains(n), "{} still mentions it ({n})", p.display());
+            }
+        }
+        assert!(checked > 20, "the scan looked at {checked} files");
+        let (light, dark) = (concat!("themes/frut", "iger-ae", "ro-light.toml"), concat!("themes/frut", "iger-ae", "ro-dark.toml"));
+        for gone in ["src/scene.rs", "src/sheen.rs", "examples/scene_preview.rs", "examples/glass_preview.rs", light, dark] {
+            assert!(!root.join(gone).exists(), "{gone} is still there");
         }
     }
 
@@ -951,7 +687,7 @@ mod tests {
         std::fs::write(dir.join("bad.toml"), "name = \"Bad\"\n[colors]\ntext = \"nope\"\n").unwrap();
         std::fs::write(dir.join("notes.txt"), "ignored").unwrap();
         let mut set = ThemeSet::load(&dir);
-        assert_eq!(set.themes.len(), 9);
+        assert_eq!(set.themes.len(), 7, "six built in, one of the person's own, and one replaced");
         assert!(set.find("Mine dark").is_some());
         assert_eq!(set.find("Calm light").unwrap().colors.accent.rgba(), 0x00aa00ff, "replaced the built-in");
         assert_eq!(set.problems.len(), 1);
@@ -974,7 +710,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let file = dir.join("gui.toml");
         // go through every look in turn, as a person clicking through the menu would, including back to the first
-        for i in (0..set.themes.len()).chain([3, 0, 7, 1]) {
+        for i in (0..set.themes.len()).chain([3, 0, 5, 1]) {
             let mut prefs = crate::prefs::Prefs::load(&file);
             prefs.theme = set.themes[i].label();
             prefs.save(&file).unwrap();

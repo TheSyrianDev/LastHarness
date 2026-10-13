@@ -385,7 +385,7 @@ One append-only local log records every tool call, every request that left the m
 
 ## 11. Front Ends
 
-**Themes (all front ends).** The app and its clients can select custom themes, such as liquid glass or Frutiger Aero, and can download themes made by the community (themes are one of the contents of a plugin bundle, §9.2). On Omarchy, **everything follows the Omarchy theme**, the way Omawrite, Omacalc, the Omarchy plugins, the top bar and the browser do. There is no part of the app that opts out.
+**Themes (all front ends).** The app and its clients can select custom themes, such as liquid glass, and can download themes made by the community (themes are one of the contents of a plugin bundle, §9.2). On Omarchy, **everything follows the Omarchy theme**, the way Omawrite, Omacalc, the Omarchy plugins, the top bar and the browser do. There is no part of the app that opts out.
 
 What Omarchy provides (checked on the dev machine, to be re-checked against the Omarchy source when this is built):
 - A theme is a folder in `~/.config/omarchy/themes/<name>/` with a `colors.toml`, backgrounds and an icon theme. The active theme is under `~/.local/state/omarchy/current/theme`.

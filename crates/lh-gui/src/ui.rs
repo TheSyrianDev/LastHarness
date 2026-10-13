@@ -15,7 +15,7 @@ use lh_gui::layout::{Page, Panel};
 use lh_gui::motion;
 use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
-use crate::style::{mix, Look, PanelExt};
+use crate::style::{mix, PanelExt};
 
 actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, ToggleMode, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette, JumpToLatest]);
 
@@ -124,22 +124,6 @@ impl App {
         let ring = BoxShadow { color: p.accent, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(2.), inset: false };
         let base_el = div().id(id.clone()).role(Role::Button).aria_label(aria).when(focusable, |d| d.focusable().tab_stop(true).focus_visible(move |s| s.shadow(vec![ring]))).px_3().py_1p5().rounded(p.inner).text_color(fg).cursor_pointer().on_hover(on_hover).on_click(on_click);
 
-        // gel: a glossy skin under the label, a rim light, a glow under the pointer and a dark veil while pressed
-        if let Some(g) = &p.gel {
-            let (rest, over) = g.looks(p.danger, kind == Kind::Ghost, kind == Kind::Primary, kind == Kind::Danger);
-            let (from, to) = if hovered { (rest, over) } else { (over, rest) };
-            let (radius, press) = (p.inner, g.press);
-            let group = SharedString::from(format!("gel-{id}"));
-            let skin = g.skin(radius, if hovered { over } else { rest });
-            let skin = if animate {
-                let g2 = g.clone();
-                skin.with_animation(anim_key, Animation::new(motion::press(self.pal.anim)).with_easing(motion::ease_out), move |_, d| g2.skin(radius, Look::mix(from, to, d))).into_any_element()
-            } else {
-                skin.into_any_element()
-            };
-            let veil = div().id(SharedString::from(format!("veil-{id}"))).absolute().top_0().left_0().size_full().rounded(radius).group_active(group.clone(), move |s| s.bg(hsla(0.6, 0.6, 0.1, press)));
-            return base_el.group(group).child(skin).child(veil).child(label).into_any_element();
-        }
         // pressing darkens the button a little more, answering at once
         let pressed = mix(hover, p.text, 0.12);
         let el = base_el.bg(if hovered { hover } else { base }).active(move |s| s.bg(pressed)).child(label);
@@ -232,8 +216,6 @@ impl App {
             .items_center()
             .gap_3()
             .p_2()
-            // over a sky the title needs glass behind it
-            .when(p.glass.is_some(), |d| d.m_2().mb_0().panel(&p, false))
             .child(div().flex_1().overflow_hidden().text_color(p.text).child(info.title))
             .when_some(info.branch, |d, b| d.child(div().id("branch").role(Role::Label).text_sm().text_color(p.muted).child(b)))
             .when_some(info.context, |d, c| d.child(div().id("context").role(Role::Label).text_sm().text_color(p.muted).child(c)))
@@ -253,7 +235,7 @@ impl App {
         }).collect();
         let rtl = self.rtl;
         Some(
-            div().absolute().top(px(if p.glass.is_some() { 58. } else { 46. })).when(rtl, |d| d.left(px(12.))).when(!rtl, |d| d.right(px(12.))).w(px(300.)).max_h(px(420.)).overflow_hidden().p_2().flex().flex_col().gap_1().panel(&p, false)
+            div().absolute().top(px(46.)).when(rtl, |d| d.left(px(12.))).when(!rtl, |d| d.right(px(12.))).w(px(300.)).max_h(px(420.)).overflow_hidden().p_2().flex().flex_col().gap_1().panel(&p, false)
                 .id("menu").role(Role::Menu).children(items).into_any_element(),
         )
     }
@@ -653,7 +635,6 @@ impl App {
             .when(empty, |d| d.child(div().flex().justify_center().text_color(p.muted).child(if rtl { "ابدأ بكتابة رسالة." } else { "Write a message to begin." })))
             .children(blocks);
         let scroll = div().id("chat-scroll").role(Role::Log).aria_label("Conversation").flex_1().overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().items_center().p_3().child(column);
-        // on glass the conversation sits on a panel of its own, so text never lands straight on the sky
         // the view stays where the person scrolled to while text streams in; a button takes them to the newest line
         let max = self.scroll.max_offset().y;
         self.follow.observe(self.scroll.offset().y.into(), max.into());
@@ -667,7 +648,7 @@ impl App {
             self.tab_buttons = false;
             div().absolute().bottom_2().w_full().flex().justify_center().child(b)
         });
-        let pane = div().relative().flex().flex_col().flex_1().overflow_hidden().when(p.glass.is_some(), |d| d.panel(&p, self.focus == Focus::Chat)).child(scroll).children(jump);
+        let pane = div().relative().flex().flex_col().flex_1().overflow_hidden().child(scroll).children(jump);
         // questions and the message box stay in view under the conversation, in the same column
         let beneath = div().flex().flex_col().items_center().px_3().child(div().flex().flex_col().gap_2().w_full().when_some(width, |d, w| d.max_w(px(w))).children(stack).child(composer));
         div().flex().flex_col().flex_1().h_full().gap_2().overflow_hidden()
@@ -790,7 +771,6 @@ impl Render for App {
         let settings = self.settings_view(window, cx);
         let palette = self.palette_view(cx);
         root.children(p.image_layer())
-            .children(p.motes_layer(self.mote_clock))
             .child(
                 div().size_full().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().p_2().overflow_hidden().child(rail).children(left).child(main).children(right),
             )

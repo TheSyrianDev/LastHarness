@@ -119,10 +119,9 @@ pub struct App {
     pub core_models: HashMap<u64, String>,
     pub content: Vec<crate::panels::Content>,
     pub content_index: usize,
-    /// The panel the person last used; a glass look draws a gradient border round it.
+    /// The panel the person last used.
     pub focus: Focus,
     /// Seconds the bubbles have drifted; only moves while the look has bubbles.
-    pub mote_clock: f32,
     /// A problem to show on the opened-content panel, such as a browser that would not start.
     pub content_note: Option<String>,
     /// The chat tree panel: whose tree it shows, the chosen line, a question waiting.
@@ -147,6 +146,8 @@ pub struct App {
     pub tab_buttons: bool,
     /// The chat width slider, number box and presets in Settings.
     pub width: crate::width::WidthControls,
+    /// Said once, under Appearance: the look that was saved does not exist any more.
+    pub look_notice: Option<String>,
     /// The web page drawn inside the Opened tab, while it is shown.
     pub page: Option<crate::page_ui::PageState>,
     /// The page shown in Settings, the box that searches all pages, and keyboard focus for the list of pages.
@@ -184,8 +185,13 @@ fn stored_to_chat(chats: &mut Chats, models: &ModelList, s: &StoredChat) {
 
 impl App {
     pub fn new(cfg: Config, window: &mut Window, cx: &mut Context<Self>) -> App {
-        let prefs = Prefs::load(&cfg.prefs);
+        let mut prefs = Prefs::load(&cfg.prefs);
         let themes = ThemeSet::load(&cfg.themes);
+        // a saved look that no longer exists falls back to the first look, once, with a line saying so under Appearance
+        let look_notice = lh_gui::theme::missing_look_notice(&prefs.theme, &themes.families());
+        if look_notice.is_some() {
+            prefs.theme = String::new();
+        }
         let system_dark = lh_gui::appearance::system_dark();
         let active_theme = themes.resolve(&prefs.theme, lh_gui::appearance::is_dark(prefs.mode, system_dark));
         let window_radius = theme::window_radius();
@@ -279,21 +285,6 @@ impl App {
         })
         .detach();
 
-        // bubbles drift at a gentle 10 frames a second, and only while the window is the one in use: slow movement
-        // does not need more, and a window in the background should cost nothing
-        cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| loop {
-            cx.background_executor().timer(Duration::from_millis(100)).await;
-            let alive = this.update_in(cx, |app, window, cx| {
-                if app.pal.motes.is_some() && window.is_window_active() {
-                    app.mote_clock += 0.1;
-                    cx.notify();
-                }
-            });
-            if alive.is_err() {
-                break;
-            }
-        })
-        .detach();
 
         let composer = cx.new(|cx| TextareaState::new(window, cx).auto_grow(1, 8).placeholder("Message"));
         composer.update(cx, |s, cx| s.focus(window, cx));
@@ -376,7 +367,6 @@ impl App {
             content: vec![],
             content_index: 0,
             focus: Focus::default(),
-            mote_clock: 0.,
             content_note: None,
             tree: Default::default(),
             tree_label: cx.new(|cx| InputState::new(window, cx).placeholder("A name for this line")),
@@ -390,6 +380,7 @@ impl App {
             settings_focus,
             tab_buttons: false,
             width: crate::width::WidthControls::new(window, cx, prefs_column, is_rtl),
+            look_notice,
             page: None,
             settings_page,
             settings_search,
@@ -443,7 +434,7 @@ impl App {
         cx.notify();
     }
 
-    /// Choose a family of looks (Calm, Matte, Glass, Frutiger Aero, or one of the person's own).
+    /// Choose a family of looks (Calm, Matte, Glass, or one of the person's own).
     pub fn set_family(&mut self, family: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.themes.families().iter().any(|f| f == family) {
             self.prefs.theme = family.to_string();
