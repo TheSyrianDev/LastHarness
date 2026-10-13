@@ -238,3 +238,7 @@ slotkeeper (in the user's own `~/AI/rig`, outside this repo) was removed on the 
 Private branch: the keep-the-cache-after-a-move code is committed on the local branch `private-kv-tree` (58b5bbe) behind a Cargo feature that is off by default. It has 9 tests and clean clippy, but no end-to-end run, no notes file and no parked notes: the user said those were not needed. That branch is never merged into `main` or released.
 
 Working rule from the user: the build session keeps going through a queued job without pausing after each step, and tells the planning session at every job start, finish, block and finding.
+
+## 2026-10-13: Build the Blitz page viewer
+
+After Agave and Falco failed their tests (see spikes/html-render/RESULT.md), the user said "Let's do Blitz, let's test." Blitz, pinned at 0.3.0-beta.2, becomes the page viewer in the Opened tab of the side panel, for pages without JavaScript. The engine fetches nothing itself: the app answers every request (a refused request gets empty data) and every link click goes to a small bar with Open in browser and Copy. Layout and paint run under a time limit and a size cap, with the existing "This is a web page" card as the fallback. Servo stays a possible later add-on for pages that need JavaScript; it is not part of this work. Not yet tested: Blitz inside the real window, forms, text selection and CSS animations.
