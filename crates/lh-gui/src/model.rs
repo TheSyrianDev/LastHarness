@@ -75,13 +75,15 @@ pub struct Chat {
     turn_had_text: bool,
     /// When the thinking and tool use before the next answer began.
     work_since: Option<Instant>,
+    /// How long and how fast the model has been thinking since the last thing it wrote or did.
+    pub think: crate::thinking::Thinking,
 }
 
 pub const NEW_TITLE: &str = "New chat";
 
 impl Chat {
     pub fn new(key: u64, model: &str) -> Chat {
-        Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), turn_had_text: false, work_since: None }
+        Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), turn_had_text: false, work_since: None, think: Default::default() }
     }
 
     /// A chat that is only a name in the list until the user opens it.
@@ -101,6 +103,7 @@ impl Chat {
         self.busy = true;
         self.turn_had_text = false;
         self.work_since = Some(Instant::now());
+        self.think.reset();
     }
 
     /// Fill from the stored history of a chat.
@@ -148,13 +151,20 @@ impl Chat {
                 if began {
                     self.work_since = None;
                 }
+                self.think.reset();
             }
             ServerEvent::Reasoning(t) => {
                 if let Block::Assistant { reasoning, .. } = self.assistant() {
                     reasoning.push_str(t);
                 }
+                if !t.is_empty() {
+                    self.think.on_piece(now);
+                }
             }
-            ServerEvent::ToolStart { id, name, arguments } => self.blocks.push(Block::Tool { id: id.clone(), name: name.clone(), arguments: arguments.clone(), result: None }),
+            ServerEvent::ToolStart { id, name, arguments } => {
+                self.think.reset();
+                self.blocks.push(Block::Tool { id: id.clone(), name: name.clone(), arguments: arguments.clone(), result: None })
+            }
             ServerEvent::ToolResult { id, text } => {
                 if let Some(Block::Tool { result, .. }) = self.blocks.iter_mut().rev().find(|b| matches!(b, Block::Tool { id: i, .. } if i == id)) {
                     *result = Some(text.clone());
@@ -195,6 +205,7 @@ impl Chat {
     pub fn end_turn(&mut self) {
         self.busy = false;
         self.asks.clear();
+        self.think.reset();
     }
 
     pub fn answer(&mut self, ask: &str) {
@@ -435,5 +446,36 @@ mod tests {
         cs.select(a);
         cs.remove(c, "m");
         assert_eq!(cs.current().unwrap().key, a);
+    }
+
+    #[test]
+    fn thinking_is_counted_from_the_reasoning_pieces_and_stops_when_something_else_happens() {
+        let mut c = Chat::new(1, "m");
+        c.push_user("hi");
+        let t0 = Instant::now();
+        for i in 0..40u64 {
+            c.apply_at(&ServerEvent::Reasoning("x".into()), t0 + std::time::Duration::from_millis(i * 100));
+        }
+        let s = c.think.snapshot(t0 + std::time::Duration::from_millis(3900)).unwrap();
+        assert_eq!((s.tokens, s.secs), (40, 3));
+        c.apply_at(&ServerEvent::Reasoning(String::new()), t0 + std::time::Duration::from_secs(5));
+        assert_eq!(c.think.snapshot(t0 + std::time::Duration::from_secs(5)).unwrap().tokens, 40, "an empty piece is not a token");
+        // the answer begins: thinking is over
+        c.apply_at(&ServerEvent::Text("Hello".into()), t0 + std::time::Duration::from_secs(6));
+        assert!(!c.think.active());
+        // a tool starts: over; the next thinking starts counting from nothing
+        c.apply_at(&ServerEvent::Reasoning("y".into()), t0 + std::time::Duration::from_secs(7));
+        assert!(c.think.active());
+        c.apply(&ServerEvent::ToolStart { id: "1".into(), name: "ls".into(), arguments: "{}".into() });
+        assert!(!c.think.active());
+        c.apply(&ServerEvent::Reasoning("z".into()));
+        assert_eq!(c.think.snapshot(Instant::now()).unwrap().tokens, 1);
+        // the turn ends, however it ends
+        c.apply(&ServerEvent::Error("stopped".into()));
+        assert!(!c.think.active());
+        c.push_user("again");
+        c.apply(&ServerEvent::Reasoning("w".into()));
+        c.push_user("and again");
+        assert!(!c.think.active(), "a new message starts clean");
     }
 }

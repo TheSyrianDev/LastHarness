@@ -115,7 +115,7 @@ pub fn work_label(secs: Option<u64>, steps: usize, running: bool, rtl: bool) -> 
     }
 }
 
-fn duration_ar(secs: u64) -> String {
+pub fn duration_ar(secs: u64) -> String {
     if secs < 60 {
         format!("{secs} ث")
     } else if secs.is_multiple_of(60) {

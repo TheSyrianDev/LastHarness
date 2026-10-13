@@ -9,6 +9,7 @@ use gpui_component::text::TextView;
 use crate::app::{App, Focus, Pending};
 use lh_gui::chrome::{chevron, scrim_alpha, topmost, Layer, RailItem, TitleInfo, RAIL_WIDTH, SETTINGS_WIDTH};
 use lh_gui::permissions::may_offer;
+use lh_gui::thinking::{hint_text, is_long, progress_text, spoken_text, Snap};
 use lh_gui::transcript::{self, work_label, Item, Step, StepKind};
 use lh_gui::layout::{Page, Panel};
 use lh_gui::motion;
@@ -484,16 +485,22 @@ impl App {
     }
 
     /// Thinking and tool calls as one line that opens to the list of steps.
-    fn work_view(&self, key: u64, work: (usize, &[Step], Option<u64>, bool), blocks: &[Block], cx: &mut Context<Self>) -> AnyElement {
+    /// `thinking` is the live progress of the model's thinking, for the stretch of work that is still going.
+    fn work_view(&self, key: u64, work: (usize, &[Step], Option<u64>, bool), blocks: &[Block], thinking: Option<Snap>, cx: &mut Context<Self>) -> AnyElement {
         let (first, steps, secs, running) = work;
         let p = self.pal.clone();
         let rtl = self.rtl;
         let open = self.open_blocks.contains(&(key, first));
-        let label = work_label(secs, steps.len(), running, rtl);
+        // while it thinks the line says how much, how fast and for how long; a screen reader hears it only now and then
+        let label = match thinking {
+            Some(s) => progress_text(s, rtl),
+            None => work_label(secs, steps.len(), running, rtl),
+        };
+        let spoken = thinking.map(|s| spoken_text(s, rtl)).unwrap_or_else(|| label.clone());
         let head = div()
             .id(SharedString::from(format!("work-{key}-{first}")))
             .role(Role::Button)
-            .aria_label(label.clone())
+            .aria_label(spoken.clone())
             .aria_expanded(open)
             .flex()
             .when(rtl, |d| d.flex_row_reverse())
@@ -510,13 +517,20 @@ impl App {
                 cx.notify();
             }))
             .child(icon_view(chevron(open, rtl), p.muted, 12.))
-            .child(label);
+            .child(label)
+            .when(thinking.is_some(), |d| d.child(div().id(SharedString::from(format!("think-status-{key}"))).role(Role::Status).aria_label(spoken).w(px(0.)).h(px(0.))));
+        let live_block = if thinking.is_some() { steps.iter().rev().find(|s| s.kind == StepKind::Thinking).map(|s| s.block) } else { None };
         let mut rows: Vec<AnyElement> = vec![];
         if open {
             for s in steps {
                 match (&s.kind, blocks.get(s.block)) {
                     (StepKind::Thinking, Some(Block::Assistant { reasoning, .. })) => {
-                        rows.push(div().flex().flex_col().gap_0p5().child(div().text_color(p.text).child(if rtl { "تفكير" } else { "Thinking" })).child(div().child(reasoning.clone())).into_any_element());
+                        // plain muted text in a box of its own with a height limit; the one still being written follows its end
+                        let mut text = div().id(SharedString::from(format!("think-text-{key}-{}", s.block))).max_h(px(240.)).overflow_y_scroll().text_color(p.muted).when(rtl, |d| d.text_right()).child(reasoning.clone());
+                        if live_block == Some(s.block) {
+                            text = text.track_scroll(&self.think_scroll);
+                        }
+                        rows.push(div().flex().flex_col().gap_0p5().child(div().text_color(p.text).child(if rtl { "تفكير" } else { "Thinking" })).child(text).into_any_element());
                     }
                     (StepKind::Tool, Some(Block::Tool { name, result, .. })) => {
                         let at = s.block;
@@ -568,6 +582,7 @@ impl App {
         let p = self.pal.clone();
         let rtl = self.rtl;
         let Some(chat) = self.chats.current().cloned() else { return div().into_any_element() };
+        let snap = if chat.busy { chat.think.snapshot(std::time::Instant::now()) } else { None };
         let blocks: Vec<AnyElement> = transcript::items(&chat.blocks, chat.busy)
             .into_iter()
             .map(|item| match item {
@@ -576,7 +591,7 @@ impl App {
                     Block::Assistant { text, .. } => self.answer_view(chat.key, i, text, cx),
                     _ => div().into_any_element(),
                 },
-                Item::Work { first, steps, secs, running } => self.work_view(chat.key, (first, &steps, secs, running), &chat.blocks, cx),
+                Item::Work { first, steps, secs, running } => self.work_view(chat.key, (first, &steps, secs, running), &chat.blocks, snap.filter(|_| running), cx),
             })
             .collect();
         let empty = chat.blocks.is_empty() && !chat.dormant;
@@ -626,8 +641,11 @@ impl App {
             );
         }
         let action = self.button("send", if chat.busy { if rtl { "إيقاف" } else { "Stop" } } else if rtl { "إرسال" } else { "Send" }, if chat.busy { Kind::Danger } else { Kind::Primary }, cx, |a, w, cx| a.send(w, cx));
+        // after a minute or two thousand tokens of thinking: a calm hint beside Stop. Nothing is ever stopped for the person.
+        let hint = snap.filter(|s| is_long(*s)).map(|_| div().id("still-thinking").role(Role::Status).aria_label(hint_text(rtl)).text_xs().text_color(p.muted).max_w(px(150.)).pb_1p5().when(rtl, |d| d.text_right()).child(hint_text(rtl)));
         let composer = div().flex().when(rtl, |d| d.flex_row_reverse()).items_end().gap_2().p_2().panel(&p, false)
             .child(div().flex_1().child(Textarea::new(&self.composer).aria_label("Message")))
+            .children(hint)
             .child(action);
         // the conversation reads in one column in the middle; the person chooses how wide
         let width = self.layout().column.max_px();

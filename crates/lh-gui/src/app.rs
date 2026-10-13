@@ -99,6 +99,9 @@ pub struct App {
     pub scroll: ScrollHandle,
     /// Whether the conversation follows new text, or the person scrolled up and is reading.
     pub follow: lh_gui::follow::Follow,
+    /// The thinking text of a running turn, when it is opened: its own scroll, and the same follow rule as the chat.
+    pub think_scroll: ScrollHandle,
+    pub think_follow: lh_gui::follow::Follow,
     pub model_menu: bool,
     pub pending: Option<Pending>,
     pub confirm_delete: Option<u64>,
@@ -246,6 +249,20 @@ impl App {
         })
         .detach();
 
+        // while the model thinks, the progress line (count, speed, time) is redrawn once a second, not for every token
+        cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| loop {
+            cx.background_executor().timer(Duration::from_secs(1)).await;
+            let alive = this.update_in(cx, |app, _, cx| {
+                if app.chats.current().is_some_and(|c| c.busy && c.think.active()) {
+                    cx.notify();
+                }
+            });
+            if alive.is_err() {
+                break;
+            }
+        })
+        .detach();
+
         // bubbles drift at a gentle 10 frames a second, and only while the window is the one in use: slow movement
         // does not need more, and a window in the background should cost nothing
         cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| loop {
@@ -325,6 +342,8 @@ impl App {
             pal,
             scroll: ScrollHandle::new(),
             follow: Default::default(),
+            think_scroll: ScrollHandle::new(),
+            think_follow: Default::default(),
             model_menu: false,
             pending: None,
             confirm_delete: None,
@@ -634,6 +653,19 @@ impl App {
         self.follow.placed((-max.y).into());
     }
 
+    /// New thinking arrived in the open chat: the opened thinking text follows it only while it is at the bottom.
+    pub fn follow_think(&mut self) {
+        if self.chats.current().is_some_and(|c| c.think.snapshot(std::time::Instant::now()).is_some_and(|s| s.tokens <= 1)) {
+            self.think_follow = Default::default(); // a new stretch of thinking starts at the bottom
+        }
+        let (offset, max) = (self.think_scroll.offset().y, self.think_scroll.max_offset().y);
+        if self.think_follow.on_new_content(offset.into(), max.into()) {
+            let m = self.think_scroll.max_offset();
+            self.think_scroll.set_offset(point(px(0.), -m.y));
+            self.think_follow.placed((-m.y).into());
+        }
+    }
+
     /// New text arrived in the open chat: follow it only if the view is at the bottom. If the person scrolled up
     /// their place is left alone and the jump button is shown.
     pub fn follow_stream(&mut self) {
@@ -698,6 +730,7 @@ impl App {
                 }
                 if current == Some(chat) {
                     self.follow_stream();
+                    self.follow_think();
                 }
             }
             Ev::StreamEnded { chat } => {

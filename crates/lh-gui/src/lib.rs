@@ -20,6 +20,7 @@ pub mod setting_names;
 pub mod settings;
 pub mod sheen;
 pub mod theme;
+pub mod thinking;
 pub mod transcript;
 pub mod treeview;
 pub mod width_slider;
