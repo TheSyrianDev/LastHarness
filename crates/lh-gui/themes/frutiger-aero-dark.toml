@@ -1,6 +1,6 @@
 # Built-in look: Frutiger Aero, dark. The black glass variant of the Windows 7 look: dark blue-grey panes of
-# translucent glass over whatever is behind the window, a pale line just inside the edge, a diagonal reflection and
-# fine hairlines, buttons that glow blue under the pointer. No picture ships with it. Copy this file to
+# translucent glass over whatever is behind the window, a faint pale line just inside the edge, a soft diagonal glow
+# in the corner, buttons that glow blue under the pointer. Nothing is sharp. No picture ships with it. Copy this file to
 # ~/.config/lastharness/themes/ and edit it; changes show up while the app runs. The keys are explained in
 # frutiger-aero-light.toml.
 name = "Frutiger Aero"
@@ -21,8 +21,8 @@ danger = "#e5584a"
 
 [background]
 kind = "gradient"
-from = "#0c1b2d70"
-to = "#040d1870"
+from = "#0c1b2d50"
+to = "#040d1858"
 angle = 180
 
 [shape]
@@ -30,25 +30,25 @@ roundness = 9
 match_window = false
 
 [glass]
-top = "#2b4058b4"
-bottom = "#142133c4"
-rim = "#ffffff3d"
-edge = "#000000b0"
-sheen = 0.1
-reflection = 0.14
-lines = 0.045
-lines_gap = 4
+top = "#2b405ab3"
+bottom = "#142130bf"
+rim = "#ffffff55"
+edge = "#00000080"
+sheen = 0.07
+reflection = 0.10
+lines = 0
+lines_gap = 10
 
 [gel]
-top = "#4a647f"
-bottom = "#1f3043"
+top = "#4b5f75"
+bottom = "#232f3c"
 primary_top = "#5aaef2"
-primary_bottom = "#1f68ba"
-gloss = 0.3
-rim = "#ffffff45"
-edge = "#070d15"
-glow = "#58b6ffd8"
-press = 0.2
+primary_bottom = "#2a74c4"
+gloss = 0.22
+rim = "#ffffff40"
+edge = "#00000099"
+glow = "#58b6ffb8"
+press = 0.18
 
 [focus]
 from = "#4aa3ee"
@@ -57,9 +57,9 @@ width = 2
 
 [effects]
 blur = true
-shadow_blur = 30
-shadow_y = 8
-shadow_color = "#000000a0"
+shadow_blur = 48
+shadow_y = 12
+shadow_color = "#00000078"
 
 [animation]
 duration_ms = 160

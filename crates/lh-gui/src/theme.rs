@@ -52,6 +52,12 @@ impl Color {
     }
 }
 
+/// Limits that keep glass soft however a theme file is written: hairlines can only be faint and far apart, and the
+/// reflection can never be a strong white shape.
+pub const HAIRLINE_MAX_OPACITY: f32 = 0.05;
+pub const HAIRLINE_MIN_GAP: f32 = 8.;
+pub const REFLECTION_MAX_OPACITY: f32 = 0.3;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
@@ -159,7 +165,7 @@ struct RawGlass {
 impl Default for RawGlass {
     fn default() -> Self {
         let d = |s: &str| s.to_string();
-        Self { top: d("#ffffffd9"), bottom: d("#ffffff8c"), rim: d("#ffffffe6"), edge: d("#7fb8dd99"), sheen: 0.3, lines: 0., lines_gap: 6., reflection: 0. }
+        Self { top: d("#ffffffd9"), bottom: d("#ffffff8c"), rim: d("#ffffffe6"), edge: d("#7fb8dd99"), sheen: 0.3, lines: 0., lines_gap: 8., reflection: 0. }
     }
 }
 
@@ -390,7 +396,7 @@ impl Theme {
             None => Color { r: 0, g: 0, b: 0, a: 0 },
         };
         let glass = match &raw.glass {
-            Some(g) => Some(Glass { top: key("glass.top", &g.top)?, bottom: key("glass.bottom", &g.bottom)?, rim: key("glass.rim", &g.rim)?, edge: key("glass.edge", &g.edge)?, sheen: g.sheen.clamp(0., 1.), lines: g.lines.clamp(0., 1.), lines_gap: g.lines_gap.clamp(3., 24.), reflection: g.reflection.clamp(0., 1.) }),
+            Some(g) => Some(Glass { top: key("glass.top", &g.top)?, bottom: key("glass.bottom", &g.bottom)?, rim: key("glass.rim", &g.rim)?, edge: key("glass.edge", &g.edge)?, sheen: g.sheen.clamp(0., 1.), lines: g.lines.clamp(0., HAIRLINE_MAX_OPACITY), lines_gap: g.lines_gap.clamp(HAIRLINE_MIN_GAP, 24.), reflection: g.reflection.clamp(0., REFLECTION_MAX_OPACITY) }),
             None => None,
         };
         let gel = match &raw.gel {
@@ -702,8 +708,8 @@ mod tests {
             assert!(x.motes.is_none(), "{label} has no bubbles: they belonged to the nature look");
             assert!(x.roundness >= 6. && x.roundness <= 12., "{label} has the small corners of Windows 7 windows, not 16");
             let g = x.glass.as_ref().unwrap();
-            assert!(g.reflection > 0. && g.lines > 0. && g.lines_gap >= 3., "{label} has the diagonal reflection and the hairlines");
-            assert!(g.rim.a >= 40 && g.rim.r > 200 && g.top.a < 255 && g.bottom.a < 255, "{label}: a light rim inside, translucent fill");
+            assert!(g.reflection > 0., "{label} has the soft diagonal reflection");
+            assert!(g.rim.a >= 80 && g.rim.r > 200 && g.top.a < 255 && g.bottom.a < 255, "{label}: a light rim inside, translucent fill");
             assert!(g.top.a >= g.bottom.a || x.mode == Mode::Dark, "{label}: lighter at the top");
             assert_eq!(x.name, "Frutiger Aero");
             // the blue glow on hover is blue, in both modes
@@ -725,7 +731,7 @@ mod tests {
 
     #[test]
     fn glass_gel_focus_and_motes_are_checked_with_the_key_that_is_wrong() {
-        let ok = Theme::parse("name = \"x\"\n[glass]\nlines = 0.1\nlines_gap = 5\nreflection = 0.3\n[gel]\n[focus]\n[motes]\ncount = 4\n", Path::new("")).unwrap();
+        let ok = Theme::parse("name = \"x\"\n[glass]\nlines = 0.04\nlines_gap = 12\nreflection = 0.2\n[gel]\n[focus]\n[motes]\ncount = 4\n", Path::new("")).unwrap();
         assert!(ok.glass.is_some() && ok.gel.is_some() && ok.focus.is_some());
         assert_eq!(ok.motes.unwrap().count, 4);
         let e = |src: &str| Theme::parse(&format!("name = \"x\"\n{src}"), Path::new("")).unwrap_err();
@@ -738,9 +744,98 @@ mod tests {
         let capped = Theme::parse("name = \"x\"\n[motes]\ncount = 9999\n", Path::new("")).unwrap();
         assert_eq!(capped.motes.unwrap().count, 40, "bubbles are capped");
         let g = Theme::parse("name = \"x\"\n[glass]\nlines = 7\nlines_gap = 1\nreflection = -2\n", Path::new("")).unwrap().glass.unwrap();
-        assert_eq!((g.lines, g.lines_gap, g.reflection), (1., 3., 0.), "the marks are kept inside their limits");
+        assert_eq!((g.lines, g.lines_gap, g.reflection), (HAIRLINE_MAX_OPACITY, HAIRLINE_MIN_GAP, 0.), "the marks are kept inside their limits");
+        let strong = Theme::parse("name = \"x\"\n[glass]\nreflection = 1\n", Path::new("")).unwrap().glass.unwrap();
+        assert_eq!(strong.reflection, REFLECTION_MAX_OPACITY, "the reflection can never be a strong white shape");
         let plain = Theme::parse("name = \"x\"\n[glass]\n", Path::new("")).unwrap().glass.unwrap();
         assert_eq!((plain.lines, plain.reflection), (0., 0.), "a glass table without them has none, as before");
+    }
+
+    /// WCAG relative luminance of an opaque colour, 0 to 1.
+    fn luminance(c: [f32; 3]) -> f32 {
+        let lin = |v: f32| {
+            let v = v / 255.;
+            if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
+    }
+
+    fn over(top: Color, back: [f32; 3]) -> [f32; 3] {
+        let a = top.a as f32 / 255.;
+        [top.r as f32 * a + back[0] * (1. - a), top.g as f32 * a + back[1] * (1. - a), top.b as f32 * a + back[2] * (1. - a)]
+    }
+
+    fn contrast(a: [f32; 3], b: [f32; 3]) -> f32 {
+        let (x, y) = (luminance(a), luminance(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    #[test]
+    fn the_aero_glass_is_soft_not_metal() {
+        let t = builtin();
+        for label in ["Frutiger Aero light", "Frutiger Aero dark"] {
+            let x = t.iter().find(|x| x.label() == label).unwrap();
+            let g = x.glass.as_ref().unwrap();
+            // no fine hairlines, or only faint and far apart ones
+            assert!(g.lines <= HAIRLINE_MAX_OPACITY && (g.lines == 0. || g.lines_gap >= HAIRLINE_MIN_GAP), "{label}");
+            // the diagonal glow is faint, and the pane's own sheen too; nothing is a bright white shape
+            assert!(g.reflection > 0. && g.reflection <= 0.18, "{label}: reflection {}", g.reflection);
+            assert!(g.sheen <= 0.14, "{label}: sheen {}", g.sheen);
+            // the inner line is about half white at most, the outer one a dark neutral under half black
+            let rim = g.rim.a as f32 / 255.;
+            assert!((0.3..=0.55).contains(&rim) && g.rim.r >= 250 && g.rim.g >= 250 && g.rim.b >= 250, "{label}: inner line {rim}");
+            let edge = g.edge.a as f32 / 255.;
+            assert!((0.35..=0.55).contains(&edge) && g.edge.r == 0 && g.edge.g == 0 && g.edge.b == 0, "{label}: outer line {edge}");
+            // shadows are wide and faint
+            assert!(x.shadow_blur >= 40. && x.shadow_color.a as f32 / 255. <= 0.5, "{label}: shadow {} {}", x.shadow_blur, x.shadow_color.a);
+            // buttons: the gloss fades (the drawing code ends it at nothing), and the gradient is smooth
+            let gel = x.gel.as_ref().unwrap();
+            assert!(gel.gloss <= 0.4, "{label}: gloss {}", gel.gloss);
+            let steps = |a: Color, b: Color| (a.r as i32 - b.r as i32).abs().max((a.g as i32 - b.g as i32).abs()).max((a.b as i32 - b.b as i32).abs());
+            assert!(steps(gel.top, gel.bottom) <= 120, "{label}: the button gradient is gentle");
+            assert!(gel.rim.a < 230, "{label}: no bright white button rim");
+            // no colour in the glass is fully opaque white
+            for c in [g.top, g.bottom, g.rim] {
+                assert!(!(c.r == 255 && c.g == 255 && c.b == 255 && c.a >= 230), "{label}: {c:?}");
+            }
+        }
+        let light = t.iter().find(|x| x.label() == "Frutiger Aero light").unwrap();
+        let dark = t.iter().find(|x| x.label() == "Frutiger Aero dark").unwrap();
+        // lighter and more transparent than the first try (it was about 66 percent at the top)
+        assert!((light.glass.as_ref().unwrap().top.a as f32 / 255.) <= 0.65);
+        // the windows 7 button: a grey gradient with a mid-grey edge, blue glow under the pointer
+        let gl = light.gel.as_ref().unwrap();
+        assert_eq!((gl.top, gl.edge), (Color::parse("#f2f2f2").unwrap(), Color::parse("#707070").unwrap()));
+        assert!(gl.glow.b > gl.glow.r);
+        let _ = dark;
+    }
+
+    #[test]
+    fn body_text_stays_readable_on_the_glass_over_ordinary_backdrops() {
+        let t = builtin();
+        let backdrops: [(&str, [f32; 3], &[&str]); 4] = [
+            ("dark desktop", [26., 32., 40.], &["Frutiger Aero light", "Frutiger Aero dark"]),
+            ("blue wallpaper", [46., 111., 168.], &["Frutiger Aero light", "Frutiger Aero dark"]),
+            ("mid grey", [122., 122., 122.], &["Frutiger Aero light", "Frutiger Aero dark"]),
+            ("white", [255., 255., 255.], &["Frutiger Aero light", "Frutiger Aero dark"]),
+        ];
+        for (name, back, labels) in backdrops {
+            for label in labels {
+                let x = t.iter().find(|x| x.label() == *label).unwrap();
+                let g = x.glass.as_ref().unwrap();
+                let text = [x.colors.text.r as f32, x.colors.text.g as f32, x.colors.text.b as f32];
+                // the tint of the window under the pane counts too, as a layer over the blurred backdrop
+                let under = over(x.background.from, back);
+                for (part, fill) in [("top", g.top), ("bottom", g.bottom)] {
+                    let pane = over(fill, under);
+                    let c = contrast(text, pane);
+                    assert!(c >= 4.5, "{label} over {name}, {part} of a pane: contrast {c:.2}");
+                }
+                // input fields are nearly opaque
+                let field = over(x.colors.sunken, over(g.bottom, under));
+                assert!(contrast(text, field) >= 7., "{label} over {name}: input field {:.2}", contrast(text, field));
+            }
+        }
     }
 
     #[test]

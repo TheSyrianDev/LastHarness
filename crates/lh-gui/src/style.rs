@@ -210,8 +210,8 @@ impl PanelExt for $t {
 impl_panel!(Div);
 impl_panel!(Stateful<Div>);
 
-/// The marks of Windows 7 style glass, drawn over a pane with two paths: the reflection is two filled polygons with a
-/// fade from white to clear along the diagonal, and the hairlines are one stroked path of straight 45 degree lines
+/// The marks of Windows 7 style glass, drawn over a pane: the reflection is twelve nested triangles, each a flat
+/// sliver of white, so it fades out in steps too small to see (no hard edge, no stripe), and the hairlines are one stroked path of straight 45 degree lines
 /// (at most 220, see `sheen`), a pixel wide and a few percent white. Where they go is worked out in `sheen.rs`.
 fn glass_marks(g: GlassP, radius: f32) -> impl IntoElement {
     canvas(
@@ -221,11 +221,9 @@ fn glass_marks(g: GlassP, radius: f32) -> impl IntoElement {
             let (ox, oy): (f32, f32) = (b.left().into(), b.top().into());
             let at = |x: f32, y: f32| point(px(ox + x), px(oy + y));
             if g.reflection > 0. {
-                let [tri, band] = sheen::reflection(w, h, radius);
-                for (poly, strength) in [(tri, 1.0f32), (band, 0.55)] {
-                    if poly.len() < 3 {
-                        continue;
-                    }
+                // nested triangles, each a flat share of the opacity: the glow is brightest in the corner and
+                // fades out along the diagonal in small steps, with no hard edge
+                for (poly, share) in sheen::reflection(w, h, radius) {
                     let mut pb = PathBuilder::fill();
                     pb.move_to(at(poly[0].0, poly[0].1));
                     for q in &poly[1..] {
@@ -233,7 +231,7 @@ fn glass_marks(g: GlassP, radius: f32) -> impl IntoElement {
                     }
                     pb.close();
                     if let Ok(path) = pb.build() {
-                        window.paint_path(path, linear_gradient(135., linear_color_stop(white(g.reflection * strength), 0.), linear_color_stop(white(0.), 1.)));
+                        window.paint_path(path, white(g.reflection * share));
                     }
                 }
             }
@@ -311,7 +309,9 @@ impl GelP {
     pub fn looks(&self, danger: Hsla, ghost: bool, primary: bool, is_danger: bool) -> (Look, Look) {
         let (top, bottom) = if is_danger { (mix(danger, white(1.), 0.3), mix(danger, black(1.), 0.2)) } else if primary { (self.primary_top, self.primary_bottom) } else { (self.top, self.bottom) };
         let rest = Look { top, bottom, edge: self.edge, glow: 0., shown: if ghost { 0. } else { 1. } };
-        let hover = Look { top: mix(top, white(1.), 0.3), bottom: mix(bottom, white(1.), 0.18), edge: self.edge, glow: 1., shown: 1. };
+        // under the pointer a button takes on the blue of its glow, as Windows 7 buttons did, not a plain brightening
+        let blue = gpui::hsla(self.glow.h, self.glow.s, self.glow.l, 1.);
+        let hover = Look { top: mix(mix(top, white(1.), 0.1), blue, 0.16), bottom: mix(mix(bottom, white(1.), 0.06), blue, 0.30), edge: mix(self.edge, blue, 0.5), glow: 1., shown: 1. };
         (rest, hover)
     }
 
@@ -329,11 +329,11 @@ impl GelP {
             .border_1()
             .border_color(look.edge)
             .shadow(vec![
-                BoxShadow { color: glow, offset: point(px(0.), px(0.)), blur_radius: px(12.), spread_radius: px(1.), inset: false },
-                BoxShadow { color: black(0.18), offset: point(px(0.), px(1.)), blur_radius: px(2.), spread_radius: px(0.), inset: false },
+                BoxShadow { color: glow, offset: point(px(0.), px(0.)), blur_radius: px(16.), spread_radius: px(0.), inset: false },
+                BoxShadow { color: black(0.12), offset: point(px(0.), px(1.)), blur_radius: px(3.), spread_radius: px(0.), inset: false },
             ])
             // the glossy top half, then the rim light just inside the edge
-            .child(div().absolute().top_0().left_0().w_full().h(relative(0.5)).rounded_tl(px(inner)).rounded_tr(px(inner)).bg(linear_gradient(180., linear_color_stop(white(self.gloss), 0.), linear_color_stop(white(self.gloss * 0.35), 1.))))
+            .child(div().absolute().top_0().left_0().w_full().h(relative(0.62)).rounded_tl(px(inner)).rounded_tr(px(inner)).bg(linear_gradient(180., linear_color_stop(white(self.gloss), 0.), linear_color_stop(white(0.), 1.))))
             .child(div().absolute().top_0().left_0().size_full().rounded(px(inner)).border_1().border_color(self.rim))
     }
 }
@@ -396,7 +396,7 @@ mod tests {
             let t = lh_gui::theme::builtin().into_iter().find(|t| t.label() == label).unwrap();
             let p = Pal::from(&t, None, false);
             let g = p.glass.expect("glass");
-            assert!(g.lines > 0. && g.reflection > 0. && g.lines_gap >= 3., "{label}");
+            assert!(g.reflection > 0. && g.lines <= lh_gui::theme::HAIRLINE_MAX_OPACITY && g.lines_gap >= lh_gui::theme::HAIRLINE_MIN_GAP, "{label}");
             assert!(p.motes.is_none(), "{label} has no bubbles");
             assert!(matches!(p.background, super::Background::Gradient { .. }), "{label} is a tint, not a picture");
         }

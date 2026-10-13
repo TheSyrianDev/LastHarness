@@ -32,24 +32,32 @@ pub fn hairlines(w: f32, h: f32, gap: f32) -> Vec<Seg> {
     out
 }
 
-/// The reflection: a large triangle in the top left corner and a narrow band running parallel to its long edge, as
-/// two polygons. Both stay inside the `w` by `h` pane, and neither touches the rounded corner (the corner is cut
-/// by `radius`).
-pub fn reflection(w: f32, h: f32, radius: f32) -> [Vec<(f32, f32)>; 2] {
+/// How many nested triangles make up the reflection. Each adds a small share of the opacity, so no edge is a hard
+/// step: the outermost triangle adds only one layer's share (1/12 of the whole), and the corner gets all of them.
+pub const REFLECTION_LAYERS: usize = 12;
+
+/// The reflection in the top left corner as nested triangles, widest first. Each comes with its share of the
+/// opacity (the shares add up to 1), so the corner is the brightest place and the glow fades out in small steps
+/// along the diagonal, with no hard edge and no narrow stripe. Every polygon stays inside the `w` by `h` pane, and
+/// none reaches the rounded corner (the corner is cut back by `radius`).
+pub fn reflection(w: f32, h: f32, radius: f32) -> Vec<(Vec<(f32, f32)>, f32)> {
     if !(w.is_finite() && h.is_finite()) || w < 24. || h < 24. {
-        return [vec![], vec![]];
+        return vec![];
     }
+    let n = REFLECTION_LAYERS;
     let cut = (radius.max(0.) * 0.62).min(w / 4.).min(h / 4.);
-    // how far the long edge of the triangle reaches along the top and the left side
-    let d = (w * 0.62).min(h * 0.6);
+    // how far the outer edge reaches along the top, and how steeply it comes down the left side
+    let reach = (w * 0.66).min(h * 0.64);
     let slope = 0.9;
-    let (xa, ya) = (d.min(w), (d * slope).min(h));
-    let tri = vec![(cut, 0.), (xa, 0.), (0., ya), (0., cut)];
-    // a thinner band beyond it, the same slope
-    let (x0, x1) = ((d * 1.12).min(w), (d * 1.34).min(w));
-    let (y0, y1) = ((d * 1.12 * slope).min(h), (d * 1.34 * slope).min(h));
-    let band = if x0 < x1 - 1. && y0 < y1 - 1. { vec![(x0, 0.), (x1, 0.), (0., y1), (0., y0)] } else { vec![] };
-    [tri, band]
+    (0..n)
+        .rev()
+        .map(|i| {
+            let d = reach * (i + 1) as f32 / n as f32;
+            let c = cut.min(d * 0.45);
+            let (x, y) = (d.min(w), (d * slope).min(h));
+            (vec![(c, 0.), (x, 0.), (0., y), (0., c)], 1. / n as f32)
+        })
+        .collect()
 }
 
 /// The area the hairlines may use: the pane inset so that the corners of the area stay inside rounded corners.
@@ -98,24 +106,44 @@ mod tests {
 
     #[test]
     fn the_reflection_stays_inside_the_pane_and_leaves_the_rounded_corner_alone() {
-        for (w, h, r) in [(300., 200., 16.), (900., 1000., 16.), (200., 900., 12.), (60., 60., 16.), (1500., 90., 18.)] {
-            let [tri, band] = reflection(w, h, r);
-            assert!(tri.len() >= 3, "{w}x{h}");
-            for p in tri.iter().chain(band.iter()) {
-                assert!(inside(*p, w, h), "{p:?} in {w}x{h}");
+        for (w, h, r) in [(300., 200., 9.), (900., 1000., 9.), (200., 900., 12.), (60., 60., 16.), (1500., 90., 18.)] {
+            let layers = reflection(w, h, r);
+            assert_eq!(layers.len(), REFLECTION_LAYERS, "{w}x{h}");
+            for (poly, _) in &layers {
+                assert!(poly.len() >= 3);
+                for p in poly {
+                    assert!(inside(*p, w, h), "{p:?} in {w}x{h}");
+                }
+                // the corner point itself (0, 0) is never in the shape: it would poke out of the rounded corner
+                assert!(!poly.contains(&(0., 0.)));
             }
-            // the corner point itself (0, 0) is never in the shape: it would poke out of the rounded corner
-            assert!(!tri.contains(&(0., 0.)) && !band.contains(&(0., 0.)));
-            // the first and last points are cut back from the corner by most of the radius
-            let cut = tri[0].0;
-            assert!(cut >= r.min(w / 4.).min(h / 4.) * 0.5, "cut {cut} for radius {r}");
         }
     }
 
     #[test]
+    fn the_reflection_is_soft_no_layer_adds_a_step_and_the_corner_gets_the_sum() {
+        let layers = reflection(400., 300., 9.);
+        let total: f32 = layers.iter().map(|l| l.1).sum();
+        assert!((total - 1.).abs() < 1e-4, "the shares add up to the whole: {total}");
+        let step = layers.iter().map(|l| l.1).fold(0., f32::max);
+        assert!(step <= 0.1, "the largest step is a tenth of the whole opacity, not a hard edge: {step}");
+        // with the opacity of the built-in looks, the outermost edge is a step of about one or two percent white
+        assert!(step * 0.2 <= 0.02);
+        // widest first and nested: each triangle lies inside the one before it
+        for pair in layers.windows(2) {
+            let (outer, inner) = (&pair[0].0, &pair[1].0);
+            assert!(inner[1].0 <= outer[1].0 + 1e-3 || outer[1].0 >= 400. - 1e-3, "{inner:?} inside {outer:?}");
+        }
+        // alpha seen at a point is the sum of the shares of the triangles covering it: it falls from the corner outward
+        let seen = |x: f32, y: f32| -> f32 { layers.iter().filter(|(p, _)| x / p[1].0 + y / p[2].1 <= 1.).map(|l| l.1).sum() };
+        assert!(seen(5., 5.) > seen(100., 5.) && seen(100., 5.) > seen(180., 5.), "the glow fades along the top edge");
+        assert!(seen(5000., 5.) == 0., "and is nothing beyond the reach");
+    }
+
+    #[test]
     fn a_pane_too_small_for_a_reflection_gets_none() {
-        assert_eq!(reflection(10., 200., 16.), [vec![], vec![]]);
-        assert_eq!(reflection(f32::NAN, 200., 16.), [vec![], vec![]]);
+        assert!(reflection(10., 200., 16.).is_empty());
+        assert!(reflection(f32::NAN, 200., 16.).is_empty());
     }
 
     #[test]

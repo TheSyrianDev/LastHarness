@@ -1,11 +1,11 @@
-# Built-in look: Frutiger Aero, the glass look of Windows 7 (about 2009). Panes of translucent blue glass over
-# whatever is behind the window, a white line just inside the edge and a darker line outside it, a diagonal
-# reflection in the top left corner of each pane, fine diagonal hairlines, glossy buttons that glow blue when the
-# pointer is over them, soft shadows. No picture ships with it: the desktop behind the window (blurred by the
-# compositor, which Hyprland does for you) is the background. Copy this file to ~/.config/lastharness/themes/
-# and edit it; changes show up while the app runs.
+# Built-in look: Frutiger Aero, the glass look of Windows 7 (about 2009). Soft panes of lightly tinted, translucent
+# glass over whatever is behind the window, a faint white line just inside the edge and a thin dark one outside it,
+# a soft diagonal glow in the top left corner of each pane, buttons with a smooth gradient and a fading gloss that
+# glow blue when the pointer is over them, wide soft shadows. Nothing is sharp: no hard edges, no fine lines.
+# No picture ships with it: the desktop behind the window (blurred by the compositor, which Hyprland does for you)
+# is the background. Copy this file to ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
 #
-# To put a photo behind the glass inside the window instead, set in [background]:
+# To put a photo behind the glass inside the window instead, set in the background table:
 #   kind = "image"
 #   image = "/home/you/Pictures/sky.jpg"     # a full path, or one relative to this file
 #   image_opacity = 1
@@ -18,7 +18,7 @@ background = "#4a7db3"      # a solid blue: what the glass is drawn on when noth
 surface = "#e6f0faa6"       # panels and bubbles, for a pane without [glass]
 sunken = "#f7fbffeb"        # input fields and replies: near white, like a text box on a Windows 7 window
 text = "#0f1f2d"
-muted = "#3d586f"
+muted = "#34506a"
 accent = "#2f7fc7"
 accent_text = "#ffffff"
 button = "#dbe7f3"
@@ -28,8 +28,8 @@ danger = "#c0392b"
 
 [background]
 kind = "gradient"             # solid, gradient or image
-from = "#8cbfeb5c"            # a light blue tint, a third opaque, so the desktop shows through
-to = "#4f86bf5c"
+from = "#8cbfeb40"            # a light blue tint, a quarter opaque, so the desktop shows through
+to = "#4f86bf40"
 angle = 180
 
 [shape]
@@ -37,26 +37,26 @@ roundness = 9                   # corner radius of panes, in pixels (Windows 7 w
 match_window = false             # true: take the window's own radius when the desktop reports it
                                  # (Hyprland does); controls inside panes follow the same curve
 
-[glass]                          # panes: lighter at the top, a light line inside the edge, a darker line outside
-top = "#deedfbb0"
-bottom = "#b9d6efa0"
-rim = "#ffffffe0"                # the white line just inside the edge
-edge = "#5d7d9fcc"               # the darker line just outside it
-sheen = 0.2                      # white shine over the top of a pane; 0 for none
-reflection = 0.22                # the diagonal reflection in the top left corner; 0 for none
-lines = 0.055                    # fine diagonal hairlines, as opacity of white; 0 for none
-lines_gap = 4                    # pixels between the hairlines
+[glass]                          # panes: a lightly tinted, translucent fill, lighter at the top, soft all over
+top = "#e6f2fb9e"
+bottom = "#c4dcf094"
+rim = "#ffffff80"                # the white line just inside the edge: about half white, 1 px
+edge = "#00000070"               # the dark neutral line just outside it: under half black, 1 px
+sheen = 0.12                     # a faint white glow over the top of a pane; 0 for none
+reflection = 0.16                # the soft diagonal glow in the top left corner, fading out; 0 for none
+lines = 0                        # fine diagonal hairlines; off, they read as brushed metal. At most 0.05
+lines_gap = 10                   # pixels between the hairlines, when on (8 or more)
 
-[gel]                            # buttons: glossy top half, rim light, glow on hover, darker when pressed
-top = "#f5f9fd"
-bottom = "#c3d5e7"
-primary_top = "#78bdf3"          # the main button is blue glass
-primary_bottom = "#2b7fd0"
-gloss = 0.5
-rim = "#ffffffe6"
-edge = "#6b7c8e"
-glow = "#3ea8f0d0"               # the blue glow while the pointer is over a button
-press = 0.14
+[gel]                            # buttons: a smooth gradient with a soft gloss that fades, glow on hover
+top = "#f2f2f2"
+bottom = "#cfcfcf"
+primary_top = "#7dbcf0"          # the main button is blue glass
+primary_bottom = "#3d8bd0"
+gloss = 0.38                     # the gloss fades from this opacity to nothing, with no hard stop
+rim = "#ffffff99"
+edge = "#707070"
+glow = "#4aaef0b0"               # the blue glow while the pointer is over a button; the button takes on the blue too
+press = 0.12
 
 [focus]                          # the border of the pane you are working in
 from = "#2f8fe0"
@@ -65,9 +65,9 @@ width = 2
 
 [effects]
 blur = true                      # ask the desktop to blur what is behind the window (Hyprland blur needs nothing more)
-shadow_blur = 28
-shadow_y = 6
-shadow_color = "#00000066"
+shadow_blur = 44                 # a wide, faint shadow: the panes float
+shadow_y = 10
+shadow_color = "#0000003a"
 
 [animation]
 duration_ms = 160           # 0 turns hover and press fades off

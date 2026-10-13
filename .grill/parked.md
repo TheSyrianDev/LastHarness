@@ -229,3 +229,10 @@ Each item says what the app does now and the answer I recommend. A "yes" accepts
 - **The progress line redraws once a second; a screen reader hears it at most every 10 seconds** (rounded to the nearest hundred tokens, no speed) through a polite status.
 - **Stop was checked and needs no fix.** A new core test drops the front end's stream against a fake model server that thinks for ever and sees the connection close within a fraction of a second, and the session accepts a new turn straight after. The real check against the user's server (slot `is_processing` going false) was not run, because the user is waiting on a run.
 - **Question: a per-chat "Think less" switch?** For small models that over-think: send `enable_thinking: false` (or a lower reasoning effort) for that chat. Recommended answer: yes, later, as a switch in the chat's model menu, off by default, remembered per chat. Not built.
+
+## Glass softness (build session, 2026-10-13)
+
+- **The first Windows 7 glass was too metallic and sharp.** The causes were the hard edge of the reflection and its stripe, the 1 px hairlines every 4 px, a bright white rim, a button gloss that stopped halfway, and a small shadow. All softened, hairlines off. Details are in `docs/milestone-8-report.md`.
+- **Question: a "glass softness" slider in Settings?** Recommended answer: no for now. The values are in the theme file, and the caps keep any file soft. Ask again if the user still finds the look off after trying this one.
+- **The Windows 7 button colours are from memory** (`#f2f2f2` to `#cfcfcf`, edge `#707070`, blue hover) and not verified. If the user sends screenshots of real Windows 7 windows, sample the colours from them.
+
