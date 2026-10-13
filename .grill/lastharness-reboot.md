@@ -242,3 +242,7 @@ Working rule from the user: the build session keeps going through a queued job w
 ## 2026-10-13: Build the Blitz page viewer
 
 After Agave and Falco failed their tests (see spikes/html-render/RESULT.md), the user said "Let's do Blitz, let's test." Blitz, pinned at 0.3.0-beta.2, becomes the page viewer in the Opened tab of the side panel, for pages without JavaScript. The engine fetches nothing itself: the app answers every request (a refused request gets empty data) and every link click goes to a small bar with Open in browser and Copy. Layout and paint run under a time limit and a size cap, with the existing "This is a web page" card as the fallback. Servo stays a possible later add-on for pages that need JavaScript; it is not part of this work. Not yet tested: Blitz inside the real window, forms, text selection and CSS animations.
+
+## 2026-10-13: Frutiger Aero removed
+
+After the Windows 7 glass redo and a softening pass, the user said "Kill Frutiger Aero." The built-in Frutiger Aero themes are removed, with the code only they used (the glass reflection drawing, the glossy button drawing if nothing else uses it, and the drifting bubbles). That answers the bubbles question: removed. Built-in looks left: Calm, Matte, Glass, each light and dark. A saved choice of Frutiger Aero falls back to Calm with one notice line. Users can still write their own themes in the TOML format. The Windows 7 screenshot request is moot. History: the look was first a painted landscape, then Windows 7 glass, then removed (2026-10-11 to 2026-10-13).
