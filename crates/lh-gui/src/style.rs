@@ -31,6 +31,8 @@ pub struct Pal {
     pub anim: Duration,
     pub dark: bool,
     pub background: Background,
+    /// Font for code blocks and step lists: the theme's first installed `mono` font, else DejaVu Sans Mono.
+    pub mono: SharedString,
 }
 
 #[derive(Clone)]
@@ -42,7 +44,7 @@ pub enum Background {
 
 impl Pal {
     /// `reduce_motion`: the desktop asked for less movement, so nothing animates.
-    pub fn from(t: &Theme, window_radius: Option<f32>, reduce_motion: bool) -> Pal {
+    pub fn from(t: &Theme, window_radius: Option<f32>, reduce_motion: bool, installed_fonts: &[String]) -> Pal {
         let c = &t.colors;
         let outer = t.panel_radius(window_radius);
         let shadow = if t.shadow_blur > 0. && t.shadow_color.a > 0 {
@@ -76,6 +78,7 @@ impl Pal {
             anim: if reduce_motion { Duration::ZERO } else { Duration::from_millis(t.animation_ms) },
             dark: t.mode == Mode::Dark,
             background,
+            mono: lh_gui::fonts::mono_font(&t.fonts.mono, installed_fonts).into(),
         }
     }
 
@@ -164,7 +167,7 @@ mod tests {
         // theme menu disappeared)
         use gpui::{div, Position, Styled};
         for t in lh_gui::theme::builtin() {
-            let p = Pal::from(&t, None, false);
+            let p = Pal::from(&t, None, false, &[]);
             let mut menu = div().absolute().panel(&p, false);
             assert_eq!(menu.style().position, Some(Position::Absolute), "{}", t.label());
         }
@@ -173,17 +176,17 @@ mod tests {
     #[test]
     fn animation_stops_when_motion_is_reduced_or_the_theme_turns_it_off() {
         let t = calm();
-        assert!(!Pal::from(&t, None, false).anim.is_zero());
-        assert!(Pal::from(&t, None, true).anim.is_zero(), "reduced motion switches hover fades off");
+        assert!(!Pal::from(&t, None, false, &[]).anim.is_zero());
+        assert!(Pal::from(&t, None, true, &[]).anim.is_zero(), "reduced motion switches hover fades off");
         let mut off = t;
         off.animation_ms = 0;
-        assert!(Pal::from(&off, None, false).anim.is_zero());
+        assert!(Pal::from(&off, None, false, &[]).anim.is_zero());
     }
 
     #[test]
     fn every_built_in_look_turns_into_paint_values_without_a_picture() {
         for t in lh_gui::theme::builtin() {
-            let p = Pal::from(&t, None, false);
+            let p = Pal::from(&t, None, false, &[]);
             assert!(!matches!(p.background, super::Background::Image { .. }), "{}", t.label());
         }
     }

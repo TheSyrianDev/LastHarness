@@ -210,7 +210,7 @@ impl App {
         let system_dark = lh_gui::appearance::system_dark();
         let active_theme = themes.resolve(&prefs.theme, lh_gui::appearance::is_dark(prefs.mode, system_dark));
         let window_radius = theme::window_radius();
-        let pal = Pal::from(&themes.themes[active_theme], window_radius, lh_gui::config::reduce_motion());
+        let pal = Pal::from(&themes.themes[active_theme], window_radius, lh_gui::config::reduce_motion(), &lh_gui::fonts::installed_families());
         apply_component_theme(&pal, cx);
 
         let (tx, mut rx) = futures_channel::unbounded::<Ev>();
@@ -438,7 +438,7 @@ impl App {
 
     pub fn refresh_pal(&mut self, cx: &mut Context<Self>) {
         self.window_radius = theme::window_radius();
-        self.pal = Pal::from(&self.themes.themes[self.active_theme], self.window_radius, lh_gui::config::reduce_motion());
+        self.pal = Pal::from(&self.themes.themes[self.active_theme], self.window_radius, lh_gui::config::reduce_motion(), &self.fonts);
         apply_component_theme(&self.pal, cx);
     }
 

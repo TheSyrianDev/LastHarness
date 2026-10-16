@@ -141,9 +141,47 @@ impl Default for RawAnimation {
     }
 }
 
+/// One family name, or a list of names to try in order (the first one installed is used).
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(untagged)]
+enum OneOrMany {
+    #[default]
+    None,
+    One(String),
+    Many(Vec<String>),
+}
+
+impl OneOrMany {
+    fn into_vec(self) -> Vec<String> {
+        let v = match self {
+            OneOrMany::None => vec![],
+            OneOrMany::One(s) => vec![s],
+            OneOrMany::Many(v) => v,
+        };
+        v.into_iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default, deny_unknown_fields)]
+struct RawFonts {
+    latin: OneOrMany,
+    arabic: OneOrMany,
+    mono: OneOrMany,
+}
+
+/// The fonts a theme asks for. Each is a list, best first; empty means the theme has no opinion.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ThemeFonts {
+    pub latin: Vec<String>,
+    pub arabic: Vec<String>,
+    pub mono: Vec<String>,
+}
+
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(default, deny_unknown_fields)]
 struct Raw {
+    fonts: RawFonts,
     name: String,
     mode: Mode,
     colors: RawColors,
@@ -200,6 +238,8 @@ pub struct Theme {
     pub shadow_y: f32,
     pub shadow_color: Color,
     pub animation_ms: u64,
+    /// The `[fonts]` table: optional families for Latin, Arabic and code.
+    pub fonts: ThemeFonts,
     /// What in this file no longer exists and is ignored (the painted background, glass panes, gel buttons, a focus
     /// border, bubbles). Settings tells the person once, naming the file.
     pub ignored: Vec<&'static str>,
@@ -290,6 +330,7 @@ impl Theme {
             shadow_y: raw.effects.shadow_y,
             shadow_color,
             animation_ms: raw.animation.duration_ms,
+            fonts: ThemeFonts { latin: raw.fonts.latin.into_vec(), arabic: raw.fonts.arabic.into_vec(), mono: raw.fonts.mono.into_vec() },
             ignored,
         })
     }
@@ -327,6 +368,12 @@ const BUILTIN: &[(&str, &str)] = &[
     ("matte-dark", include_str!("../themes/matte-dark.toml")),
     ("glass-light", include_str!("../themes/glass-light.toml")),
     ("glass-dark", include_str!("../themes/glass-dark.toml")),
+    // DEV BUILD ONLY: "Claude" and "ChatGPT" imitate the feel of two products with open fonts and no brand assets.
+    // Rename or remove them before the first release.
+    ("claude-light", include_str!("../themes/claude-light.toml")),
+    ("claude-dark", include_str!("../themes/claude-dark.toml")),
+    ("chatgpt-light", include_str!("../themes/chatgpt-light.toml")),
+    ("chatgpt-dark", include_str!("../themes/chatgpt-dark.toml")),
 ];
 
 /// The themes that ship with the app. Calm light is first, and is what a fresh install uses.
@@ -492,15 +539,15 @@ mod tests {
     }
 
     #[test]
-    fn all_six_built_in_themes_load_and_have_unique_labels() {
+    fn all_ten_built_in_themes_load_and_have_unique_labels() {
         let t = builtin();
-        assert_eq!(t.len(), 6);
+        assert_eq!(t.len(), 10);
         let mut labels: Vec<String> = t.iter().map(|t| t.label()).collect();
         labels.sort();
         labels.dedup();
-        assert_eq!(labels.len(), 6);
+        assert_eq!(labels.len(), 10);
         assert_eq!(t[0].label(), "Calm light", "the plain default comes first");
-        for name in ["Calm", "Matte", "Glass"] {
+        for name in ["Calm", "Matte", "Glass", "Claude", "ChatGPT"] {
             for mode in ["light", "dark"] {
                 assert!(t.iter().any(|x| x.label() == format!("{name} {mode}")), "{name} {mode}");
             }
@@ -511,7 +558,7 @@ mod tests {
     #[test]
     fn three_families_each_with_both_modes_and_the_mode_picks_the_variant() {
         let set = ThemeSet::load(Path::new("/no/such/folder"));
-        assert_eq!(set.families(), ["Calm", "Matte", "Glass"]);
+        assert_eq!(set.families(), ["Calm", "Matte", "Glass", "Claude", "ChatGPT"]);
         for f in set.families() {
             assert!(set.has_both(&f), "{f}");
             let (l, d) = (set.variant(&f, false).unwrap(), set.variant(&f, true).unwrap());
@@ -636,6 +683,34 @@ mod tests {
     }
 
     #[test]
+    fn the_fonts_table_takes_a_name_or_a_list_and_is_optional() {
+        let none = Theme::parse("name = \"x\"\n", Path::new("")).unwrap();
+        assert_eq!(none.fonts, ThemeFonts::default());
+        let t = Theme::parse("name = \"x\"\n[fonts]\nlatin = \"Noto Serif\"\narabic = [\"Noto Naskh Arabic\", \" \", \"Noto Sans Arabic\"]\n", Path::new("")).unwrap();
+        assert_eq!(t.fonts.latin, ["Noto Serif"]);
+        assert_eq!(t.fonts.arabic, ["Noto Naskh Arabic", "Noto Sans Arabic"], "blank names dropped");
+        assert!(t.fonts.mono.is_empty());
+        assert!(Theme::parse("name = \"x\"\n[fonts]\nlatn = \"a\"\n", Path::new("")).unwrap_err().contains("unknown field"));
+    }
+
+    #[test]
+    fn the_dev_themes_set_fonts_and_the_calm_looks_set_none() {
+        let t = builtin();
+        for x in &t {
+            let sets = !x.fonts.latin.is_empty();
+            assert_eq!(sets, x.name == "Claude" || x.name == "ChatGPT", "{}", x.label());
+            if sets {
+                assert!(!x.fonts.arabic.is_empty() && !x.fonts.mono.is_empty(), "{}", x.label());
+            }
+        }
+        let claude = t.iter().find(|x| x.label() == "Claude light").unwrap();
+        assert_eq!(claude.colors.background, Color::parse("#F5F4EE").unwrap());
+        assert_eq!(claude.colors.accent, Color::parse("#C96442").unwrap());
+        assert_eq!(t.iter().find(|x| x.label() == "Claude dark").unwrap().colors.background, Color::parse("#262624").unwrap());
+        assert_eq!(t.iter().find(|x| x.label() == "ChatGPT dark").unwrap().colors.background, Color::parse("#212121").unwrap());
+    }
+
+    #[test]
     fn a_file_only_needs_to_say_what_it_changes() {
         let t = Theme::parse("name = \"Mine\"\n[colors]\naccent = \"#ff0066\"\n", Path::new("/themes")).unwrap();
         assert_eq!(t.colors.accent.rgba(), 0xff0066ff);
@@ -687,7 +762,7 @@ mod tests {
         std::fs::write(dir.join("bad.toml"), "name = \"Bad\"\n[colors]\ntext = \"nope\"\n").unwrap();
         std::fs::write(dir.join("notes.txt"), "ignored").unwrap();
         let mut set = ThemeSet::load(&dir);
-        assert_eq!(set.themes.len(), 7, "six built in, one of the person's own, and one replaced");
+        assert_eq!(set.themes.len(), 11, "ten built in, one of the person's own, and one replaced");
         assert!(set.find("Mine dark").is_some());
         assert_eq!(set.find("Calm light").unwrap().colors.accent.rgba(), 0x00aa00ff, "replaced the built-in");
         assert_eq!(set.problems.len(), 1);

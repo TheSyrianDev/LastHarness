@@ -115,6 +115,15 @@ impl CosmicTextSystem {
         Ok((gpui::FontWeight(face.weight.0 as f32), style))
     }
 
+    // LastHarness patch (test support): the first family name of the face behind a font id, so a test can assert
+    // which font drew a glyph. Remove with the rest of the vendored patch.
+    pub fn font_family_name(&self, font_id: FontId) -> Option<String> {
+        let state = self.0.read();
+        let font = state.loaded_fonts.get(font_id.0)?;
+        let face = state.font_system.db().face(font.font.id())?;
+        face.families.first().map(|f| f.0.clone())
+    }
+
     /// Builds reports for unresolved source indices after an outer text system
     /// has applied its own fallback.
     pub fn missing_glyphs(
@@ -198,7 +207,7 @@ impl PlatformTextSystem for CosmicTextSystem {
             font_ids.as_slice()
         } else {
             let font_ids =
-                state.load_family(&font.family, &font.features, font.fallbacks.as_ref())?;
+                state.load_family(&font.family, &font.features, font.fallbacks.as_ref(), false)?;
             state.font_ids_by_family_cache.insert(key.clone(), font_ids);
             state.font_ids_by_family_cache[&key].as_ref()
         };
@@ -341,6 +350,7 @@ impl CosmicTextSystemState {
         name: &str,
         features: &FontFeatures,
         fallbacks: Option<&FontFallbacks>,
+        is_fallback: bool,
     ) -> Result<SmallVec<[FontId; 4]>> {
         let loaded_font_key = FontKey::new(
             SharedString::from(name.to_owned()),
@@ -363,7 +373,7 @@ impl CosmicTextSystemState {
                     let fb_ids = if let Some(cached) = self.font_ids_by_family_cache.get(&fb_key) {
                         cached.clone()
                     } else {
-                        let loaded = self.load_family(fallback_name, features, None)?;
+                        let loaded = self.load_family(fallback_name, features, None, true)?;
                         self.font_ids_by_family_cache
                             .insert(fb_key.clone(), loaded.clone());
                         loaded
@@ -418,7 +428,11 @@ impl CosmicTextSystemState {
                 "Segoe Fluent Icons",
             ];
 
-            if font.as_swash().charmap().map('m') == 0
+            // LastHarness patch: this sanity check dropped (and removed from the database) every font without a
+            // Latin 'm', so a script-only font such as Noto Naskh Arabic never loaded as an explicit fallback and
+            // cosmic-text's own script fallback (Noto Sans Arabic) drew the text. Fallback families skip it.
+            if !is_fallback
+                && font.as_swash().charmap().map('m') == 0
                 && !allowed_bad_font_names.contains(&postscript_name.as_str())
             {
                 self.font_system.db_mut().remove_face(font.id());

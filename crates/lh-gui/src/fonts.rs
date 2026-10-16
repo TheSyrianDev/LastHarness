@@ -31,14 +31,45 @@ pub fn arabic_first(all: &[String]) -> Vec<String> {
     a.into_iter().chain(b).collect()
 }
 
-/// The Arabic font to use: the one chosen if it is installed, else Noto Naskh Arabic, else Noto Sans Arabic, else none
-/// (the system's own fallback then does the work).
-pub fn arabic_font(chosen: &str, installed: &[String]) -> Option<String> {
-    let has = |n: &str| installed.iter().any(|f| f.eq_ignore_ascii_case(n));
-    if !chosen.is_empty() && has(chosen) {
+fn has_family(installed: &[String], n: &str) -> bool {
+    installed.iter().any(|f| f.eq_ignore_ascii_case(n))
+}
+
+/// The first of a theme's wanted families that is installed.
+pub fn first_installed(wanted: &[String], installed: &[String]) -> Option<String> {
+    wanted.iter().find_map(|n| installed.iter().find(|f| f.eq_ignore_ascii_case(n)).cloned())
+}
+
+/// The Arabic font to use. Order: the one chosen in Settings if installed, then the theme's first installed one, then
+/// Noto Naskh Arabic, then Noto Sans Arabic, else none (the system's own fallback then does the work).
+pub fn arabic_font(chosen: &str, theme: &[String], installed: &[String]) -> Option<String> {
+    if !chosen.is_empty() && has_family(installed, chosen) {
         return Some(chosen.to_string());
     }
-    ARABIC_DEFAULTS.iter().find(|n| has(n)).map(|n| n.to_string())
+    first_installed(theme, installed).or_else(|| ARABIC_DEFAULTS.iter().find(|n| has_family(installed, n)).map(|n| n.to_string()))
+}
+
+/// The Latin font to set on the window: the choice in Settings, else the theme's first installed one, else none (the
+/// default of the window). A choice is kept even when it is not installed, as before.
+pub fn latin_font(chosen: &str, theme: &[String], installed: &[String]) -> Option<String> {
+    if !chosen.is_empty() {
+        return Some(chosen.to_string());
+    }
+    first_installed(theme, installed)
+}
+
+/// The text of the picker's empty entry when the theme sets a font: "Theme default (Noto Serif)".
+pub fn theme_default_label(font: &str, rtl: bool) -> String {
+    if rtl {
+        format!("افتراضي السمة ({font})")
+    } else {
+        format!("Theme default ({font})")
+    }
+}
+
+/// The font for code blocks: the theme's first installed one, else DejaVu Sans Mono.
+pub fn mono_font(theme: &[String], installed: &[String]) -> String {
+    first_installed(theme, installed).unwrap_or_else(|| "DejaVu Sans Mono".to_string())
 }
 
 /// Letters of the Arabic script, with the marks and presentation forms that belong to a word.
@@ -89,12 +120,29 @@ mod tests {
     #[test]
     fn arabic_font_prefers_the_choice_then_naskh_then_sans() {
         let all: Vec<String> = ["DejaVu Sans", "Noto Sans Arabic", "Noto Kufi Arabic"].map(String::from).to_vec();
-        assert_eq!(arabic_font("", &all).as_deref(), Some("Noto Sans Arabic"), "naskh missing");
-        assert_eq!(arabic_font("Noto Kufi Arabic", &all).as_deref(), Some("Noto Kufi Arabic"));
-        assert_eq!(arabic_font("Gone", &all).as_deref(), Some("Noto Sans Arabic"), "a chosen font that is not installed");
+        assert_eq!(arabic_font("", &[], &all).as_deref(), Some("Noto Sans Arabic"), "naskh missing");
+        assert_eq!(arabic_font("Noto Kufi Arabic", &[], &all).as_deref(), Some("Noto Kufi Arabic"));
+        assert_eq!(arabic_font("Gone", &[], &all).as_deref(), Some("Noto Sans Arabic"), "a chosen font that is not installed");
         let both: Vec<String> = ["Noto Naskh Arabic", "Noto Sans Arabic"].map(String::from).to_vec();
-        assert_eq!(arabic_font("", &both).as_deref(), Some("Noto Naskh Arabic"));
-        assert_eq!(arabic_font("", &["DejaVu Sans".to_string()]), None);
+        assert_eq!(arabic_font("", &[], &both).as_deref(), Some("Noto Naskh Arabic"));
+        assert_eq!(arabic_font("", &[], &["DejaVu Sans".to_string()]), None);
+    }
+
+    #[test]
+    fn a_font_chosen_in_settings_beats_the_theme_which_beats_the_default() {
+        let inst: Vec<String> = ["Noto Sans", "Noto Serif", "Noto Naskh Arabic", "Noto Sans Arabic", "Noto Kufi Arabic"].map(String::from).to_vec();
+        let th = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(latin_font("Mine", &th(&["Noto Serif"]), &inst).as_deref(), Some("Mine"), "settings win");
+        assert_eq!(latin_font("", &th(&["Missing", "noto serif"]), &inst).as_deref(), Some("Noto Serif"), "first installed of the theme");
+        assert_eq!(latin_font("", &th(&["Missing"]), &inst), None, "nothing installed: the default");
+        assert_eq!(latin_font("", &[], &inst), None);
+        assert_eq!(arabic_font("Noto Kufi Arabic", &th(&["Noto Sans Arabic"]), &inst).as_deref(), Some("Noto Kufi Arabic"));
+        assert_eq!(arabic_font("", &th(&["Noto Sans Arabic"]), &inst).as_deref(), Some("Noto Sans Arabic"), "theme over default");
+        assert_eq!(arabic_font("Gone", &th(&["Noto Sans Arabic"]), &inst).as_deref(), Some("Noto Sans Arabic"), "a missing choice falls to the theme");
+        assert_eq!(arabic_font("", &th(&["Missing"]), &inst).as_deref(), Some("Noto Naskh Arabic"), "then the default");
+        assert_eq!(theme_default_label("Noto Serif", false), "Theme default (Noto Serif)");
+        assert_eq!(mono_font(&th(&["Missing"]), &inst), "DejaVu Sans Mono");
+        assert_eq!(mono_font(&th(&["Noto Sans"]), &inst), "Noto Sans");
     }
 
     #[test]

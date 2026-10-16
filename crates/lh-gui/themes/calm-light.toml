@@ -37,3 +37,9 @@ shadow_color = "#00000000"
 
 [animation]
 duration_ms = 140           # 0 turns hover and press animation off
+
+# [fonts]                       # optional; each is one family name or a list tried in order (first installed wins)
+# latin = ["Source Serif 4", "Noto Serif"]    # text of the window
+# arabic = "Noto Naskh Arabic"                # Arabic script (the explicit fallback of the Latin font)
+# mono = "DejaVu Sans Mono"                   # code blocks and step lists
+# A font chosen in Settings > Appearance wins over these; with none set the app's own defaults apply.

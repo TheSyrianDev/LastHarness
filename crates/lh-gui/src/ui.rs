@@ -549,7 +549,7 @@ impl App {
         }
         div().flex().flex_col().gap_1p5()
             .child(div().flex().when(rtl, |d| d.flex_row_reverse()).child(head))
-            .when(open, |d| d.child(div().id(SharedString::from(format!("steps-{key}-{first}"))).role(Role::List).aria_label(if rtl { "الخطوات" } else { "Steps" }).flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_sm().text_color(p.muted).font_family("DejaVu Sans Mono").children(rows)))
+            .when(open, |d| d.child(div().id(SharedString::from(format!("steps-{key}-{first}"))).role(Role::List).aria_label(if rtl { "الخطوات" } else { "Steps" }).flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_sm().text_color(p.muted).font_family(p.mono.clone()).children(rows)))
             .into_any_element()
     }
 
@@ -737,10 +737,12 @@ impl Render for App {
         let right = (right_now > 0.).then(|| slide(right_now, right_full, self.right_panel(right_full, window, cx)));
         let mut root = p.paint_background(div().size_full().relative().overflow_hidden().text_color(p.text));
         // the main font is the Latin one; the Arabic font is its explicit fallback for Arabic script
-        if !self.prefs.latin_font.is_empty() {
-            root = root.font_family(self.prefs.latin_font.clone());
+        // order: font chosen in Settings, then the theme's own font, then the default
+        let theme_fonts = self.themes.themes[self.active_theme].fonts.clone();
+        if let Some(l) = lh_gui::fonts::latin_font(&self.prefs.latin_font, &theme_fonts.latin, &self.fonts) {
+            root = root.font_family(l);
         }
-        let arabic = lh_gui::fonts::arabic_font(&self.prefs.arabic_font, &self.fonts);
+        let arabic = lh_gui::fonts::arabic_font(&self.prefs.arabic_font, &theme_fonts.arabic, &self.fonts);
         root.text_style().font_fallbacks = arabic.map(|f| FontFallbacks::from_fonts(vec![f]));
         let root = root
             .key_context(if asking { "LastHarness Asking" } else { "LastHarness" })

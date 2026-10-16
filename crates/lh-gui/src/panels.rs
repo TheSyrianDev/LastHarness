@@ -265,9 +265,22 @@ impl App {
             FontSlot::Latin => (if rtl { "الخط اللاتيني" } else { "Latin font" }, self.prefs.latin_font.clone(), "latin"),
             FontSlot::Arabic => (if rtl { "الخط العربي" } else { "Arabic font" }, self.prefs.arabic_font.clone(), "arabic"),
         };
+        // the "Default" entry says "Theme default (X)" when the look sets a font that is installed
+        let tf = self.themes.themes[self.active_theme].fonts.clone();
+        let theme_pick = match slot {
+            FontSlot::Latin => lh_gui::fonts::first_installed(&tf.latin, &self.fonts),
+            FontSlot::Arabic => lh_gui::fonts::first_installed(&tf.arabic, &self.fonts),
+        };
+        let default_label = match &theme_pick {
+            Some(x) => lh_gui::fonts::theme_default_label(x, rtl),
+            None => (if rtl { "الافتراضي" } else { "Default" }).to_string(),
+        };
         let shown = match slot {
-            FontSlot::Latin if chosen.is_empty() => (if rtl { "الافتراضي" } else { "Default" }).to_string(),
-            FontSlot::Arabic if chosen.is_empty() => lh_gui::fonts::arabic_font("", &self.fonts).unwrap_or_else(|| (if rtl { "افتراضي النظام" } else { "System default" }).to_string()),
+            FontSlot::Latin if chosen.is_empty() => default_label.clone(),
+            FontSlot::Arabic if chosen.is_empty() => match &theme_pick {
+                Some(_) => default_label.clone(),
+                None => lh_gui::fonts::arabic_font("", &[], &self.fonts).unwrap_or_else(|| (if rtl { "افتراضي النظام" } else { "System default" }).to_string()),
+            },
             _ => chosen.clone(),
         };
         let open = self.font_picker == Some(slot);
@@ -286,7 +299,7 @@ impl App {
                 .into_iter()
                 .enumerate()
                 .map(|(i, n)| {
-                    let label = if n.is_empty() { (if rtl { "الافتراضي" } else { "Default" }).to_string() } else { n.clone() };
+                    let label = if n.is_empty() { default_label.clone() } else { n.clone() };
                     let kind = if n == chosen { Kind::Primary } else { Kind::Ghost };
                     self.button(format!("font-{tag}-{i}"), label, kind, cx, move |a, _, cx| {
                         a.set_font(slot, &n);
@@ -746,7 +759,7 @@ impl App {
 
 fn code_view(body: &str, scope: &str, title: &str, p: &crate::style::Pal) -> AnyElement {
     let lines: Vec<AnyElement> = body.lines().enumerate().map(|(i, l)| div().flex().gap_3().child(div().w(px(36.)).flex().justify_end().text_color(p.muted).child((i + 1).to_string())).child(div().child(if l.is_empty() { " ".to_string() } else { l.to_string() })).into_any_element()).collect();
-    div().id(SharedString::from(format!("code-{scope}"))).role(Role::Document).aria_label(title.to_string()).p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).font_family("DejaVu Sans Mono").text_sm().overflow_x_scroll().children(lines).into_any_element()
+    div().id(SharedString::from(format!("code-{scope}"))).role(Role::Document).aria_label(title.to_string()).p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).font_family(p.mono.clone()).text_sm().overflow_x_scroll().children(lines).into_any_element()
 }
 
 /// The native viewer for a piece of content. Used in the panel and in a pop-out window.
