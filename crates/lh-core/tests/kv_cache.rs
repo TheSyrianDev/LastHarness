@@ -150,7 +150,7 @@ async fn start(s: Setup<'_>) -> (Server, Arc<KvCache>) {
     }
     let kv = Arc::new(kv);
     let state = AppState::new(Script { replies: Mutex::new(replies) }, settings);
-    let _ = state.kv.set(kv.clone());
+    state.set_kv(Some(kv.clone()));
     let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     l.set_nonblocking(true).unwrap();
     let port = l.local_addr().unwrap().port();

@@ -482,11 +482,12 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
     let st2 = st.clone();
     let toolbox: Toolbox = Arc::new(move |role, job| {
         let s = &st2.settings;
-        let mut tools = lh_tools::default_tools().with_web(s.web.clone());
+        let live = st2.live();
+        let mut tools = lh_tools::default_tools().with_web(live.web.clone());
         if let Some(g) = crate::outbound_guard(s) {
             tools = tools.with_outbound_guard(g);
         }
-        if let Some(m) = &s.image_model {
+        if let Some(m) = &live.image_model {
             tools = tools.with_images(m.clone());
         }
         if let Some(rt) = &s.memory {
@@ -496,7 +497,7 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
                 MemorySlice::Layers(l) => Some(Some(l.clone())),
             };
             if let Some(layers) = layers {
-                tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: rt.destination(job.project.clone()), cfg: rt.cfg.clone(), layers }));
+                tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: rt.destination(job.project.clone()), cfg: live.recall.clone(), layers }));
             }
         }
         if let Some(lr) = &s.learn {
@@ -513,9 +514,10 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
         asker: Arc::new(RunAsker { run: run.clone(), store: s.store.clone(), parent: parent.clone() }),
         env: WorkerEnv {
             home: std::env::var_os("HOME").map(Into::into).unwrap_or_else(std::env::temp_dir),
-            mode: if s.bypass { Mode::Bypass } else { Mode::Tiered },
+            mode: Mode::Tiered, // bypass and sudo come from `live`, at every tool call
             sudo_enabled: s.sudo_enabled,
             allow_rules: s.allow_rules.clone(),
+            live: Some(st.live_perms()),
         },
         toolbox,
         provider_name,

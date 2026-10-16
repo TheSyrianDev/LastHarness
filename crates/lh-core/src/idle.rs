@@ -5,7 +5,7 @@
 //! timer). If a request arrives first, the timer is reset. Once idle it waits on a signal with no
 //! timer at all.
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,7 +16,8 @@ use tokio::sync::Notify;
 type Hook = Box<dyn Fn(bool) + Send + Sync>;
 
 pub struct Idle {
-    after: Duration,
+    /// Milliseconds of quiet before going idle; 0 means never. Can change while running.
+    after: AtomicU64,
     start: Instant,
     /// Milliseconds since `start` of the last activity.
     last: AtomicUsize,
@@ -40,7 +41,7 @@ impl Idle {
     /// `after` of zero means the core never goes idle.
     pub fn new(after: Duration) -> Arc<Self> {
         Arc::new(Self {
-            after,
+            after: AtomicU64::new(after.as_millis() as u64),
             start: Instant::now(),
             last: AtomicUsize::new(0),
             idle: AtomicBool::new(false),
@@ -48,6 +49,16 @@ impl Idle {
             wake: Notify::new(),
             hooks: Mutex::new(vec![]),
         })
+    }
+
+    pub fn after(&self) -> Duration {
+        Duration::from_millis(self.after.load(Ordering::SeqCst))
+    }
+
+    /// Change the quiet time while running. Zero means never. The manager picks the new value up at once.
+    pub fn set_after(&self, after: Duration) {
+        self.after.store(after.as_millis() as u64, Ordering::SeqCst);
+        self.wake.notify_one();
     }
 
     /// `f(true)` runs when the core goes idle, `f(false)` when it wakes.
@@ -82,18 +93,20 @@ impl Idle {
 
     /// The idle manager. Spawn it once.
     pub async fn run(self: Arc<Self>) {
-        if self.after.is_zero() {
-            return;
-        }
         loop {
+            let after = self.after();
+            if after.is_zero() {
+                self.wake.notified().await; // never idle for now; a change of the setting wakes us
+                continue;
+            }
             if self.active.load(Ordering::SeqCst) > 0 {
                 self.wake.notified().await; // a `Busy` ended
                 continue;
             }
             let since = Duration::from_millis((self.start.elapsed().as_millis() as usize).saturating_sub(self.last.load(Ordering::SeqCst)) as u64);
-            if since < self.after {
+            if since < after {
                 tokio::select! {
-                    _ = tokio::time::sleep(self.after - since) => {}
+                    _ = tokio::time::sleep(after - since) => {}
                     _ = self.wake.notified() => {}
                 }
                 continue;
@@ -195,6 +208,24 @@ mod tests {
         let idle = Idle::new(Duration::ZERO);
         tokio::spawn(idle.clone().run());
         tokio::time::advance(Duration::from_secs(100_000)).await;
+        settle().await;
+        assert!(!idle.is_idle());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_quiet_time_can_change_while_running() {
+        let idle = Idle::new(Duration::ZERO);
+        tokio::spawn(idle.clone().run());
+        settle().await;
+        idle.set_after(Duration::from_secs(60)); // from never to a minute
+        settle().await;
+        tokio::time::advance(Duration::from_secs(61)).await;
+        settle().await;
+        assert!(idle.is_idle());
+        idle.touch();
+        idle.set_after(Duration::ZERO); // and back to never
+        settle().await;
+        tokio::time::advance(Duration::from_secs(1000)).await;
         settle().await;
         assert!(!idle.is_idle());
     }

@@ -19,6 +19,9 @@ pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
     Router::new().route("/v1/settings", get(list::<M>).put(change::<M>)).route("/v1/reports/preview", get(report_preview::<M>))
 }
 
+/// Live settings that an open chat does not pick up, because its tools are built when it starts.
+const NEW_CHATS_ONLY: &[&str] = &["web.searxng", "web.use_proxy", "media.image_model"];
+
 fn load<M>(st: &AppState<M>) -> Result<ConfigFile, ApiError> {
     let path = st.settings.config.clone().ok_or(ApiError(StatusCode::NOT_FOUND, "this core was started without a settings file".into()))?;
     ConfigFile::load(path).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -88,11 +91,17 @@ async fn change<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Opt
         cfg.set(k, v).map_err(|e| ApiError(StatusCode::BAD_REQUEST, e.to_string()))?;
     }
     cfg.save().map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // From here on the running core uses the new values (see `Live` for what reaches open chats).
+    let keys: Vec<String> = changes.iter().map(|(k, _)| k.clone()).collect();
+    st.apply_settings(&cfg, &keys);
     let restart: Vec<&str> = changes.iter().filter(|(k, _)| lh_config::def(k).is_some_and(|d| !d.live)).map(|(k, _)| k.as_str()).collect();
+    let new_chats: Vec<&str> = changes.iter().filter(|(k, _)| NEW_CHATS_ONLY.contains(&k.as_str())).map(|(k, _)| k.as_str()).collect();
     for (k, v) in &changes {
-        let _ = st.settings.store.log("setting_changed", k, "user", &json!({"key": k, "value": if k == "provider.key" { "(a secret name)" } else { v.as_str() }}));
+        // permissions and spending changes are logged like any other, with when they take effect
+        let applies = if restart.contains(&k.as_str()) { "after restart" } else if NEW_CHATS_ONLY.contains(&k.as_str()) { "new chats" } else { "now" };
+        let _ = st.settings.store.log("setting_changed", k, "user", &json!({"key": k, "value": if k == "provider.key" { "(a secret name)" } else { v.as_str() }, "applies": applies}));
     }
-    Ok(Json(json!({"changed": changes.iter().map(|(k, _)| k).collect::<Vec<_>>(), "restart_needed": restart})))
+    Ok(Json(json!({"changed": keys, "restart_needed": restart, "new_chats_only": new_chats})))
 }
 
 /// What an anonymous crash report would contain. Nothing is sent from here: this only shows it.

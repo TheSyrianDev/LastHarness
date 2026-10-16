@@ -55,7 +55,13 @@ pub trait Asker: Send + Sync {
 }
 
 pub struct Permissions {
+    /// The mode this session asked for. With `live` set, the settings can tighten it or lift the bypass.
     pub mode: Mode,
+    /// Permission settings the core can change while it runs. Read at every decision, so a change
+    /// applies to the next tool call, also in a chat that is already open.
+    pub live: Option<std::sync::Arc<LivePerms>>,
+    /// Does the live ask-for-everything setting apply here? Chats yes; department workers keep their own mode.
+    pub live_ask_all: bool,
     /// `sudo` is off for agents unless the user turned it on.
     pub sudo_enabled: bool,
     /// Command prefixes the user approved for good, such as `omarchy-pkg-add` or `git status`.
@@ -67,10 +73,51 @@ pub struct Permissions {
     session_writes: AtomicBool,
 }
 
+/// The permission settings that may change while the core runs. Only the core writes them.
+#[derive(Debug, Default)]
+pub struct LivePerms {
+    bypass: AtomicBool,
+    ask_all: AtomicBool,
+    sudo: AtomicBool,
+}
+
+impl LivePerms {
+    pub fn new(bypass: bool, ask_all: bool, sudo: bool) -> Self {
+        Self { bypass: AtomicBool::new(bypass), ask_all: AtomicBool::new(ask_all), sudo: AtomicBool::new(sudo) }
+    }
+    pub fn set(&self, bypass: bool, ask_all: bool, sudo: bool) {
+        self.bypass.store(bypass, Ordering::SeqCst);
+        self.ask_all.store(ask_all, Ordering::SeqCst);
+        self.sudo.store(sudo, Ordering::SeqCst);
+    }
+    pub fn get(&self) -> (bool, bool, bool) {
+        (self.bypass.load(Ordering::SeqCst), self.ask_all.load(Ordering::SeqCst), self.sudo.load(Ordering::SeqCst))
+    }
+}
+
 impl Permissions {
+    /// The mode in force right now.
+    pub fn effective_mode(&self) -> Mode {
+        let Some(l) = &self.live else { return self.mode };
+        if self.mode == Mode::Bypass || l.bypass.load(Ordering::SeqCst) {
+            Mode::Bypass
+        } else if self.mode == Mode::AskAll || (self.live_ask_all && l.ask_all.load(Ordering::SeqCst)) {
+            Mode::AskAll
+        } else {
+            Mode::Tiered
+        }
+    }
+
+    /// Is sudo allowed right now?
+    pub fn sudo_allowed(&self) -> bool {
+        self.live.as_ref().map_or(self.sudo_enabled, |l| l.sudo.load(Ordering::SeqCst))
+    }
+
     pub fn new(project_root: &Path) -> std::io::Result<Self> {
         Ok(Self {
             mode: Mode::Tiered,
+            live: None,
+            live_ask_all: false,
             sudo_enabled: false,
             allow_rules: vec![],
             locked: false,
@@ -126,13 +173,14 @@ impl Permissions {
     }
 
     pub fn decide(&self, action: &Action) -> Decision {
+        let mode = self.effective_mode();
         // sudo is a setting, not a prompt: off means off, even in bypass.
         if let Action::Run(cmd) = action {
-            if !self.sudo_enabled && segments(cmd).iter().any(|s| classify_segment(s) == Class::Sudo) {
+            if !self.sudo_allowed() && segments(cmd).iter().any(|s| classify_segment(s) == Class::Sudo) {
                 return Decision::Deny("sudo is turned off for agents. It can be enabled in settings.".into());
             }
         }
-        if self.mode == Mode::Bypass {
+        if mode == Mode::Bypass {
             return Decision::Allow;
         }
         if let Action::Run(cmd) = action {
@@ -142,13 +190,13 @@ impl Permissions {
         }
         let ask = |reason: &str| Decision::Ask { reason: reason.into(), session_grant: false };
         let write_once = |this: &Self, reason: &str| {
-            if this.mode == Mode::Tiered && this.session_writes.load(Ordering::SeqCst) {
+            if mode == Mode::Tiered && this.session_writes.load(Ordering::SeqCst) {
                 Decision::Allow
             } else {
-                Decision::Ask { reason: reason.into(), session_grant: this.mode == Mode::Tiered }
+                Decision::Ask { reason: reason.into(), session_grant: mode == Mode::Tiered }
             }
         };
-        if self.mode == Mode::AskAll {
+        if mode == Mode::AskAll {
             return ask("ask-for-everything mode is on");
         }
         match action {
@@ -412,5 +460,25 @@ mod tests {
         p.mode = Mode::AskAll;
         assert!(is_ask(&p.decide(&Action::Read("src".into()))));
         assert_eq!(run(&p, "git status"), Decision::Allow);
+    }
+
+    #[test]
+    fn live_settings_change_the_next_decision() {
+        let d = tempfile::tempdir().unwrap();
+        let live = std::sync::Arc::new(LivePerms::new(false, false, false));
+        let mut p = Permissions::new(d.path()).unwrap();
+        p.live = Some(live.clone());
+        p.live_ask_all = true;
+        let sudo = Action::Run("sudo ls".into());
+        let write = Action::Write(d.path().join("a"));
+        assert!(matches!(p.decide(&sudo), Decision::Deny(_)));
+        live.set(false, false, true);
+        assert!(!matches!(p.decide(&sudo), Decision::Deny(_)), "sudo allowed at once");
+        live.set(true, false, true);
+        assert_eq!(p.decide(&write), Decision::Allow, "bypass at once");
+        live.set(false, true, false);
+        assert!(matches!(p.decide(&write), Decision::Ask { .. }));
+        assert!(matches!(p.decide(&sudo), Decision::Deny(_)), "sudo off again, also during bypass");
+        assert_eq!(p.effective_mode(), Mode::AskAll);
     }
 }

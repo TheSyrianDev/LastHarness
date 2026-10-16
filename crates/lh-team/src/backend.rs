@@ -22,6 +22,9 @@ pub struct WorkerEnv {
     pub mode: Mode,
     pub sudo_enabled: bool,
     pub allow_rules: Vec<String>,
+    /// Permission settings that may change while a run is going: each step reads them when it starts
+    /// and at every tool call. Workers keep their own mode apart from bypass and sudo.
+    pub live: Option<Arc<lh_tools::LivePerms>>,
 }
 
 /// Gives a role its tools. The core supplies one that knows about memory, web settings and skills.
@@ -93,6 +96,7 @@ impl<M: Model + 'static, T: Meter + 'static, A: Asker + 'static> Backend for Mod
         perms.mode = self.env.mode;
         perms.sudo_enabled = self.env.sudo_enabled;
         perms.allow_rules = self.env.allow_rules.clone();
+        perms.live = self.env.live.clone();
         perms.locked = job.project.is_some();
         let system = self.system(&job.role, &job.model, Some(&job), &tools).await;
         let mut req = ChatRequest {

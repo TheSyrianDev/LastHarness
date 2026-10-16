@@ -102,36 +102,172 @@ pub struct Settings {
     pub allow_rules: Vec<String>,
 }
 
+/// The settings that can change while the core runs, as one snapshot that is swapped whole. A handler takes
+/// `st.live()` once and reads from that, so one request never sees half of a change.
+///
+/// Which settings reach a chat that is already open, and which only new chats:
+/// - Running chats, from the next model call or tool call: permissions (bypass, sudo, ask-for-everything),
+///   spending (mode, approval limit, caps), `core.compact_at`, memory recall limits, `chats.title_model`,
+///   `tree.summarize`, the KV cache settings, and `core.idle_after`.
+/// - New chats only, because the chat's tools and first prompt are built when it starts: `web.searxng`,
+///   `web.use_proxy`, `media.image_model`. The system prompt of an open chat also still describes the
+///   permission mode and sudo as they were when it started; what is enforced follows the settings.
+/// - Not live (restart): the provider, memory on/off and trust, learning, the browser address, the embedding model.
+#[derive(Clone, Debug)]
+pub struct Live {
+    pub compact_at: Option<u64>,
+    /// Recall limits for notes added to a message and for the "about you" block. Starts as the memory
+    /// runtime's own value; `memory.recall_items` and `memory.recall_chars` replace two of its limits.
+    pub recall: lh_memory::RecallConfig,
+    pub tree_summarize: String,
+    pub title_model: String,
+    pub web: lh_tools::WebConfig,
+    pub image_model: Option<String>,
+}
+
 pub struct AppState<M> {
     model: Arc<M>,
     settings: Settings,
     sessions: Mutex<HashMap<String, Arc<Session>>>,
     next: AtomicU64,
     pub idle: Arc<idle::Idle>,
-    /// Saving the KV cache per local chat; set once at start when the user has set it up.
-    pub kv: std::sync::OnceLock<Arc<kv_cache::KvCache>>,
-    /// What to do with the branch a person leaves in the chat tree: ask, always or never write a summary.
-    pub tree_summarize_setting: std::sync::OnceLock<String>,
-    /// `chats.title_model`: the model that names a chat after its first reply. Unset or empty means first words.
-    pub title_model: std::sync::OnceLock<String>,
+    /// Saving the KV cache per local chat; replaced when the kvcache settings change. `None`: not set up.
+    kv: std::sync::RwLock<Option<Arc<kv_cache::KvCache>>>,
+    /// Where the KV cache talks to (provider address and key), so it can be rebuilt when its settings change.
+    kv_endpoint: std::sync::OnceLock<(String, Option<String>)>,
+    live: std::sync::RwLock<Arc<Live>>,
+    /// Permission settings shared with every chat and worker, read at each tool call.
+    perms: Arc<lh_tools::LivePerms>,
 }
 
 impl<M: Model + 'static> AppState<M> {
     /// Builds the state and starts the idle manager. Must be called inside a Tokio runtime.
     /// The KV cache saver, if it is set up and allowed for this session: a local endpoint, a stored (not private) chat.
     pub(crate) fn tree_summarize(&self) -> String {
-        self.tree_summarize_setting.get().cloned().unwrap_or_else(|| "ask".into())
+        self.live().tree_summarize.clone()
+    }
+
+    /// The settings in force now. Take it once per request.
+    pub fn live(&self) -> Arc<Live> {
+        self.live.read().unwrap().clone()
+    }
+
+    pub(crate) fn live_perms(&self) -> Arc<lh_tools::LivePerms> {
+        self.perms.clone()
+    }
+
+    fn set_live(&self, f: impl FnOnce(&mut Live)) {
+        let mut g = self.live.write().unwrap();
+        let mut l = (**g).clone();
+        f(&mut l);
+        *g = Arc::new(l);
+    }
+
+    /// The KV cache saver, or none.
+    pub fn set_kv(&self, kv: Option<Arc<kv_cache::KvCache>>) {
+        *self.kv.write().unwrap() = kv;
+    }
+
+    pub fn kv(&self) -> Option<Arc<kv_cache::KvCache>> {
+        self.kv.read().unwrap().clone()
+    }
+
+    /// Where the KV cache saver reaches the local server. Without this the kvcache settings are not applied.
+    pub fn set_kv_endpoint(&self, provider_url: &str, key: Option<String>) {
+        let _ = self.kv_endpoint.set((provider_url.to_string(), key));
+    }
+
+    pub fn set_title_model(&self, m: &str) {
+        self.set_live(|l| l.title_model = m.to_string());
+    }
+
+    pub fn set_tree_summarize(&self, m: &str) {
+        self.set_live(|l| l.tree_summarize = m.to_string());
+    }
+
+    /// Bring everything that can change while running in step with the settings file. Used at start (with
+    /// `changed` empty, meaning everything) and after each change through the settings endpoint. A command-line
+    /// flag keeps winning: the flags are the values in `Settings` (`bypass`, `sudo_enabled`, `web`, `image_model`
+    /// and so on); the file adds to them and cannot loosen what a flag switched on.
+    pub fn apply_settings(&self, cfg: &lh_config::ConfigFile, changed: &[String]) {
+        let all = changed.is_empty();
+        let touched = |prefix: &str| all || changed.iter().any(|k| k.starts_with(prefix));
+        let s = &self.settings;
+        if touched("permissions.") {
+            self.perms.set(s.bypass || cfg.get_bool("permissions.bypass"), s.ask_all || cfg.get("permissions.mode") == "ask-all", s.sudo_enabled || cfg.get_bool("permissions.sudo"));
+        }
+        if touched("spending.") {
+            s.spend.reconfigure(|c| {
+                if cfg.is_set("spending.mode") {
+                    c.mode = match cfg.get("spending.mode").as_str() {
+                        "none" => lh_spend::Mode::None,
+                        "caps" => lh_spend::Mode::Caps,
+                        _ => lh_spend::Mode::Estimate,
+                    };
+                }
+                if cfg.is_set("spending.approve_over_usd") {
+                    c.approve_over_usd = cfg.get_num("spending.approve_over_usd").unwrap_or(c.approve_over_usd);
+                }
+                for (key, slot) in [("spending.per_request_cap_usd", &mut c.per_request_cap_usd), ("spending.daily_cap_usd", &mut c.daily_cap_usd), ("spending.monthly_cap_usd", &mut c.monthly_cap_usd)] {
+                    if cfg.is_set(key) {
+                        *slot = cfg.get_num(key);
+                    }
+                }
+            });
+        }
+        if touched("core.idle_after") {
+            self.idle.set_after(std::time::Duration::from_secs(cfg.get_num("core.idle_after").unwrap_or(600)));
+        }
+        let base = s.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default();
+        self.set_live(|l| {
+            if touched("core.compact_at") {
+                l.compact_at = s.compact_at.or_else(|| match cfg.get("core.compact_at").as_str() {
+                    "auto" => None,
+                    n => n.parse().ok(),
+                });
+            }
+            if touched("memory.recall_") {
+                l.recall = base.clone();
+                if cfg.is_set("memory.recall_items") {
+                    l.recall.max_items = cfg.get_num("memory.recall_items").unwrap_or(l.recall.max_items);
+                }
+                if cfg.is_set("memory.recall_chars") {
+                    l.recall.budget_chars = cfg.get_num("memory.recall_chars").unwrap_or(l.recall.budget_chars);
+                }
+            }
+            if touched("tree.") {
+                l.tree_summarize = cfg.get("tree.summarize");
+            }
+            if touched("chats.") {
+                l.title_model = cfg.get("chats.title_model");
+            }
+            if touched("web.") {
+                l.web.searxng_url = s.web.searxng_url.clone().or_else(|| cfg.get_opt("web.searxng"));
+                l.web.use_proxy = s.web.use_proxy || cfg.get_bool("web.use_proxy");
+            }
+            if touched("media.") {
+                l.image_model = s.image_model.clone().or_else(|| cfg.get_opt("media.image_model"));
+            }
+        });
+        if touched("kvcache.") {
+            if let Some((url, key)) = self.kv_endpoint.get() {
+                let kv = cfg.get_bool("kvcache.enabled").then(|| cfg.get_opt("kvcache.dir")).flatten().map(|dir| Arc::new(kv_cache::KvCache::new(url, key.clone(), PathBuf::from(dir), cfg.get_num("kvcache.max_gb").unwrap_or(5))));
+                self.set_kv(kv);
+            }
+        }
     }
 
     pub(crate) fn kv_for(&self, s: &Session) -> Option<Arc<kv_cache::KvCache>> {
-        let kv = self.kv.get()?;
+        let kv = self.kv()?;
         let local = self.settings.memory.as_ref().is_some_and(|m| m.trust == lh_memory::Trust::Local);
-        (local && !s.incognito && s.conv.is_some() && !kv.is_off()).then(|| kv.clone())
+        (local && !s.incognito && s.conv.is_some() && !kv.is_off()).then_some(kv)
     }
 
     pub fn new(model: M, settings: Settings) -> Arc<Self> {
         let model = Arc::new(model);
         let idle = idle::Idle::new(settings.idle_after);
+        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), web: settings.web.clone(), image_model: settings.image_model.clone() };
+        let perms = Arc::new(lh_tools::LivePerms::new(settings.bypass, settings.ask_all, settings.sudo_enabled));
         {
             let (model, store) = (model.clone(), settings.store.clone());
             let mem = settings.memory.as_ref().map(|m| (m.memory.clone(), m.embedder.clone()));
@@ -157,7 +293,7 @@ impl<M: Model + 'static> AppState<M> {
         }
         tokio::spawn(idle.clone().run());
         let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
-        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: std::sync::OnceLock::new(), tree_summarize_setting: std::sync::OnceLock::new(), title_model: std::sync::OnceLock::new() })
+        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms })
     }
 
     pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
@@ -234,7 +370,7 @@ impl IntoResponse for ApiError {
 }
 
 async fn status<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<Value> {
-    Json(json!({"sessions": st.sessions.lock().unwrap().len(), "idle_after_secs": st.settings.idle_after.as_secs()}))
+    Json(json!({"sessions": st.sessions.lock().unwrap().len(), "idle_after_secs": st.idle.after().as_secs()}))
 }
 
 async fn list_models<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
@@ -296,15 +432,12 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         (None, Some(other)) => return Err(ApiError(StatusCode::BAD_REQUEST, format!("mode must be \"chat\" or \"assistant\", not \"{other}\""))),
     };
     let mut perms = Permissions::new(&dir).map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("project_dir: {e}")))?;
-    perms.sudo_enabled = st.settings.sudo_enabled;
+    // bypass, sudo and the ask-for-everything setting come from the live settings at each tool call; the
+    // chat itself only asks for ask-all when the client says so
+    perms.live = Some(st.live_perms());
+    perms.live_ask_all = true;
     perms.allow_rules = st.settings.allow_rules.clone();
-    perms.mode = if st.settings.bypass {
-        Mode::Bypass
-    } else if b.ask_all || st.settings.ask_all {
-        Mode::AskAll
-    } else {
-        Mode::Tiered
-    };
+    perms.mode = if b.ask_all { Mode::AskAll } else { Mode::Tiered };
     let mut req = ChatRequest { model: b.model, max_tokens: b.max_tokens, ..Default::default() };
     if let Some(s) = b.sampling {
         req.sampling = lh_provider::Sampling { temperature: s.temperature, top_p: s.top_p, top_k: s.top_k, min_p: s.min_p, repeat_penalty: s.repeat_penalty, extra: s.extra };
@@ -320,7 +453,8 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         (None, false) => "chat",
     };
     let project = b.project_dir.as_ref().and_then(|d| std::fs::canonicalize(d).ok()).map(|d| d.to_string_lossy().to_string());
-    let mut tools = session_tools(&st.settings, tools_on);
+    let live = st.live();
+    let mut tools = session_tools(&st.settings, &live, tools_on);
     let (mut dest, mut conv) = (None, None);
     let mut about = String::new();
     if let (Some(rt), false) = (&st.settings.memory, b.incognito) {
@@ -329,7 +463,7 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
             d.trust = lh_memory::Trust::AnyCloud; // a chat service can read everything sent through it
         }
         let _ = rt.memory.scan(); // pick up pages edited by hand
-        let (text, refs) = rt.memory.about_you(&d, &rt.cfg).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let (text, refs) = rt.memory.about_you(&d, &live.recall).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if !text.is_empty() {
             let pages: Vec<Value> = refs.iter().map(|r| json!({"page": r.id, "version": r.version})).collect();
             let _ = st.settings.store.log("memory_sent", &id, "assistant", &json!({"with": "about_you", "trust": format!("{:?}", rt.trust), "pages": pages}));
@@ -339,7 +473,7 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         let _ = rt.memory.set_conversation_meta(&id, &model_name, mode_name);
         conv = Some(id.clone());
         if tools_on {
-            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: rt.cfg.clone(), layers: None }));
+            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: live.recall.clone(), layers: None }));
         }
         dest = Some(d);
         let (m, e) = (rt.memory.clone(), rt.embedder.clone());
@@ -396,7 +530,7 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         }
         slot
     });
-    let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), permissions: perms.mode, sudo_enabled: perms.sudo_enabled, guidelines: tools.guidelines(), client_block, learned_block, about };
+    let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), permissions: perms.effective_mode(), sudo_enabled: perms.sudo_allowed(), guidelines: tools.guidelines(), client_block, learned_block, about };
     let mut session = Session::new(req, perms, tools, parts);
     (session.incognito, session.dest, session.conv, session.project) = (b.incognito, dest, conv, project);
     let session = Arc::new(session);
@@ -483,15 +617,15 @@ pub(crate) fn outbound_guard(s: &Settings) -> Option<lh_tools::GuardFn> {
     Some(Arc::new(move |text: &str| lh_memory::leaks(text, &sensitive_texts(&store))))
 }
 
-fn session_tools(s: &Settings, tools_on: bool) -> lh_tools::ToolSet {
+fn session_tools(s: &Settings, live: &Live, tools_on: bool) -> lh_tools::ToolSet {
     if !tools_on {
         return lh_tools::ToolSet::default(); // plain chat: the model is told about no tools
     }
-    let mut t = default_tools().with_web(s.web.clone());
+    let mut t = default_tools().with_web(live.web.clone());
     if let Some(g) = outbound_guard(s) {
         t = t.with_outbound_guard(g);
     }
-    match &s.image_model {
+    match &live.image_model {
         Some(m) => t.with_images(m.clone()),
         None => t,
     }
@@ -639,7 +773,8 @@ async fn start_turn<M: Model + 'static>(
     }
     let (tx, rx) = mpsc::unbounded_channel::<(String, Value)>();
     let task = {
-        let compact_at = st.settings.compact_at;
+        let live = st.live();
+        let compact_at = live.compact_at;
         let st2 = st.clone();
         let (s, model, tx, meter, store, id) = (s.clone(), st.model.clone(), tx.clone(), st.settings.spend.for_session(&id), st.settings.store.clone(), id.clone());
         tokio::spawn(async move {
@@ -671,7 +806,7 @@ async fn start_turn<M: Model + 'static>(
                 // notes that match this message, from the keyword search and, if set up, the embedding search
                 let semantic = if rt.embedder.is_on() { rt.memory.semantic_search(&*rt.embedder, &b.text, 10).await.unwrap_or_default() } else { vec![] };
                 let already = s.injected.lock().unwrap().clone();
-                if let Ok(rec) = rt.memory.recall(&b.text, dest, &rt.cfg, &semantic, &already) {
+                if let Ok(rec) = rt.memory.recall(&b.text, dest, &live.recall, &semantic, &already) {
                     if !rec.notes.is_empty() {
                         user_text = format!("{}\n{}", rec.render(), b.text);
                         let pages: Vec<Value> = rec.refs().iter().map(|r| json!({"page": r.id, "version": r.version})).collect();
@@ -750,7 +885,7 @@ async fn start_turn<M: Model + 'static>(
                         if !r.text.is_empty() {
                             let _ = rt.memory.append_message(conv, "assistant", &r.text);
                         }
-                        if let (Some(fallback), Some(tm), false, false) = (first, st2.title_model.get().filter(|m| !m.is_empty()), s.incognito, r.text.is_empty()) {
+                        if let (Some(fallback), Some(tm), false, false) = (first, Some(st2.live().title_model.clone()).filter(|m| !m.is_empty()), s.incognito, r.text.is_empty()) {
                             let job = titles::Job { model: tm.clone(), conv: conv.clone(), fallback, user: b.text.clone(), reply: r.text.clone(), session: id.clone() };
                             let (st3, weak) = (st2.clone(), tx.downgrade());
                             tokio::spawn(async move {

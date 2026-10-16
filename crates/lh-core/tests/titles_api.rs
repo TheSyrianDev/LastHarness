@@ -101,7 +101,7 @@ fn start(dir: &std::path::Path, title: Option<&str>, setting: &str, trust: Trust
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
     let state = AppState::new(model, settings);
-    let _ = state.title_model.set(setting.to_string());
+    state.set_title_model(setting);
     let app = router(state, token.clone(), port);
     tokio::spawn(async move { axum::serve(tokio::net::TcpListener::from_std(l).unwrap(), app).await.unwrap() });
     Server { base: format!("http://127.0.0.1:{port}"), token, http: reqwest::Client::new(), calls, store }

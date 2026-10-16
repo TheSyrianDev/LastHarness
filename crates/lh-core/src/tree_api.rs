@@ -164,7 +164,7 @@ pub(crate) async fn sync_session<M: Model + 'static>(st: &AppState<M>, id: &str,
     s.injected.lock().unwrap().clear();
     s.identity_stale.store(true, Ordering::SeqCst);
     s.kv_restore.store(false, Ordering::SeqCst);
-    if let Some(kv) = st.kv.get() {
+    if let Some(kv) = st.kv() {
         kv.forget(id);
     }
     Ok(())

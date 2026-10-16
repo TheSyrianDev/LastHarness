@@ -2,7 +2,8 @@
 //! description here, and the settings screens, the first-run questions and the core all read this list.
 //! Values live in `config.toml`; a key that is not there has its default.
 //!
-//! Some settings take effect at once (`live`), the rest when the core next starts.
+//! Some settings take effect at once (`live`; a few of those only in chats started afterwards, and their help
+//! says so), the rest when the core next starts.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -51,36 +52,38 @@ const fn d(key: &'static str, kind: Kind, default: &'static str, live: bool, hel
 }
 
 pub const SCHEMA: &[Def] = &[
-    d("provider.url", Kind::Text, "", false, "Where the models are served, for example http://localhost:9292/v1"),
-    d("provider.name", Kind::Text, "", false, "Name of the service for the first line of the prompt. Leave empty to use what the server reports"),
-    d("provider.key", Kind::Text, "", false, "Reference to the stored secret that holds the API key, like secret:NAME (the key itself is never written here)"),
-    d("memory.enabled", Kind::Bool, "true", false, "Remember things between sessions"),
-    d("memory.trust", Kind::Choice(&["auto", "local", "own", "any"]), "auto", false, "How far the model endpoint is trusted with memory. auto: local if the endpoint is on this machine, otherwise any cloud"),
-    d("learning.mode", Kind::Choice(&["propose", "silent", "off"]), "propose", false, "propose: suggestions wait for you. silent: applied at once and logged. off: no learning"),
-    d("learning.threshold", Kind::Int { min: 2, max: 20 }, "3", false, "Sessions a wish must repeat in before it counts as a habit"),
+    d("provider.url", Kind::Text, "", false, "Where the models are served, for example http://localhost:9292/v1. Needs a restart: the connection is made once at start"),
+    d("provider.name", Kind::Text, "", false, "Name of the service for the first line of the prompt. Leave empty to use what the server reports. Needs a restart: it is read once at start"),
+    d("provider.key", Kind::Text, "", false, "Reference to the stored secret that holds the API key, like secret:NAME (the key itself is never written here). Needs a restart: the key is read once at start"),
+    d("memory.enabled", Kind::Bool, "true", false, "Remember things between sessions. Needs a restart: the memory store is opened once at start"),
+    d("memory.trust", Kind::Choice(&["auto", "local", "own", "any"]), "auto", false, "How far the model endpoint is trusted with memory. auto: local if the endpoint is on this machine, otherwise any cloud. Needs a restart: memory and learning are set up with it at start"),
+    d("memory.recall_items", Kind::Int { min: 1, max: 50 }, "6", true, "Most notes added to one message from memory"),
+    d("memory.recall_chars", Kind::Int { min: 200, max: 100_000 }, "3000", true, "Most characters of memory added to one message, all notes together"),
+    d("learning.mode", Kind::Choice(&["propose", "silent", "off"]), "propose", false, "propose: suggestions wait for you. silent: applied at once and logged. off: no learning. Needs a restart: learning is set up once at start"),
+    d("learning.threshold", Kind::Int { min: 2, max: 20 }, "3", false, "Sessions a wish must repeat in before it counts as a habit. Needs a restart: learning is set up once at start"),
     d("team.autonomy", Kind::Choice(&["plan-first", "check-ins", "fire-and-forget"]), "plan-first", true, "How much you are asked on a big goal"),
     d("team.parallel", Kind::Int { min: 1, max: 16 }, "1", true, "Workers running at once"),
     d("team.attempts", Kind::Int { min: 1, max: 10 }, "3", true, "Attempts per step before a failure goes up"),
     d("team.unavailable", Kind::Choice(&["stop", "fallback"]), "stop", true, "When a model is missing: stop and tell you, or try the type's fallback list"),
-    d("media.image_model", Kind::Text, "", false, "Model for making images. Empty switches image making off"),
-    d("web.listen", Kind::Text, "", false, "Address for the browser UI over HTTPS, for example 127.0.0.1:7843. Empty switches it off. Use this machine's network address to reach it from a phone; every device must be paired first"),
-    d("web.use_proxy", Kind::Bool, "false", false, "Let web fetch go through the proxy named in the environment. Off by default, because a proxy looks names up itself and the check against private addresses cannot see where it goes"),
-    d("web.searxng", Kind::Text, "", false, "Address of a SearXNG server for web search. Empty switches search off"),
-    d("spending.mode", Kind::Choice(&["none", "caps", "estimate"]), "estimate", false, "none: only record. caps: refuse past a limit. estimate: ask before an expensive call"),
-    d("spending.approve_over_usd", Kind::OptFloat, "0.25", false, "In estimate mode, ask when one call is expected to cost more than this (US dollars)"),
-    d("spending.per_request_cap_usd", Kind::OptFloat, "", false, "Refuse any single call past this (US dollars). Empty for no limit"),
-    d("spending.daily_cap_usd", Kind::OptFloat, "", false, "Refuse past this per day (US dollars). Empty for no limit"),
-    d("spending.monthly_cap_usd", Kind::OptFloat, "", false, "Refuse past this per month (US dollars). Empty for no limit"),
-    d("permissions.mode", Kind::Choice(&["tiered", "ask-all"]), "tiered", false, "tiered: reads are free, writes ask once, risky things always ask. ask-all: ask for everything"),
-    d("permissions.bypass", Kind::Bool, "false", false, "Skip every permission question. You accept the risk; the project is not responsible for the outcome"),
-    d("permissions.sudo", Kind::Bool, "false", false, "Let agents use sudo (it still asks like any other command)"),
-    d("tree.summarize", Kind::Choice(&["ask", "always", "never"]), "ask", false, "When you leave a branch of a chat for another, write a short summary of it where you come back. ask: you are asked each time"),
-    d("kvcache.enabled", Kind::Bool, "true", false, "Save the model's work on a local chat, so a stored chat goes on quickly instead of being read again. Needs kvcache.dir; never for private chats or cloud models"),
-    d("kvcache.dir", Kind::Text, "", false, "The folder the local server saves slots into (its --slot-save-path; with llama-swap, the folder that holds the per-model ones). Empty switches saving off"),
-    d("kvcache.max_gb", Kind::Int { min: 1, max: 500 }, "5", false, "Most disk the saved caches may use in total; the oldest are removed first"),
-    d("chats.title_model", Kind::Text, "", false, "A small fast model that names a chat after its first reply, in a few words. Empty names a chat from the first words of your first message. A cloud model never sees a chat that looks sensitive"),
-    d("core.idle_after", Kind::Int { min: 0, max: 86_400 }, "600", false, "Seconds without activity before the core goes idle. 0 means never"),
-    d("core.compact_at", Kind::AutoInt, "auto", false, "Shorten a conversation at about this many tokens. auto: three quarters of the model's context. 0: never"),
+    d("media.image_model", Kind::Text, "", true, "Model for making images. Empty switches image making off. Applies to new chats"),
+    d("web.listen", Kind::Text, "", false, "Address for the browser UI over HTTPS, for example 127.0.0.1:7843. Empty switches it off. Use this machine's network address to reach it from a phone; every device must be paired first. Needs a restart: the port is opened once at start"),
+    d("web.use_proxy", Kind::Bool, "false", true, "Let web fetch go through the proxy named in the environment. Off by default, because a proxy looks names up itself and the check against private addresses cannot see where it goes. Applies to new chats"),
+    d("web.searxng", Kind::Text, "", true, "Address of a SearXNG server for web search. Empty switches search off. Applies to new chats"),
+    d("spending.mode", Kind::Choice(&["none", "caps", "estimate"]), "estimate", true, "none: only record. caps: refuse past a limit. estimate: ask before an expensive call"),
+    d("spending.approve_over_usd", Kind::OptFloat, "0.25", true, "In estimate mode, ask when one call is expected to cost more than this (US dollars)"),
+    d("spending.per_request_cap_usd", Kind::OptFloat, "", true, "Refuse any single call past this (US dollars). Empty for no limit"),
+    d("spending.daily_cap_usd", Kind::OptFloat, "", true, "Refuse past this per day (US dollars). Empty for no limit"),
+    d("spending.monthly_cap_usd", Kind::OptFloat, "", true, "Refuse past this per month (US dollars). Empty for no limit"),
+    d("permissions.mode", Kind::Choice(&["tiered", "ask-all"]), "tiered", true, "tiered: reads are free, writes ask once, risky things always ask. ask-all: ask for everything"),
+    d("permissions.bypass", Kind::Bool, "false", true, "Skip every permission question. You accept the risk; the project is not responsible for the outcome"),
+    d("permissions.sudo", Kind::Bool, "false", true, "Let agents use sudo (it still asks like any other command)"),
+    d("tree.summarize", Kind::Choice(&["ask", "always", "never"]), "ask", true, "When you leave a branch of a chat for another, write a short summary of it where you come back. ask: you are asked each time"),
+    d("kvcache.enabled", Kind::Bool, "true", true, "Save the model's work on a local chat, so a stored chat goes on quickly instead of being read again. Needs kvcache.dir; never for private chats or cloud models"),
+    d("kvcache.dir", Kind::Text, "", true, "The folder the local server saves slots into (its --slot-save-path; with llama-swap, the folder that holds the per-model ones). Empty switches saving off"),
+    d("kvcache.max_gb", Kind::Int { min: 1, max: 500 }, "5", true, "Most disk the saved caches may use in total; the oldest are removed first"),
+    d("chats.title_model", Kind::Text, "", true, "A small fast model that names a chat after its first reply, in a few words. Empty names a chat from the first words of your first message. A cloud model never sees a chat that looks sensitive"),
+    d("core.idle_after", Kind::Int { min: 0, max: 86_400 }, "600", true, "Seconds without activity before the core goes idle. 0 means never"),
+    d("core.compact_at", Kind::AutoInt, "auto", true, "Shorten a conversation at about this many tokens. auto: three quarters of the model's context. 0: never"),
     d("reports.crash", Kind::Choice(&["off", "ask", "auto"]), "off", true, "Anonymous crash reports. off: never. ask: show exactly what would be sent and ask. auto: send"),
     d("updates.enabled", Kind::Bool, "true", true, "Check for signed updates"),
 ];

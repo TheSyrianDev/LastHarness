@@ -84,9 +84,15 @@ async fn main() {
     let provider = provider.or_else(|| cfg.get_opt("provider.url")).unwrap_or_else(|| fail(format!("no provider: give --provider URL, or run `lh setup` (settings are read from {})", config_path.display())));
     // A crash report is only prepared, never sent, and only when the user has not switched them off.
     // It holds the version, the system and the place in the code: no message text, paths or names.
-    if cfg.get("reports.crash") != "off" {
+    // The hook is always in place and looks at the setting when something goes wrong, so switching reports
+    // on or off takes effect without a restart.
+    {
         let file = config_path.parent().map(|p| p.join("crash-pending.json"));
+        let cfg_file = config_path.clone();
         std::panic::set_hook(Box::new(move |info| {
+            if lh_config::ConfigFile::load(&cfg_file).map(|c| c.get("reports.crash")).unwrap_or_else(|_| "off".into()) == "off" {
+                return;
+            }
             let at = info.location().map(|l| format!("{}:{}", l.file().rsplit('/').next().unwrap_or(""), l.line())).unwrap_or_default();
             let report = serde_json::json!({"version": env!("CARGO_PKG_VERSION"), "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "where": at});
             if let Some(f) = &file {
@@ -97,17 +103,14 @@ async fn main() {
     }
     let key = key.or_else(|| cfg.get_opt("provider.key"));
     let provider_name = provider_name.or_else(|| cfg.get_opt("provider.name"));
-    let compact_at = compact_at.or_else(|| match cfg.get("core.compact_at").as_str() { "auto" => None, n => n.parse().ok() });
     let idle_after = idle_after.or_else(|| cfg.get_num("core.idle_after")).unwrap_or(600);
-    let searxng = searxng.or_else(|| cfg.get_opt("web.searxng"));
-    let image_model = image_model.or_else(|| cfg.get_opt("media.image_model"));
+    // Flags only: the file's values for web search, the proxy, images, compaction, spending and permissions are
+    // applied (and re-applied on every change) by `AppState::apply_settings`, with a flag still winning.
     let no_memory = no_memory || !cfg.get_bool("memory.enabled");
     let trust = trust.or_else(|| Some(cfg.get("memory.trust")).filter(|t| t != "auto"));
     let learn_mode = learn_mode.unwrap_or_else(|| cfg.get("learning.mode"));
     let learn_threshold = learn_threshold.or_else(|| cfg.get_num("learning.threshold")).unwrap_or(3);
-    flags.0 = flags.0 || cfg.get_bool("permissions.bypass");
-    flags.1 = flags.1 || cfg.get_bool("permissions.sudo");
-    let ask_all = cfg.get("permissions.mode") == "ask-all";
+    let (bypass_now, sudo_now) = (flags.0 || cfg.get_bool("permissions.bypass"), flags.1 || cfg.get_bool("permissions.sudo"));
     let addr: SocketAddr = listen.parse().unwrap_or_else(|e| fail(format!("--listen: {e}")));
     if !addr.ip().is_loopback() {
         fail("the local API only listens on loopback until device pairing exists");
@@ -124,23 +127,8 @@ async fn main() {
         Some(p) => lh_spend::Config::from_toml(&std::fs::read_to_string(&p).unwrap_or_else(|e| fail(format!("{}: {e}", p.display())))).unwrap_or_else(|e| fail(format!("{e}"))),
         None => lh_spend::Config::default(),
     };
-    let spend_cfg = {
-        let mut c = spend_cfg;
-        if cfg.is_set("spending.mode") {
-            c.mode = match cfg.get("spending.mode").as_str() { "none" => lh_spend::Mode::None, "caps" => lh_spend::Mode::Caps, _ => lh_spend::Mode::Estimate };
-        }
-        if cfg.is_set("spending.approve_over_usd") {
-            c.approve_over_usd = cfg.get_num("spending.approve_over_usd").unwrap_or(c.approve_over_usd);
-        }
-        for (key, slot) in [("spending.per_request_cap_usd", &mut c.per_request_cap_usd), ("spending.daily_cap_usd", &mut c.daily_cap_usd), ("spending.monthly_cap_usd", &mut c.monthly_cap_usd)] {
-            if cfg.is_set(key) {
-                *slot = cfg.get_num(key);
-            }
-        }
-        c
-    };
     let spend = lh_spend::SpendMeter::new(store.clone(), spend_cfg, provider.clone(), lh_provider::is_local_url(&provider));
-    let _ = store.log("startup", "-", "lhd", &serde_json::json!({"provider": provider, "local": lh_provider::is_local_url(&provider), "bypass": flags.0, "sudo_enabled": flags.1, "allow_rules": flags.2, "memory": !no_memory, "learn": learn_mode}));
+    let _ = store.log("startup", "-", "lhd", &serde_json::json!({"provider": provider, "local": lh_provider::is_local_url(&provider), "bypass": bypass_now, "sudo_enabled": sudo_now, "allow_rules": flags.2, "memory": !no_memory, "learn": learn_mode}));
     let provider_trust = match trust.as_deref() {
         Some(t) => lh_memory::Trust::parse(t).unwrap_or_else(|| fail("--trust must be local, own or any")),
         None if lh_provider::is_local_url(&provider) => lh_memory::Trust::Local,
@@ -213,20 +201,17 @@ async fn main() {
     let mcp = (!no_team).then(|| lh_core::McpRuntime::open(default_store_path().parent().map(|p| p.join("mcp.json")).unwrap_or_else(|| std::path::PathBuf::from("mcp.json"))));
     let web_store = store.clone();
     let channel_store = store.clone();
-    let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false, use_proxy: cfg.get_bool("web.use_proxy") }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2, team, mcp, ask_all, config: Some(config_path) };
+    let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false, use_proxy: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2, team, mcp, ask_all: false, config: Some(config_path) };
 
     let token = auth::new_token();
     let path = token_file.unwrap_or_else(auth::default_token_path);
     auth::write_token(&path, &token).unwrap_or_else(|e| fail(format!("cannot write the token file {}: {e}", path.display())));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| fail(format!("cannot listen on {addr}: {e}")));
     let port = listener.local_addr().unwrap().port();
-    let kv = cfg.get_bool("kvcache.enabled").then(|| cfg.get_opt("kvcache.dir")).flatten().map(|dir| lh_core::kv_cache::KvCache::new(&provider, api_key.clone(), std::path::PathBuf::from(dir), cfg.get_num("kvcache.max_gb").unwrap_or(5)));
+    let (provider_url, api_key_for_kv) = (provider.clone(), api_key.clone());
     let state = AppState::new(Provider::new(provider, api_key), settings);
-    if let Some(kv) = kv {
-        let _ = state.kv.set(std::sync::Arc::new(kv));
-    }
-    let _ = state.tree_summarize_setting.set(cfg.get("tree.summarize"));
-    let _ = state.title_model.set(cfg.get("chats.title_model"));
+    state.set_kv_endpoint(&provider_url, api_key_for_kv);
+    state.apply_settings(&cfg, &[]);
     // the browser's door: off unless an address is given
     let web_listen = web_listen.or_else(|| cfg.get_opt("web.listen"));
     let web = match web_listen {

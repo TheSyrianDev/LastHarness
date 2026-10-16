@@ -8,7 +8,10 @@ use crate::{decide, dollars, Config, Totals, Verdict};
 
 struct Shared {
     store: Arc<Store>,
-    cfg: Config,
+    /// The rules in force. Replaced when the settings change.
+    cfg: std::sync::RwLock<Config>,
+    /// The rules as the core started with them (the spend file), which the settings are applied on top of.
+    base: Config,
     provider: String,
     /// Runs on this machine or a private network: priced at zero unless a price says otherwise.
     local: bool,
@@ -28,12 +31,24 @@ const DEFAULT_MAX_OUTPUT: u64 = 4096;
 
 impl SpendMeter {
     pub fn new(store: Arc<Store>, cfg: Config, provider: impl Into<String>, local: bool) -> Self {
-        Self { shared: Arc::new(Shared { store, cfg, provider: provider.into(), local }), session: String::new() }
+        Self { shared: Arc::new(Shared { store, cfg: std::sync::RwLock::new(cfg.clone()), base: cfg, provider: provider.into(), local }), session: String::new() }
+    }
+
+    /// Change the rules while the core runs: `f` starts from the rules the meter was built with, so a setting
+    /// that is reset goes back to what the spend file says. Calls already being checked finish under the old rules.
+    pub fn reconfigure(&self, f: impl FnOnce(&mut Config)) {
+        let mut c = self.shared.base.clone();
+        f(&mut c);
+        *self.shared.cfg.write().unwrap() = c;
+    }
+
+    pub fn config(&self) -> Config {
+        self.shared.cfg.read().unwrap().clone()
     }
 
     /// What one input token of `model` costs in micro-USD, if the user listed a price for it. Cost is tokens times this.
     pub fn input_price(&self, model: &str) -> Option<f64> {
-        self.shared.cfg.price_of(model).map(|p| p.input).filter(|p| *p > 0.0)
+        self.shared.cfg.read().unwrap().price_of(model).map(|p| p.input).filter(|p| *p > 0.0)
     }
 
     pub fn for_session(&self, id: impl Into<String>) -> Self {
@@ -62,7 +77,7 @@ impl SpendMeter {
     }
 
     fn cost(&self, model: &str, u: Usage) -> Option<i64> {
-        match self.shared.cfg.price_of(model) {
+        match self.shared.cfg.read().unwrap().price_of(model) {
             Some(p) => {
                 let fresh = u.prompt_tokens.saturating_sub(u.cached_tokens) as f64;
                 let cached = u.cached_tokens as f64;
@@ -77,7 +92,7 @@ impl SpendMeter {
 impl SpendMeter {
     /// Cost of `count` images in micro-USD. `None`: paid service with no price.
     fn media_cost(&self, model: &str, count: u32) -> Option<i64> {
-        match self.shared.cfg.price_of(model).and_then(|p| p.image) {
+        match self.shared.cfg.read().unwrap().price_of(model).and_then(|p| p.image) {
             Some(usd) => Some((usd * 1_000_000.0 * f64::from(count)).round() as i64),
             None if self.shared.local => Some(0),
             None => None,
@@ -87,7 +102,7 @@ impl SpendMeter {
 
 impl Meter for SpendMeter {
     async fn before_media(&self, model: &str, count: u32) -> MeterVerdict {
-        match decide(&self.shared.cfg, self.media_cost(model, count), self.totals()) {
+        match decide(&self.shared.cfg.read().unwrap(), self.media_cost(model, count), self.totals()) {
             Verdict::Allow => MeterVerdict::Allow,
             Verdict::Ask(m) => MeterVerdict::Ask(m),
             Verdict::Refuse(m) => MeterVerdict::Refuse(m),
@@ -112,7 +127,7 @@ impl Meter for SpendMeter {
 
     async fn before(&self, req: &ChatRequest) -> MeterVerdict {
         let est = self.estimate(req);
-        match decide(&self.shared.cfg, est, self.totals()) {
+        match decide(&self.shared.cfg.read().unwrap(), est, self.totals()) {
             Verdict::Allow => MeterVerdict::Allow,
             Verdict::Ask(m) => MeterVerdict::Ask(m),
             Verdict::Refuse(m) => MeterVerdict::Refuse(m),

@@ -73,7 +73,7 @@ async fn remove<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
     let live = st.sessions.lock().unwrap().remove(&id).is_some();
     let stored = rt.memory.delete_conversation(&id).map_err(internal)?;
     // the model's saved work on this chat is private data too, so it goes with the chat
-    if let Some(kv) = st.kv.get() {
+    if let Some(kv) = st.kv() {
         kv.forget(&id);
     }
     if !live && !stored {
@@ -109,8 +109,8 @@ fn warning(cloud: bool, same_model: bool, tokens: u64, price: Option<f64>, cache
 }
 
 /// Is there a saved KV cache for this chat and model that a local endpoint can use?
-fn saved_cache<M>(st: &AppState<M>, chat: &str, model: &str, cloud: bool) -> bool {
-    !cloud && st.kv.get().is_some_and(|kv| !kv.is_off() && kv.find(&crate::kv_cache::KvCache::file_name(chat, model)).is_some())
+fn saved_cache<M: lh_tools::Model + 'static>(st: &AppState<M>, chat: &str, model: &str, cloud: bool) -> bool {
+    !cloud && st.kv().is_some_and(|kv| !kv.is_off() && kv.find(&crate::kv_cache::KvCache::file_name(chat, model)).is_some())
 }
 
 async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>, Json(b): Json<Resume>) -> Result<Json<Value>, ApiError> {

@@ -135,6 +135,8 @@ pub const INFO: &[Info] = &[
     i("media.image_model", Models, "Image model", "The model that makes images. Leave it empty to turn image making off.", Show::Text("Off"), false),
     i("memory.enabled", Memory, "Remember between chats", "Keeps notes about you and your work so later chats can use them.", Show::OnOff, false),
     i("memory.trust", Memory, "Where memory may be sent", "Sensitive notes never leave this computer. This sets how far the model service may see the rest.", Show::Words(&[("auto", "Decide for me"), ("local", "This computer only"), ("own", "My own cloud account"), ("any", "Any cloud service")]), false),
+    i("memory.recall_items", Memory, "Notes added to a message", "The most notes memory adds to one message you send.", Show::Count("note", "notes"), true),
+    i("memory.recall_chars", Memory, "Memory added to a message, in characters", "The most text, all notes together, that memory adds to one message you send.", Show::Count("character", "characters"), true),
     i("learning.mode", Memory, "Learning from your habits", "How the app picks up your habits. It can suggest and wait for you, apply changes quietly, or not learn.", Show::Words(&[("propose", "Suggest and wait"), ("silent", "Apply quietly"), ("off", "Off")]), false),
     i("learning.threshold", Memory, "Chats before it counts as a habit", "How many chats a wish must come up in before the app treats it as a habit.", Show::Count("chat", "chats"), false),
     i("team.autonomy", Departments, "How much departments ask you", "How often a department checks with you while it works on a big goal.", Show::Words(&[("plan-first", "Show a plan first"), ("check-ins", "Check in as it goes"), ("fire-and-forget", "Just do it")]), false),
