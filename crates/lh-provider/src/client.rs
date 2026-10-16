@@ -55,12 +55,14 @@ impl Default for Retry {
 
 /// One endpoint: base URL (up to and including `/v1`), optional key, and its quirks.
 pub struct Provider {
-    base_url: String,
-    api_key: Option<String>,
+    pub(crate) base_url: String,
+    pub(crate) api_key: Option<String>,
     compat: Compat,
     retry: Retry,
-    probed: std::sync::Mutex<std::collections::HashMap<String, crate::Capabilities>>,
+    pub(crate) probed: std::sync::Mutex<std::collections::HashMap<String, crate::Capabilities>>,
     http: std::sync::Mutex<reqwest::Client>,
+    /// Talk Ollama's native API (`/api/chat`, NDJSON) instead of the OpenAI-compatible one.
+    pub(crate) ollama: bool,
 }
 
 impl Provider {
@@ -68,7 +70,7 @@ impl Provider {
     pub fn new(base_url: impl Into<String>, api_key: Option<String>) -> Self {
         let base_url = base_url.into().trim_end_matches('/').to_string();
         let compat = Compat::detect(&base_url);
-        Self { base_url, api_key, compat, retry: Retry::default(), probed: Default::default(), http: std::sync::Mutex::new(reqwest::Client::new()) }
+        Self { base_url, api_key, compat, retry: Retry::default(), probed: Default::default(), http: std::sync::Mutex::new(reqwest::Client::new()), ollama: false }
     }
 
     pub fn with_compat(mut self, compat: Compat) -> Self {
@@ -81,7 +83,7 @@ impl Provider {
         *self.http.lock().unwrap() = reqwest::Client::new();
     }
 
-    fn http(&self) -> reqwest::Client {
+    pub(crate) fn http(&self) -> reqwest::Client {
         self.http.lock().unwrap().clone()
     }
 
@@ -91,6 +93,9 @@ impl Provider {
     }
 
     pub async fn models(&self) -> Result<Vec<String>, Error> {
+        if self.ollama {
+            return self.ollama_models().await;
+        }
         let v: Value = self.get("/models").await?;
         Ok(v["data"].as_array().map(|a| a.iter().filter_map(|m| m["id"].as_str().map(str::to_string)).collect()).unwrap_or_default())
     }
@@ -100,6 +105,9 @@ impl Provider {
     pub async fn capabilities(&self, model: &str) -> crate::Capabilities {
         if let Some(c) = self.probed.lock().unwrap().get(model) {
             return c.clone();
+        }
+        if self.ollama {
+            return self.ollama_capabilities(model).await;
         }
         let root = self.base_url.strip_suffix("/v1").unwrap_or(&self.base_url).to_string();
         let mut found = crate::Capabilities::default();
@@ -140,6 +148,9 @@ impl Provider {
 
     /// One request, one reply, no streaming.
     pub async fn chat(&self, req: &ChatRequest) -> Result<Response, Error> {
+        if self.ollama {
+            return self.ollama_chat(req).await;
+        }
         let v = self.post("/chat/completions", &self.body(req, false)).await?.json::<Value>().await?;
         if v["choices"][0].is_null() {
             return Err(Error::Format(v.to_string()));
@@ -150,6 +161,9 @@ impl Provider {
     /// Streams the reply, calling `on_event` for each piece, and returns the whole reply at the end.
     /// To cancel, drop the future (for example with `tokio::select!`).
     pub async fn chat_stream(&self, req: &ChatRequest, mut on_event: impl FnMut(Event)) -> Result<Response, Error> {
+        if self.ollama {
+            return self.ollama_chat_stream(req, on_event).await;
+        }
         let resp = self.post("/chat/completions", &self.body(req, true)).await?;
         let mut bytes = resp.bytes_stream();
         let (mut sse, mut asm) = (SseParser::new(), Assembler::new(self.compat.clone()));
@@ -227,14 +241,14 @@ impl Provider {
         b
     }
 
-    fn auth(&self, rb: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    pub(crate) fn auth(&self, rb: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         match &self.api_key {
             Some(k) => rb.bearer_auth(k),
             None => rb,
         }
     }
 
-    async fn get(&self, path: &str) -> Result<Value, Error> {
+    pub(crate) async fn get(&self, path: &str) -> Result<Value, Error> {
         let resp = self
             .with_retries(|| async {
                 let r = self.auth(self.http().get(format!("{}{}", self.base_url, path))).send().await?;
@@ -244,7 +258,7 @@ impl Provider {
         Ok(resp.json().await?)
     }
 
-    async fn post(&self, path: &str, body: &Value) -> Result<reqwest::Response, Error> {
+    pub(crate) async fn post(&self, path: &str, body: &Value) -> Result<reqwest::Response, Error> {
         self.with_retries(|| async {
             let r = self.auth(self.http().post(format!("{}{}", self.base_url, path))).json(body).send().await?;
             check(r).await
@@ -272,7 +286,7 @@ impl Provider {
     }
 }
 
-async fn check(r: reqwest::Response) -> Result<reqwest::Response, Error> {
+pub(crate) async fn check(r: reqwest::Response) -> Result<reqwest::Response, Error> {
     if r.status().is_success() {
         return Ok(r);
     }

@@ -256,3 +256,13 @@ Ollama gets native support through its own API (`/api/chat`), built from its doc
 Order of work: the full-harness features (checkpoints and undo, diff review, command sandboxing, hooks, headless mode, scheduled tasks, code intelligence, voice) come before more inference work. The KV-cache branch-point design waits until then.
 
 The user asked for several UI direction mockups (Calm desk, Workbench, Mission view), made as HTML mockups by Sonnet subagents. Nothing goes into the app until the user picks.
+
+## 2026-10-16: Harness milestone, fonts, chat names, new-chat screen
+
+The user approved a harness milestone before mobile: file checkpoints and undo per turn, diff review before edits apply, a command sandbox under the permission tiers, hooks before and after tool calls, headless `lh -p`, scheduled and background tasks, code intelligence (LSP) for coding roles, and Servo replacing Blitz inside the same sandbox. Voice comes after, optional.
+
+Fonts: Settings gets two font pickers, one for Latin text and one for Arabic text. The Arabic default is Noto Naskh Arabic (Noto Sans Arabic if missing), used as the explicit fallback for Arabic script, and mixed lines go through bidi reordering so English and Arabic in one line keep their order and brackets.
+
+Chat names: a setting picks a small fast model that names a chat after the first exchange; when it is unset or fails, the first words of the first message are used as today.
+
+New chat screen: with no messages, the message box sits in the middle of the window under a greeting such as "{name} is back!", in the style of the Claude web and desktop apps. Deleting every chat leaves no chat behind (today one untitled chat remains).

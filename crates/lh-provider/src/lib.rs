@@ -4,6 +4,7 @@
 mod client;
 mod compat;
 mod images;
+mod ollama;
 mod probe;
 mod repair;
 mod sse;

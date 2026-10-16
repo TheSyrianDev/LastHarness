@@ -13,6 +13,8 @@ pub struct Capabilities {
     pub vision: Option<bool>,
     /// The template understands a reasoning-effort setting.
     pub reasoning_effort: Option<bool>,
+    /// The model can think before answering (Ollama reports this).
+    pub thinking: Option<bool>,
     /// Number of parameters, when the server says (llama.cpp reports `n_params`).
     pub parameters: Option<u64>,
     /// Which endpoint answered, for the log. Empty when nothing did.
@@ -31,6 +33,7 @@ impl Capabilities {
             tools: caps["supports_tools"].as_bool(),
             vision: v["modalities"]["vision"].as_bool(),
             reasoning_effort: caps["supports_reasoning_effort"].as_bool(),
+            thinking: None,
             parameters: None,
             source: source.to_string(),
         })
