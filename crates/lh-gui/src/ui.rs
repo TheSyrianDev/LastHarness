@@ -283,7 +283,7 @@ impl App {
                 .bg(if on { p.accent.opacity(0.22) } else { hsla(0., 0., 0., 0.) })
                 .hover(|s| s.bg(p.button))
                 .on_click(cx.listener(move |a, _, _, cx| a.select_chat(key, cx)))
-                .child(div().child(c.title.clone()))
+                .child(div().truncate().child(lh_gui::model::one_line(&c.title)))
                 .child(div().text_xs().text_color(p.muted).child(c.model.clone()));
             rows.push(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(pick).child(del).into_any_element());
         }

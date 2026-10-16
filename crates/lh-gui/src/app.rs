@@ -184,7 +184,7 @@ fn stored_to_chat(chats: &mut Chats, models: &ModelList, s: &StoredChat) {
     match chats.by_session(&s.id) {
         Some(c) => {
             if !s.title.is_empty() && c.title == NEW_TITLE {
-                c.title = s.title.clone();
+                c.title = lh_gui::model::one_line(&s.title);
             }
         }
         None => {

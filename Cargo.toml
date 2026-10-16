@@ -16,3 +16,8 @@ futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+
+# gpui-pre-wgpu 0.3.8 with one change: shaped glyphs keep their x/y offsets (Arabic dots and marks), see
+# third_party/gpui-pre-wgpu/src/cosmic_text_system.rs. Remove when upstream does the same.
+[patch.crates-io]
+gpui-pre-wgpu = { path = "third_party/gpui-pre-wgpu" }

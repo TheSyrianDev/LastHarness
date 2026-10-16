@@ -81,6 +81,12 @@ pub struct Chat {
 
 pub const NEW_TITLE: &str = "New chat";
 
+/// A chat title on one line: any run of whitespace (newlines too) becomes one space, the ends are trimmed. A title
+/// from a model can start with a line break, which would draw an empty first line in the sidebar.
+pub fn one_line(title: &str) -> String {
+    title.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 impl Chat {
     pub fn new(key: u64, model: &str) -> Chat {
         Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), turn_had_text: false, work_since: None, think: Default::default() }
@@ -90,14 +96,15 @@ impl Chat {
     pub fn stored(key: u64, session: &str, title: &str, model: &str) -> Chat {
         let mut c = Chat::new(key, model);
         c.session = Some(session.into());
-        c.title = if title.is_empty() { NEW_TITLE.into() } else { title.into() };
+        let t = one_line(title);
+        c.title = if t.is_empty() { NEW_TITLE.into() } else { t };
         c.dormant = true;
         c
     }
 
     pub fn push_user(&mut self, text: &str) {
         if self.title == NEW_TITLE {
-            self.title = text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(40).collect();
+            self.title = one_line(text).chars().take(40).collect();
         }
         self.blocks.push(Block::User(text.into()));
         self.busy = true;
@@ -296,6 +303,13 @@ impl Chats {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn titles_are_one_line_and_arabic_survives() {
+        assert_eq!(one_line("\n  كتابة \r\n الرسالة  "), "كتابة الرسالة");
+        assert_eq!(Chat::stored(1, "s", "\nكتابة رسالة", "m").title, "كتابة رسالة");
+        assert_eq!(Chat::stored(1, "s", " \n ", "m").title, NEW_TITLE);
+    }
+
     use super::*;
 
     fn text(t: &str) -> ServerEvent {

@@ -38,6 +38,7 @@ lh-team = { path = "../lh-team" }
 lh-store = { path = "../lh-store" }
 lh-provider = { path = "../lh-provider" }
 tempfile = "3"
+gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.8" }
 axum = "0.8"
 reqwest.workspace = true
 lh-client = { path = "../lh-client" }
