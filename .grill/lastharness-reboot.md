@@ -270,3 +270,7 @@ New chat screen: with no messages, the message box sits in the middle of the win
 ## 2026-10-16: Fonts per theme; two dev-only themes
 
 The user asked that every theme can set its own fonts (Latin and Arabic), on top of the global font pickers: a font chosen in Settings wins over the theme's, and a theme without fonts uses the defaults. To see the effect, two dev-build themes are added, "Claude" (Anthropic-like) and "ChatGPT" (OpenAI-like), each light and dark, using open fonts that resemble their look (the brand fonts are not free). They are for the development build only and will be renamed or removed before the first release.
+
+## 2026-10-16: Settings without the terminal
+
+The user said yes to making the desktop app's Settings complete, so nothing needs the terminal. Slice 1: setting cards whose labels fit (title wraps, control on its own row when space is short), real text, number and folder fields for every setting, dropdowns instead of click-to-cycle buttons, model pickers fed by the server's model list, and reset to default. Then new pages: Models and keys (with a connection test), Learning (rules, style, skills), Departments and roles, Tools and MCP with folder trust, Channels, Web and phone with pairing, Your data (export and import), and Activity with spending totals.
