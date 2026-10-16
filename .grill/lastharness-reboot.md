@@ -266,3 +266,7 @@ Fonts: Settings gets two font pickers, one for Latin text and one for Arabic tex
 Chat names: a setting picks a small fast model that names a chat after the first exchange; when it is unset or fails, the first words of the first message are used as today.
 
 New chat screen: with no messages, the message box sits in the middle of the window under a greeting such as "{name} is back!", in the style of the Claude web and desktop apps. Deleting every chat leaves no chat behind (today one untitled chat remains).
+
+## 2026-10-16: Fonts per theme; two dev-only themes
+
+The user asked that every theme can set its own fonts (Latin and Arabic), on top of the global font pickers: a font chosen in Settings wins over the theme's, and a theme without fonts uses the defaults. To see the effect, two dev-build themes are added, "Claude" (Anthropic-like) and "ChatGPT" (OpenAI-like), each light and dark, using open fonts that resemble their look (the brand fonts are not free). They are for the development build only and will be renamed or removed before the first release.
