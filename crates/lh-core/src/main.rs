@@ -226,6 +226,7 @@ async fn main() {
         let _ = state.kv.set(std::sync::Arc::new(kv));
     }
     let _ = state.tree_summarize_setting.set(cfg.get("tree.summarize"));
+    let _ = state.title_model.set(cfg.get("chats.title_model"));
     // the browser's door: off unless an address is given
     let web_listen = web_listen.or_else(|| cfg.get_opt("web.listen"));
     let web = match web_listen {

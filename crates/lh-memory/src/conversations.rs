@@ -52,10 +52,17 @@ impl Memory {
     }
 
     /// The title is the start of the first thing the user said; set once.
-    pub fn set_title_if_empty(&self, id: &str, text: &str) -> Result<()> {
+    /// Returns the title when this call set it.
+    pub fn set_title_if_empty(&self, id: &str, text: &str) -> Result<Option<String>> {
         let title: String = text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(60).collect();
-        self.store.with(|c| c.execute("update conversations set title = ?2 where id = ?1 and (title is null or title = '')", (id, title)).map(|_| ()))?;
-        Ok(())
+        let n = self.store.with(|c| c.execute("update conversations set title = ?2 where id = ?1 and (title is null or title = '')", (id, &title)))?;
+        Ok((n > 0).then_some(title))
+    }
+
+    /// Replace the title only while it is still `old`, so a name the person chose is never overwritten.
+    pub fn replace_title(&self, id: &str, old: &str, new: &str) -> Result<bool> {
+        let n = self.store.with(|c| c.execute("update conversations set title = ?3 where id = ?1 and title = ?2", (id, old, new)))?;
+        Ok(n > 0)
     }
 
     /// Stored chats that have at least one message, newest first. The size of a chat is the size of its active branch.

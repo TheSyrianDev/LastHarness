@@ -78,6 +78,7 @@ pub const SCHEMA: &[Def] = &[
     d("kvcache.enabled", Kind::Bool, "true", false, "Save the model's work on a local chat, so a stored chat goes on quickly instead of being read again. Needs kvcache.dir; never for private chats or cloud models"),
     d("kvcache.dir", Kind::Text, "", false, "The folder the local server saves slots into (its --slot-save-path; with llama-swap, the folder that holds the per-model ones). Empty switches saving off"),
     d("kvcache.max_gb", Kind::Int { min: 1, max: 500 }, "5", false, "Most disk the saved caches may use in total; the oldest are removed first"),
+    d("chats.title_model", Kind::Text, "", false, "A small fast model that names a chat after its first reply, in a few words. Empty names a chat from the first words of your first message. A cloud model never sees a chat that looks sensitive"),
     d("core.idle_after", Kind::Int { min: 0, max: 86_400 }, "600", false, "Seconds without activity before the core goes idle. 0 means never"),
     d("core.compact_at", Kind::AutoInt, "auto", false, "Shorten a conversation at about this many tokens. auto: three quarters of the model's context. 0: never"),
     d("reports.crash", Kind::Choice(&["off", "ask", "auto"]), "off", true, "Anonymous crash reports. off: never. ask: show exactly what would be sent and ask. auto: send"),

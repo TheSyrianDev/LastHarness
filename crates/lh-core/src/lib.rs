@@ -36,6 +36,7 @@ pub mod web;
 mod settings_api;
 mod show_tool;
 mod team_api;
+mod titles;
 mod tree_api;
 
 pub use learn_api::{LearnMode, LearnRuntime};
@@ -111,6 +112,8 @@ pub struct AppState<M> {
     pub kv: std::sync::OnceLock<Arc<kv_cache::KvCache>>,
     /// What to do with the branch a person leaves in the chat tree: ask, always or never write a summary.
     pub tree_summarize_setting: std::sync::OnceLock<String>,
+    /// `chats.title_model`: the model that names a chat after its first reply. Unset or empty means first words.
+    pub title_model: std::sync::OnceLock<String>,
 }
 
 impl<M: Model + 'static> AppState<M> {
@@ -154,7 +157,7 @@ impl<M: Model + 'static> AppState<M> {
         }
         tokio::spawn(idle.clone().run());
         let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
-        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: std::sync::OnceLock::new(), tree_summarize_setting: std::sync::OnceLock::new() })
+        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: std::sync::OnceLock::new(), tree_summarize_setting: std::sync::OnceLock::new(), title_model: std::sync::OnceLock::new() })
     }
 
     pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
@@ -740,12 +743,23 @@ async fn start_turn<M: Model + 'static>(
                     }
                     if let (Some(rt), Some(conv)) = (&st2.settings.memory, &s.conv) {
                         let _ = rt.memory.append_message(conv, "user", &b.text);
-                        let _ = rt.memory.set_title_if_empty(conv, &b.text);
+                        let first = rt.memory.set_title_if_empty(conv, &b.text).ok().flatten();
                         for note in notes.lock().unwrap().iter() {
                             let _ = rt.memory.append_message(conv, "tool", note);
                         }
                         if !r.text.is_empty() {
                             let _ = rt.memory.append_message(conv, "assistant", &r.text);
+                        }
+                        if let (Some(fallback), Some(tm), false, false) = (first, st2.title_model.get().filter(|m| !m.is_empty()), s.incognito, r.text.is_empty()) {
+                            let job = titles::Job { model: tm.clone(), conv: conv.clone(), fallback, user: b.text.clone(), reply: r.text.clone(), session: id.clone() };
+                            let (st3, weak) = (st2.clone(), tx.downgrade());
+                            tokio::spawn(async move {
+                                if let Some(title) = titles::run(&*st3.model, &st3.settings, &job).await {
+                                    if let Some(tx) = weak.upgrade() {
+                                        let _ = tx.send(("title".into(), json!({"type":"title","conversation":job.conv,"title":title})));
+                                    }
+                                }
+                            });
                         }
                     }
                     ("done".to_string(), json!({"type":"done","empty":empty}))
