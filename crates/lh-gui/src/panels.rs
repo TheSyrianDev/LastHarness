@@ -224,6 +224,9 @@ impl App {
             cx.notify();
         });
         let widths = self.width_controls(cx);
+        let fonts = div().flex().flex_col().gap_1()
+            .child(self.font_picker_row(crate::app::FontSlot::Latin, cx))
+            .child(self.font_picker_row(crate::app::FontSlot::Arabic, cx));
         let pages_switch = gpui_component::switch::Switch::new("pages-inside-switch")
             .checked(!self.prefs.pages_off)
             .label(if rtl { "عرض صفحات الويب داخل التطبيق" } else { "Show web pages inside the app" })
@@ -238,6 +241,7 @@ impl App {
                 .child(modes)
                 .child(looks)
                 .child(widths)
+                .child(fonts)
                 .child(div().flex().flex_col().gap_1().child(pages_switch).child(pages_note))
                 .child(div().flex().flex_wrap().gap_1().child(dir_btn).child(narrower).child(wider))
                 .child(div().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))
@@ -245,6 +249,49 @@ impl App {
             .children(self.themes.notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
             .children(self.look_notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
             .into_any_element()
+    }
+
+    /// One font picker: a button with the font in use that opens a short scrolling list of installed fonts.
+    fn font_picker_row(&mut self, slot: crate::app::FontSlot, cx: &mut Context<Self>) -> AnyElement {
+        use crate::app::FontSlot;
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let (title, chosen, tag) = match slot {
+            FontSlot::Latin => (if rtl { "الخط اللاتيني" } else { "Latin font" }, self.prefs.latin_font.clone(), "latin"),
+            FontSlot::Arabic => (if rtl { "الخط العربي" } else { "Arabic font" }, self.prefs.arabic_font.clone(), "arabic"),
+        };
+        let shown = match slot {
+            FontSlot::Latin if chosen.is_empty() => (if rtl { "الافتراضي" } else { "Default" }).to_string(),
+            FontSlot::Arabic if chosen.is_empty() => lh_gui::fonts::arabic_font("", &self.fonts).unwrap_or_else(|| (if rtl { "افتراضي النظام" } else { "System default" }).to_string()),
+            _ => chosen.clone(),
+        };
+        let open = self.font_picker == Some(slot);
+        let toggle = self.button(format!("font-{tag}"), format!("{title}: {shown}"), Kind::Normal, cx, move |a, _, cx| {
+            a.font_picker = if a.font_picker == Some(slot) { None } else { Some(slot) };
+            cx.notify();
+        });
+        let mut col = div().flex().flex_col().gap_1().child(toggle);
+        if open {
+            let mut names = match slot {
+                FontSlot::Arabic => lh_gui::fonts::arabic_first(&self.fonts),
+                FontSlot::Latin => self.fonts.clone(),
+            };
+            names.insert(0, String::new());
+            let rows: Vec<AnyElement> = names
+                .into_iter()
+                .enumerate()
+                .map(|(i, n)| {
+                    let label = if n.is_empty() { (if rtl { "الافتراضي" } else { "Default" }).to_string() } else { n.clone() };
+                    let kind = if n == chosen { Kind::Primary } else { Kind::Ghost };
+                    self.button(format!("font-{tag}-{i}"), label, kind, cx, move |a, _, cx| {
+                        a.set_font(slot, &n);
+                        cx.notify();
+                    })
+                })
+                .collect();
+            col = col.child(div().id(SharedString::from(format!("font-list-{tag}"))).role(Role::List).aria_label(title).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.sunken).children(rows));
+        }
+        col.into_any_element()
     }
 
     /// One setting as a card: its plain title, one sentence, the control, and the value in words.

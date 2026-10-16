@@ -23,6 +23,10 @@ pub struct Prefs {
     pub settings_page: String,
     /// Web pages are shown as a card with a button for the browser, not drawn inside the app. Off by default.
     pub pages_off: bool,
+    /// The font for Latin text. Empty means the default of the window.
+    pub latin_font: String,
+    /// The font for Arabic text. Empty means Noto Naskh Arabic, or Noto Sans Arabic if that is missing.
+    pub arabic_font: String,
 }
 
 pub fn path() -> PathBuf {
@@ -214,6 +218,21 @@ mod tests {
         // nothing saved, or a look that is there, gives no notice
         assert_eq!(crate::theme::missing_look_notice("", &families), None);
         assert_eq!(crate::theme::missing_look_notice("Matte", &families), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_two_fonts_default_to_empty_and_are_kept() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-prefs-fonts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        let d = Prefs::default();
+        assert!((d.latin_font.as_str(), d.arabic_font.as_str()) == ("", ""));
+        std::fs::write(&p, "model = \"Q\"\n").unwrap();
+        assert_eq!(Prefs::load(&p).latin_font, "", "an older file without the keys");
+        let a = Prefs { latin_font: "Inter".into(), arabic_font: "Noto Kufi Arabic".into(), ..Default::default() };
+        a.save(&p).unwrap();
+        assert_eq!(Prefs::load(&p), a);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

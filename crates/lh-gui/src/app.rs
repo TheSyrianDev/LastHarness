@@ -20,6 +20,13 @@ use lh_gui::runs::{Question, Run};
 use crate::style::{apply_component_theme, Pal};
 use lh_gui::theme::{self, ThemeSet};
 
+/// The two font pickers on the Appearance page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FontSlot {
+    Latin,
+    Arabic,
+}
+
 /// A question about continuing a chat that the user has to answer: the warning the core gave.
 #[derive(Clone, Debug)]
 pub struct Pending {
@@ -148,6 +155,10 @@ pub struct App {
     pub width: crate::width::WidthControls,
     /// Said once, under Appearance: the look that was saved does not exist any more.
     pub look_notice: Option<String>,
+    /// Installed font families, read once at start.
+    pub fonts: Vec<String>,
+    /// Which font picker is open on the Appearance page.
+    pub font_picker: Option<FontSlot>,
     /// The web page drawn inside the Opened tab, while it is shown.
     pub page: Option<crate::page_ui::PageState>,
     /// The page shown in Settings, the box that searches all pages, and keyboard focus for the list of pages.
@@ -381,6 +392,8 @@ impl App {
             tab_buttons: false,
             width: crate::width::WidthControls::new(window, cx, prefs_column, is_rtl),
             look_notice,
+            fonts: lh_gui::fonts::installed_families(),
+            font_picker: None,
             page: None,
             settings_page,
             settings_search,
@@ -461,6 +474,15 @@ impl App {
     pub fn apply_window(&self, window: &mut Window) {
         let t = &self.themes.themes[self.active_theme];
         window.set_background_appearance(if t.blur { WindowBackgroundAppearance::Blurred } else if t.is_translucent() { WindowBackgroundAppearance::Transparent } else { WindowBackgroundAppearance::Opaque });
+    }
+
+    pub fn set_font(&mut self, slot: FontSlot, name: &str) {
+        match slot {
+            FontSlot::Latin => self.prefs.latin_font = name.to_string(),
+            FontSlot::Arabic => self.prefs.arabic_font = name.to_string(),
+        }
+        self.font_picker = None;
+        self.persist();
     }
 
     pub fn set_direction(&mut self, d: Direction) {

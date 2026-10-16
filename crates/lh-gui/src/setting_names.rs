@@ -266,7 +266,7 @@ pub fn matches(key: &str, d: &Described, query: &str) -> bool {
 }
 
 /// Words that find the Appearance page in the search box: the controls on it are drawn by the app, not listed by the core.
-pub const APPEARANCE_WORDS: &str = "appearance web page pages html browser inside look theme mode light dark system direction left right language chat width wide column preset slider size chat list";
+pub const APPEARANCE_WORDS: &str = "appearance web page pages html browser inside look theme mode light dark system direction left right language chat width wide column preset slider size chat list font fonts latin arabic naskh";
 
 pub fn appearance_matches(query: &str) -> bool {
     query.split_whitespace().all(|w| APPEARANCE_WORDS.contains(&w.to_lowercase()))

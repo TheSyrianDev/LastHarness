@@ -689,7 +689,14 @@ impl Render for App {
         let showing_page = right_now > 0. && self.layout().panel == Panel::Content && self.content.get(self.content_index.min(self.content.len().saturating_sub(1))).is_some_and(|c| c.kind == lh_gui::content::ContentKind::Html);
         self.page_release_if_hidden(showing_page, window);
         let right = (right_now > 0.).then(|| slide(right_now, right_full, self.right_panel(right_full, window, cx)));
-        let root = p.paint_background(div().size_full().relative().overflow_hidden().text_color(p.text))
+        let mut root = p.paint_background(div().size_full().relative().overflow_hidden().text_color(p.text));
+        // the main font is the Latin one; the Arabic font is its explicit fallback for Arabic script
+        if !self.prefs.latin_font.is_empty() {
+            root = root.font_family(self.prefs.latin_font.clone());
+        }
+        let arabic = lh_gui::fonts::arabic_font(&self.prefs.arabic_font, &self.fonts);
+        root.text_style().font_fallbacks = arabic.map(|f| FontFallbacks::from_fonts(vec![f]));
+        let root = root
             .key_context(if asking { "LastHarness Asking" } else { "LastHarness" })
             .on_action(cx.listener(|a, _: &NewChat, _, cx| a.new_chat(cx)))
             .on_action(cx.listener(|a, _: &ToggleSidebar, _, cx| {

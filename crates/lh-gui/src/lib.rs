@@ -3,9 +3,11 @@
 
 pub mod api;
 pub mod appearance;
+pub mod bidi;
 pub mod chrome;
 pub mod config;
 pub mod content;
+pub mod fonts;
 pub mod follow;
 pub mod layout;
 pub mod model;
