@@ -46,6 +46,8 @@ pub struct PanelData {
     pub settings: Vec<Setting>,
     pub memory_error: Option<String>,
     pub settings_error: Option<String>,
+    /// The core's refusal for one setting, shown in its card until the next change.
+    pub setting_errors: HashMap<String, String>,
     pub departments_error: Option<String>,
     pub goal_note: Option<String>,
 }
@@ -86,6 +88,9 @@ pub struct Setting {
     pub value: String,
     pub help: String,
     pub kind: lh_gui::settings::Kind,
+    pub default: String,
+    /// False when the core reads the setting only when it starts.
+    pub live: bool,
 }
 
 pub struct App {
@@ -163,6 +168,10 @@ pub struct App {
     pub fonts: Vec<String>,
     /// Which font picker is open on the Appearance page.
     pub font_picker: Option<FontSlot>,
+    /// The text boxes of the setting cards, one per setting, made when first shown.
+    pub setting_inputs: HashMap<String, Entity<InputState>>,
+    /// The setting whose list of options (or models) is open.
+    pub setting_list: Option<String>,
     /// The web page drawn inside the Opened tab, while it is shown.
     pub page: Option<crate::page_ui::PageState>,
     /// The page shown in Settings, the box that searches all pages, and keyboard focus for the list of pages.
@@ -409,6 +418,8 @@ impl App {
             look_notice,
             fonts: lh_gui::fonts::installed_families(),
             font_picker: None,
+            setting_inputs: HashMap::new(),
+            setting_list: None,
             page: None,
             settings_page,
             settings_search,
@@ -884,7 +895,7 @@ impl App {
             ("memory-action", Err(e)) => p.memory_error = Some(e),
             ("settings", Ok(v)) => {
                 p.settings_error = None;
-                p.settings = v["settings"].as_array().map(|a| a.iter().map(|x| Setting { key: x["key"].as_str().unwrap_or("").into(), group: x["group"].as_str().unwrap_or("").into(), value: match &x["value"] { Value::String(s) => s.clone(), other => other.to_string() }, help: x["help"].as_str().unwrap_or("").into(), kind: lh_gui::settings::Kind::from_json(&x["kind"]) }).collect()).unwrap_or_default();
+                p.settings = v["settings"].as_array().map(|a| a.iter().map(|x| Setting { key: x["key"].as_str().unwrap_or("").into(), group: x["group"].as_str().unwrap_or("").into(), value: match &x["value"] { Value::String(s) => s.clone(), other => other.to_string() }, help: x["help"].as_str().unwrap_or("").into(), kind: lh_gui::settings::Kind::from_json(&x["kind"]), default: match &x["default"] { Value::String(s) => s.clone(), Value::Null => String::new(), other => other.to_string() }, live: x["live"] == true }).collect()).unwrap_or_default();
             }
             ("settings", Err(e)) => p.settings_error = Some(e),
             ("runs", Ok(v)) => {
@@ -900,9 +911,14 @@ impl App {
             (t, r) if t.starts_with("tree") => self.on_tree_reply(t, r),
             (t, Ok(_)) if t.starts_with("setting:") => {
                 p.settings_error = None;
+                p.setting_errors.remove(&t["setting:".len()..]);
                 self.backend.send(Cmd::Call { tag: "settings".into(), method: "GET".into(), path: "/v1/settings".into(), body: None });
             }
-            (t, Err(e)) if t.starts_with("setting:") => p.settings_error = Some(e),
+            (t, Err(e)) if t.starts_with("setting:") => {
+                let key = &t["setting:".len()..];
+                let msg = lh_gui::settings::friendly_error(key, &e);
+                p.setting_errors.insert(key.to_string(), msg);
+            }
             _ => {}
         }
     }

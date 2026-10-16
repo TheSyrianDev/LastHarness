@@ -2,7 +2,7 @@
 
 use gpui::prelude::*;
 use gpui::*;
-use gpui_component::input::{Input, Textarea};
+use gpui_component::input::{Input, InputEvent, InputState, Textarea};
 use gpui_component::Disableable as _;
 use gpui_component::text::TextView;
 
@@ -312,14 +312,77 @@ impl App {
         col.into_any_element()
     }
 
+    /// The text box of one setting. It is made the first time the card is shown, saves on Enter and when it
+    /// loses focus, and follows the core's value while nobody is typing in it.
+    fn setting_input(&mut self, s: &crate::app::Setting, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+        if let Some(st) = self.setting_inputs.get(&s.key).cloned() {
+            let (typing, shown) = st.read_with(cx, |i, cx| (i.focus_handle(cx).is_focused(window), i.value().to_string()));
+            if !typing && shown != s.value && !self.panels.setting_errors.contains_key(&s.key) {
+                let v = s.value.clone();
+                st.update(cx, |i, cx| i.set_value(v, window, cx));
+            }
+            return st;
+        }
+        let hint = match &s.kind {
+            settings::Kind::Number => "A number, or empty",
+            settings::Kind::AutoInt => "A number or auto",
+            settings::Kind::Int { .. } => "A number",
+            _ if settings::is_folder_key(&s.key) => "/path/to/a/folder",
+            _ => "Not set",
+        };
+        let st = cx.new(|cx| InputState::new(window, cx).placeholder(hint).default_value(s.value.clone()));
+        let key = s.key.clone();
+        cx.subscribe_in(&st, window, move |a, st, ev: &InputEvent, _, cx| {
+            if matches!(ev, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                let typed = st.read(cx).value().to_string();
+                a.commit_setting_text(&key, &typed, cx);
+            }
+        })
+        .detach();
+        self.setting_inputs.insert(s.key.clone(), st.clone());
+        st
+    }
+
+    /// Send what was typed, if it differs from the saved value and passes the local check.
+    pub fn commit_setting_text(&mut self, key: &str, typed: &str, cx: &mut Context<Self>) {
+        let Some(s) = self.panels.settings.iter().find(|s| s.key == key) else { return };
+        if typed.trim() == s.value.trim() {
+            self.panels.setting_errors.remove(key);
+            cx.notify();
+            return;
+        }
+        match settings::check_typed(&s.kind, typed) {
+            Ok(()) => self.change_setting(key, typed.trim().to_string(), cx),
+            Err(e) => {
+                self.panels.setting_errors.insert(key.to_string(), e);
+                cx.notify();
+            }
+        }
+    }
+
+    /// A button that opens or closes the list of choices for one setting. A long value is cut with "…".
+    fn list_toggle(&mut self, key: &str, label: String, cx: &mut Context<Self>) -> AnyElement {
+        let k = key.to_string();
+        let open = self.setting_list.as_deref() == Some(key);
+        let shown = format!("{} {}", lh_gui::model::truncate_title(&label, 30), if open { "▴" } else { "▾" });
+        self.button(format!("set-{key}"), shown, Kind::Normal, cx, move |a, _, cx| {
+            a.setting_list = if a.setting_list.as_deref() == Some(k.as_str()) { None } else { Some(k.clone()) };
+            cx.notify();
+        })
+    }
+
     /// One setting as a card: its plain title, one sentence, the control, and the value in words.
-    fn setting_card(&mut self, i: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn setting_card(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let s = self.panels.settings[i].clone();
         let d = lh_gui::setting_names::describe(&s.key, &s.help);
         let words = lh_gui::setting_names::value_text(&s.key, &s.value);
-        let control: AnyElement = match &s.kind {
-            settings::Kind::Bool | settings::Kind::Choice(_) => {
+        let control_kind = settings::control_for(&s.key, &s.kind);
+        let rtl = self.rtl;
+        let mut below: Vec<AnyElement> = vec![];
+        let open = self.setting_list.as_deref() == Some(s.key.as_str());
+        let control: AnyElement = match control_kind {
+            settings::Control::Switch => {
                 let (key, cur, kind) = (s.key.clone(), s.value.clone(), s.kind.clone());
                 self.button(format!("set-{}", s.key), words.clone(), Kind::Normal, cx, move |a, _, cx| {
                     if let Some(v) = kind.next(&cur) {
@@ -327,7 +390,29 @@ impl App {
                     }
                 })
             }
-            settings::Kind::Int { .. } => {
+            settings::Control::Dropdown => {
+                let toggle = self.list_toggle(&s.key, words.clone(), cx);
+                if open {
+                    if let settings::Kind::Choice(options) = &s.kind {
+                        let rows: Vec<AnyElement> = options
+                            .iter()
+                            .enumerate()
+                            .map(|(n, o)| {
+                                let (key, val) = (s.key.clone(), o.clone());
+                                let label = lh_gui::setting_names::value_text(&s.key, o);
+                                let kind = if *o == s.value { Kind::Primary } else { Kind::Ghost };
+                                self.button(format!("set-{}-{n}", s.key), label, kind, cx, move |a, _, cx| {
+                                    a.setting_list = None;
+                                    a.change_setting(&key, val.clone(), cx);
+                                })
+                            })
+                            .collect();
+                        below.push(self.option_list(&s.key, rows));
+                    }
+                }
+                toggle
+            }
+            settings::Control::Stepper => {
                 let (k1, c1, kind1) = (s.key.clone(), s.value.clone(), s.kind.clone());
                 let (k2, c2, kind2) = (s.key.clone(), s.value.clone(), s.kind.clone());
                 let minus = self.button(format!("set-{}-minus", s.key), "−", Kind::Ghost, cx, move |a, _, cx| {
@@ -340,26 +425,117 @@ impl App {
                         a.change_setting(&k2, v, cx);
                     }
                 });
-                div().flex().items_center().gap_1().child(minus).child(div().min_w(px(36.)).flex().justify_center().child(words.clone())).child(plus).into_any_element()
+                let input = self.setting_input(&s, window, cx);
+                div().flex().items_center().gap_1().child(minus).child(div().w(px(84.)).child(Input::new(&input))).child(plus).into_any_element()
             }
-            settings::Kind::Other => div().text_color(p.muted).child(words.clone()).into_any_element(),
+            settings::Control::Field => {
+                let input = self.setting_input(&s, window, cx);
+                div().w_full().child(Input::new(&input)).into_any_element()
+            }
+            settings::Control::Folder => {
+                let input = self.setting_input(&s, window, cx);
+                let key = s.key.clone();
+                let choose = self.button(format!("set-{}-choose", s.key), if rtl { "اختيار مجلد" } else { "Choose folder" }, Kind::Normal, cx, move |_, _, cx| {
+                    let rx = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some("Choose".into()) });
+                    let key = key.clone();
+                    cx.spawn(async move |this: WeakEntity<App>, cx: &mut AsyncApp| {
+                        if let Ok(Ok(Some(paths))) = rx.await {
+                            if let Some(path) = paths.first() {
+                                let path = path.to_string_lossy().to_string();
+                                let _ = this.update(cx, |a, cx| a.change_setting(&key, path, cx));
+                            }
+                        }
+                    })
+                    .detach();
+                });
+                div().w_full().flex().when(rtl, |r| r.flex_row_reverse()).items_center().gap_1().child(div().flex_1().min_w_0().child(Input::new(&input))).child(choose).into_any_element()
+            }
+            settings::Control::ModelPicker => {
+                let none = if rtl { "لا شيء" } else { "None" };
+                let current = if s.value.trim().is_empty() { none.to_string() } else { self.models.name_of(&s.value) };
+                let toggle = self.list_toggle(&s.key, current.clone(), cx);
+                if open {
+                    let mut names: Vec<(String, String)> = vec![(none.to_string(), String::new())];
+                    if !s.value.trim().is_empty() && !self.models.has(&current) {
+                        names.push((current.clone(), s.value.clone()));
+                    }
+                    names.extend(self.models.names().iter().map(|n| (n.clone(), self.models.id_for(n))));
+                    let rows: Vec<AnyElement> = names
+                        .into_iter()
+                        .enumerate()
+                        .map(|(n, (label, val))| {
+                            let key = s.key.clone();
+                            let kind = if label == current { Kind::Primary } else { Kind::Ghost };
+                            self.button(format!("set-{}-{n}", s.key), label, kind, cx, move |a, _, cx| {
+                                a.setting_list = None;
+                                a.change_setting(&key, val.clone(), cx);
+                            })
+                        })
+                        .collect();
+                    below.push(self.option_list(&s.key, rows));
+                    if self.models.is_empty() {
+                        below.push(div().text_xs().text_color(p.muted).child("The model list is empty. Is the model server running?").into_any_element());
+                    }
+                }
+                toggle
+            }
+            settings::Control::ReadOnly => div().text_color(p.muted).child(words.clone()).into_any_element(),
         };
-        let tip = format!("Name in the settings file: {}", s.key);
+        let default_words = lh_gui::setting_names::value_text(&s.key, &s.default);
+        let tip = format!("Default: {default_words}. Name in the settings file: {}", s.key);
+        let reset_tip = tip.clone();
         let aria = format!("{}: {}", d.title, words);
-        let rtl = self.rtl;
-        div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
+        let wide = control_kind.wide();
+        let differs = !settings::is_default(&s.value, &s.default);
+        let title = div()
+            .flex_1()
+            .min_w(px(180.))
+            .flex()
+            .flex_col()
+            .child(div().min_w_0().child(d.title.clone()))
+            .when(!s.live, |c| c.child(div().text_xs().text_color(p.muted).child(if rtl { "يحتاج إعادة تشغيل" } else { "Needs a restart" })));
+        let mut control = Some(control);
+        let mut head = div().flex().flex_wrap().when(rtl, |r| r.flex_row_reverse()).items_center().gap_2().child(title);
+        if !wide {
+            head = head.child(div().flex_none().max_w_full().children(control.take()));
+        }
+        let mut card = div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).overflow_hidden()
             .when(d.careful, |c| c.border_1().border_color(p.danger.opacity(0.55)))
             .id(SharedString::from(format!("setting-{}", s.key))).role(Role::Group).aria_label(aria).aria_description(d.about.clone())
             .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx))
-            .child(div().flex().when(rtl, |r| r.flex_row_reverse()).items_center().gap_2().child(div().flex_1().child(d.title.clone())).child(control))
-            .child(div().text_xs().text_color(p.muted).child(d.about.clone()))
+            .child(head)
+            .child(div().min_w_0().text_xs().text_color(p.muted).child(d.about.clone()));
+        if wide {
+            card = card.children(control.take());
+        }
+        for b in below {
+            card = card.child(b);
+        }
+        if let Some(e) = self.panels.setting_errors.get(&s.key) {
+            card = card.child(div().text_xs().text_color(p.danger).child(e.clone()));
+        }
+        if differs && s.kind.editable() {
+            let key = s.key.clone();
+            let default = s.default.clone();
+            let reset = self.button(format!("reset-{}", s.key), if rtl { "إعادة إلى الافتراضي" } else { "Reset to default" }, Kind::Ghost, cx, move |a, _, cx| {
+                a.change_setting(&key, default.clone(), cx);
+            });
+            card = card.child(div().id(SharedString::from(format!("reset-tip-{}", s.key))).flex().when(rtl, |r| r.flex_row_reverse()).tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(reset_tip.clone()).build(window, cx)).child(reset));
+        }
+        card = card
             .when(d.careful, |c| c.child(div().text_xs().text_color(p.danger).child(if rtl { "إعداد حساس، غيّره بحذر." } else { "Take care with this one." })))
-            .when(!s.kind.editable(), |c| c.child(div().text_xs().text_color(p.muted).child("To change this, run lh settings in a terminal.")))
-            .into_any_element()
+            .when(!s.kind.editable(), |c| c.child(div().text_xs().text_color(p.muted).child("The app does not know this kind of setting yet. Use lh settings in a terminal.")));
+        card.into_any_element()
+    }
+
+    /// A short scrolling list of options under a setting.
+    fn option_list(&self, key: &str, rows: Vec<AnyElement>) -> AnyElement {
+        let p = &self.pal;
+        div().id(SharedString::from(format!("options-{key}"))).role(Role::List).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.button).children(rows).into_any_element()
     }
 
     /// The page for the chosen category, or the settings that match what is typed in the search box.
-    pub fn settings_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub fn settings_body(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         use lh_gui::setting_names::{appearance_matches, describe, matches, Category};
         let p = self.pal.clone();
         let mut col = div().flex().flex_col().gap_2();
@@ -395,7 +571,7 @@ impl App {
             return col.child(self.note("The core is not running, so these settings cannot be shown.")).into_any_element();
         }
         for i in shown.iter().copied() {
-            col = col.child(self.setting_card(i, cx));
+            col = col.child(self.setting_card(i, window, cx));
         }
         if searching && !show_appearance && shown.is_empty() {
             col = col.child(self.note("No setting matches. Try fewer or different words."));

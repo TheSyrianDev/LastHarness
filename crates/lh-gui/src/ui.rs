@@ -240,6 +240,18 @@ impl App {
         )
     }
 
+    /// A chat title on one line. A right-to-left title is cut by characters with "…" in the text, so the dots land
+    /// on the left; GPUI's own ellipsis would sit on the right, the wrong end.
+    fn chat_title(&self, title: &str, width: f32) -> AnyElement {
+        let t = lh_gui::model::one_line(title);
+        if lh_gui::rtl::paragraph_is_rtl(&t) {
+            let max = (((width - 70.) / 8.5).max(8.)) as usize;
+            div().overflow_hidden().whitespace_nowrap().child(lh_gui::model::truncate_title(&t, max)).into_any_element()
+        } else {
+            div().truncate().child(t).into_any_element()
+        }
+    }
+
     fn sidebar(&mut self, width: f32, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
@@ -283,7 +295,7 @@ impl App {
                 .bg(if on { p.accent.opacity(0.22) } else { hsla(0., 0., 0., 0.) })
                 .hover(|s| s.bg(p.button))
                 .on_click(cx.listener(move |a, _, _, cx| a.select_chat(key, cx)))
-                .child(div().truncate().child(lh_gui::model::one_line(&c.title)))
+                .child(self.chat_title(&c.title, width))
                 .child(div().text_xs().text_color(p.muted).child(c.model.clone()));
             rows.push(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(pick).child(del).into_any_element());
         }
@@ -332,7 +344,7 @@ impl App {
         let p = self.pal.clone();
         let rtl = self.rtl;
         self.tab_buttons = true;
-        let body = self.settings_body(cx);
+        let body = self.settings_body(window, cx);
         let sidebar = self.settings_sidebar(cx);
         let close = self.button("settings-close", if rtl { "إغلاق" } else { "Close" }, Kind::Ghost, cx, |a, w, cx| a.close_settings(w, cx));
         self.tab_buttons = false;

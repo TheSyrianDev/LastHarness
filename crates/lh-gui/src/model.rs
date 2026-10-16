@@ -87,6 +87,17 @@ pub fn one_line(title: &str) -> String {
     title.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// A title cut to at most `max` characters with "…" at its logical end. GPUI puts its own ellipsis at the right
+/// edge, which is the wrong end of a right-to-left title; a "…" in the text is placed by the bidi rules, so it
+/// lands on the left of an Arabic title.
+pub fn truncate_title(title: &str, max: usize) -> String {
+    if title.chars().count() <= max {
+        return title.to_string();
+    }
+    let cut: String = title.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", cut.trim_end())
+}
+
 impl Chat {
     pub fn new(key: u64, model: &str) -> Chat {
         Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), turn_had_text: false, work_since: None, think: Default::default() }
@@ -303,6 +314,16 @@ impl Chats {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn long_titles_end_with_the_ellipsis_in_the_text() {
+        assert_eq!(truncate_title("short", 10), "short");
+        assert_eq!(truncate_title("abcdefghij", 6), "abcde…");
+        assert_eq!(truncate_title("abc def ghi", 5), "abc…");
+        let t = truncate_title("اكتب فقرة عربية طويل جدا", 10);
+        assert!(t.ends_with('…') && t.chars().count() <= 10);
+        assert!(t.starts_with("اكتب"));
+    }
+
     #[test]
     fn titles_are_one_line_and_arabic_survives() {
         assert_eq!(one_line("\n  كتابة \r\n الرسالة  "), "كتابة الرسالة");
