@@ -145,6 +145,10 @@ pub struct App {
     /// The chat list and the side panel sliding open and shut.
     pub left_reveal: lh_gui::motion::Reveal,
     pub right_reveal: lh_gui::motion::Reveal,
+    /// How far the message box is toward the middle (1) or at the bottom (0): the new-chat screen.
+    pub centre_reveal: lh_gui::motion::Reveal,
+    /// The name typed in Appearance for the new-chat greeting.
+    pub name_input: Entity<InputState>,
     /// The Settings window, while it is up, and where keyboard focus lives inside it.
     pub settings_open: bool,
     pub settings_focus: FocusHandle,
@@ -329,6 +333,15 @@ impl App {
             }
         })
         .detach();
+        let name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Your name").default_value(prefs.name.clone()));
+        cx.subscribe_in(&name_input, window, |this: &mut App, input, ev: &InputEvent, _, cx| {
+            if matches!(ev, InputEvent::Change) {
+                this.prefs.name = input.read(cx).value().to_string();
+                this.persist();
+                cx.notify();
+            }
+        })
+        .detach();
         let locale = rtl::desktop_locale();
         let is_rtl = prefs.direction.is_rtl(&locale);
         let prefs_column = prefs.layout.column;
@@ -387,6 +400,8 @@ impl App {
             palette_input,
             left_reveal: Default::default(),
             right_reveal: Default::default(),
+            centre_reveal: Default::default(),
+            name_input,
             settings_open: false,
             settings_focus,
             tab_buttons: false,
@@ -516,7 +531,7 @@ impl App {
 
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
         let model = self.chats.current().map(|c| c.model.clone()).filter(|m| !m.is_empty()).or_else(|| self.models.names().first().cloned()).unwrap_or_default();
-        self.chats.new_chat(&model);
+        self.chats.show_draft(&model);
         self.pending = None;
         self.layout_mut().back_to_chat();
         cx.notify();
@@ -1062,7 +1077,7 @@ impl App {
     pub fn palette_snapshot(&self) -> lh_gui::palette::Snapshot {
         lh_gui::palette::Snapshot {
             rtl: self.rtl,
-            chats: self.chats.list.iter().map(|c| (c.key, c.title.clone())).collect(),
+            chats: self.chats.list.iter().filter(|c| !c.is_draft()).map(|c| (c.key, c.title.clone())).collect(),
             current_chat: self.chats.current().map(|c| c.key),
             models: self.models.names().to_vec(),
             current_model: self.chats.current().map(|c| c.model.clone()).unwrap_or_default(),

@@ -208,6 +208,11 @@ impl Chat {
         self.think.reset();
     }
 
+    /// A chat nobody has written in and the core has never stored. It is not listed.
+    pub fn is_draft(&self) -> bool {
+        self.session.is_none() && self.blocks.is_empty() && !self.dormant
+    }
+
     pub fn answer(&mut self, ask: &str) {
         self.asks.retain(|a| a.id != ask);
     }
@@ -235,6 +240,21 @@ impl Chats {
         self.next_key += 1;
         self.list.push(Chat::stored(self.next_key, session, title, model));
         self.next_key
+    }
+
+    /// Whether any chat has been written or stored; drafts do not count.
+    pub fn has_history(&self) -> bool {
+        self.list.iter().any(|c| !c.is_draft())
+    }
+
+    /// Show a blank chat: the one already waiting if there is one, else a new one.
+    pub fn show_draft(&mut self, model: &str) {
+        match self.list.iter().position(Chat::is_draft) {
+            Some(i) => self.active = i,
+            None => {
+                self.new_chat(model);
+            }
+        }
     }
 
     pub fn current(&self) -> Option<&Chat> {
@@ -432,8 +452,11 @@ mod tests {
         cs.remove(a, "m");
         assert_eq!(cs.current().unwrap().key, c, "last one removed: the one above");
         cs.remove(c, "m");
-        assert_eq!(cs.list.len(), 1, "an empty list starts a fresh chat");
-        assert_eq!(cs.current().unwrap().title, NEW_TITLE);
+        assert_eq!(cs.list.len(), 1, "a hidden blank draft keeps the new-chat screen working");
+        assert!(cs.current().unwrap().is_draft());
+        assert!(!cs.has_history(), "deleting every chat leaves nothing to list");
+        cs.show_draft("m");
+        assert_eq!(cs.list.len(), 1, "the blank draft is reused");
         assert!(cs.remove(999, "m").is_none());
     }
 

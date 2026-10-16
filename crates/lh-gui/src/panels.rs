@@ -2,7 +2,7 @@
 
 use gpui::prelude::*;
 use gpui::*;
-use gpui_component::input::Textarea;
+use gpui_component::input::{Input, Textarea};
 use gpui_component::Disableable as _;
 use gpui_component::text::TextView;
 
@@ -236,12 +236,17 @@ impl App {
                 cx.notify();
             }));
         let pages_note = div().text_xs().text_color(p.muted).child(if rtl { "لا تستطيع أي صفحة تحميل شيء من الإنترنت أو من هذا الحاسوب، ولا تعمل فيها سكربتات. الصفحات الأكبر من 2 ميغابايت تظهر كبطاقة." } else { "No page can load anything from the internet or from this computer, and no scripts run. Pages over 2 MB show as a card instead." });
+        let name_row = div().flex().flex_col().gap_1()
+            .child(div().child(if rtl { "اسمك في شاشة المحادثة الجديدة" } else { "Your name on the new-chat screen" }))
+            .child(div().w(px(220.)).child(Input::new(&self.name_input).aria_label("Your name")))
+            .child(div().text_xs().text_color(p.muted).child(if rtl { "إن تركته فارغًا يُستخدم اسمك من النظام." } else { "Leave it empty to use your name from the system." }));
         div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
                 .id("appearance").role(Role::Group).aria_label("Appearance")
                 .child(modes)
                 .child(looks)
                 .child(widths)
                 .child(fonts)
+                .child(name_row)
                 .child(div().flex().flex_col().gap_1().child(pages_switch).child(pages_note))
                 .child(div().flex().flex_wrap().gap_1().child(dir_btn).child(narrower).child(wider))
                 .child(div().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))

@@ -9,6 +9,7 @@ pub mod config;
 pub mod content;
 pub mod fonts;
 pub mod follow;
+pub mod greeting;
 pub mod layout;
 pub mod model;
 pub mod motion;

@@ -27,6 +27,8 @@ pub struct Prefs {
     pub latin_font: String,
     /// The font for Arabic text. Empty means Noto Naskh Arabic, or Noto Sans Arabic if that is missing.
     pub arabic_font: String,
+    /// The name the new-chat screen greets. Empty means the real name from the system.
+    pub name: String,
 }
 
 pub fn path() -> PathBuf {

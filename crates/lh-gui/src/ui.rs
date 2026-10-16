@@ -243,7 +243,10 @@ impl App {
     fn sidebar(&mut self, width: f32, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
-        let new = self.button("new-chat", if rtl { "محادثة جديدة" } else { "New chat" }, Kind::Primary, cx, |a, _, cx| a.new_chat(cx));
+        let new = self.button("new-chat", if rtl { "محادثة جديدة" } else { "New chat" }, Kind::Primary, cx, |a, w, cx| {
+            a.new_chat(cx);
+            a.composer.update(cx, |s, cx| s.focus(w, cx));
+        });
         let mut rows: Vec<AnyElement> = vec![];
         let active = self.chats.active;
         // a department's page opens from here, and the chat keeps running while it is open
@@ -257,6 +260,10 @@ impl App {
             self.button(format!("side-dept-{name}"), label, if open { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.open_department(&name, cx))
         }).collect();
         for (i, c) in self.chats.list.clone().into_iter().enumerate() {
+            // a blank chat nobody has written in is not a chat yet
+            if c.is_draft() {
+                continue;
+            }
             let key = c.key;
             let on = i == active;
             let arming = self.confirm_delete == Some(key);
@@ -560,7 +567,7 @@ impl App {
             .into_any_element()
     }
 
-    fn chat_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn chat_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
         let Some(chat) = self.chats.current().cloned() else { return div().into_any_element() };
@@ -631,9 +638,7 @@ impl App {
             .child(action);
         // the conversation reads in one column in the middle; the person chooses how wide
         let width = self.layout().column.max_px();
-        let column = div().flex().flex_col().gap_4().w_full().when_some(width, |d, w| d.max_w(px(w)))
-            .when(empty, |d| d.child(div().flex().justify_center().text_color(p.muted).child(if rtl { "ابدأ بكتابة رسالة." } else { "Write a message to begin." })))
-            .children(blocks);
+        let column = div().flex().flex_col().gap_4().w_full().when_some(width, |d, w| d.max_w(px(w))).children(blocks);
         let scroll = div().id("chat-scroll").role(Role::Log).aria_label("Conversation").flex_1().overflow_y_scroll().track_scroll(&self.scroll).flex().flex_col().items_center().p_3().child(column);
         // the view stays where the person scrolled to while text streams in; a button takes them to the newest line
         let max = self.scroll.max_offset().y;
@@ -648,13 +653,54 @@ impl App {
             self.tab_buttons = false;
             div().absolute().bottom_2().w_full().flex().justify_center().child(b)
         });
-        let pane = div().relative().flex().flex_col().flex_1().overflow_hidden().child(scroll).children(jump);
+        // the new-chat screen: the message box slides between the middle (1) and the bottom (0), ease out
+        let (now, dur) = (std::time::Instant::now(), motion::panel(p.anim));
+        let centre = self.centre_reveal.width(if empty { 1. } else { 0. }, now, dur).clamp(0., 1.);
+        if self.centre_reveal.animating(now, dur) {
+            window.request_animation_frame();
+        }
+        let greeting = (empty && !chat.busy).then(|| {
+            let text = lh_gui::greeting::greeting(&lh_gui::greeting::system_name(&self.prefs.name), self.chats.has_history(), rtl);
+            div().id("greeting").role(Role::Heading).aria_label(text.clone()).text_2xl().text_color(p.text).pb_3().w_full().flex().justify_center().child(text)
+        });
+        let chips = (empty && !chat.busy).then(|| {
+            let items: Vec<AnyElement> = lh_gui::greeting::suggestions(rtl)
+                .into_iter()
+                .map(|(label, text)| {
+                    div().id(SharedString::from(format!("suggest-{label}"))).role(Role::Button).aria_label(label).cursor_pointer().px_3().py_1().rounded(p.inner).border_1().border_color(p.muted.opacity(0.4)).text_sm().text_color(p.muted)
+                        .hover(|s| s.bg(p.button))
+                        .on_click(cx.listener(move |a, _, w, cx| {
+                            a.composer.update(cx, |s, cx| {
+                                s.set_value(text, w, cx);
+                                s.focus(w, cx);
+                            });
+                            cx.notify();
+                        }))
+                        .child(label)
+                        .into_any_element()
+                })
+                .collect();
+            div().flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().justify_center().gap_2().pt_3().children(items)
+        });
+        let pane = div().relative().flex().flex_col().overflow_hidden().child(scroll).children(jump);
         // questions and the message box stay in view under the conversation, in the same column
-        let beneath = div().flex().flex_col().items_center().px_3().child(div().flex().flex_col().gap_2().w_full().when_some(width, |d, w| d.max_w(px(w))).children(stack).child(composer));
+        let beneath = div().flex().flex_col().items_center().px_3().child(div().flex().flex_col().w_full().when_some(width, |d, w| d.max_w(px(w))).children(greeting).child(div().flex().flex_col().gap_2().w_full().children(stack).child(composer)).children(chips));
+        let mut top_gap = div();
+        let mut pane = pane;
+        let mut bottom_gap = div();
+        // spacers above and below take the room the conversation gives up while the box is in the middle
+        top_gap.style().flex_grow = Some(centre);
+        bottom_gap.style().flex_grow = Some(centre);
+        pane.style().flex_grow = Some(1. - centre);
+        pane.style().flex_basis = Some(relative(0.).into());
+        top_gap.style().flex_basis = Some(relative(0.).into());
+        bottom_gap.style().flex_basis = Some(relative(0.).into());
         div().flex().flex_col().flex_1().h_full().gap_2().overflow_hidden()
             .on_mouse_down(MouseButton::Left, cx.listener(|a, _, _, cx| a.focus_on(Focus::Chat, cx)))
+            .child(top_gap)
             .child(pane)
             .child(beneath)
+            .child(bottom_gap)
             .into_any_element()
     }
 }
@@ -682,7 +728,7 @@ impl Render for App {
         let (left_full, right_full) = (self.left_reveal.full(), self.right_reveal.full());
         let left = (left_now > 0.).then(|| slide(left_now, left_full, self.sidebar(left_full, cx)));
         let middle = match self.page().clone() {
-            Page::Chat => self.chat_view(cx),
+            Page::Chat => self.chat_view(window, cx),
             Page::Department(name) => self.department_page(&name, cx),
         };
         // a web page drawn inside the Opened tab is kept only while that tab is on screen; otherwise its helper ends
@@ -698,7 +744,10 @@ impl Render for App {
         root.text_style().font_fallbacks = arabic.map(|f| FontFallbacks::from_fonts(vec![f]));
         let root = root
             .key_context(if asking { "LastHarness Asking" } else { "LastHarness" })
-            .on_action(cx.listener(|a, _: &NewChat, _, cx| a.new_chat(cx)))
+            .on_action(cx.listener(|a, _: &NewChat, w, cx| {
+                a.new_chat(cx);
+                a.composer.update(cx, |s, cx| s.focus(w, cx));
+            }))
             .on_action(cx.listener(|a, _: &ToggleSidebar, _, cx| {
                 a.layout_mut().toggle_left();
                 a.persist();
