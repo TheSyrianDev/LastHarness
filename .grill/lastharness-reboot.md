@@ -246,3 +246,13 @@ After Agave and Falco failed their tests (see spikes/html-render/RESULT.md), the
 ## 2026-10-13: Frutiger Aero removed
 
 After the Windows 7 glass redo and a softening pass, the user said "Kill Frutiger Aero." The built-in Frutiger Aero themes are removed, with the code only they used (the glass reflection drawing, the glossy button drawing if nothing else uses it, and the drifting bubbles). That answers the bubbles question: removed. Built-in looks left: Calm, Matte, Glass, each light and dark. A saved choice of Frutiger Aero falls back to Calm with one notice line. Users can still write their own themes in the TOML format. The Windows 7 screenshot request is moot. History: the look was first a painted landscape, then Windows 7 glass, then removed (2026-10-11 to 2026-10-13).
+
+## 2026-10-16: Servo replaces Blitz; native Ollama support; harness before inference
+
+The user said "Let's kill Blitz and just go with Servo, because I want something that works with JS too, so no need for 2 engines." Servo becomes the single page viewer in the Opened tab and Blitz is removed. Pages may run JavaScript, so the engine stays in a helper process with no network, under memory and CPU limits, inside a Linux sandbox (Landlock and seccomp) so a page cannot read files or open sockets. The size cap, time limits and fallback card stay.
+
+Ollama gets native support through its own API (`/api/chat`), built from its documentation and tested against a fake server; LM Studio uses the OpenAI-compatible format already supported.
+
+Order of work: the full-harness features (checkpoints and undo, diff review, command sandboxing, hooks, headless mode, scheduled tasks, code intelligence, voice) come before more inference work. The KV-cache branch-point design waits until then.
+
+The user asked for several UI direction mockups (Calm desk, Workbench, Mission view), made as HTML mockups by Sonnet subagents. Nothing goes into the app until the user picks.
