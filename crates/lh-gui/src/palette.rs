@@ -25,6 +25,10 @@ pub enum Command {
     Width(ColumnWidth),
     /// Put back the files the last turn of the open chat wrote.
     UndoTurn,
+    /// Look back over the open chat and suggest rules, style and skill changes (`/refine`).
+    Refine,
+    /// Say the last answer was good, or not.
+    Rate(bool),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -60,6 +64,8 @@ pub struct Snapshot {
     pub presets: Vec<Preset>,
     /// The open chat's last turn wrote files.
     pub can_undo_turn: bool,
+    /// The open chat has a session the core knows and has answered at least once.
+    pub chat_has_answers: bool,
 }
 
 fn entry(command: Command, group: &'static str, title: impl Into<String>, hint: impl Into<String>) -> Entry {
@@ -76,6 +82,11 @@ pub fn entries(s: &Snapshot) -> Vec<Entry> {
         entry(Command::Settings, g_do, if ar { "الإعدادات" } else { "Settings" }, "Ctrl+Shift+S"),
         entry(Command::ToggleChatList, g_do, if ar { "إظهار قائمة المحادثات أو إخفاؤها" } else { "Show or hide the chat list" }, "Ctrl+B"),
     ];
+    if s.chat_has_answers {
+        v.push(entry(Command::Refine, g_do, if ar { "تحسين: التعلم من هذه المحادثة" } else { "Refine: learn from this chat" }, ""));
+        v.push(entry(Command::Rate(true), g_do, if ar { "كان الرد الأخير جيدًا" } else { "The last answer was good" }, ""));
+        v.push(entry(Command::Rate(false), g_do, if ar { "لم يكن الرد الأخير صحيحًا" } else { "The last answer was not right" }, ""));
+    }
     if s.can_undo_turn {
         v.push(entry(Command::UndoTurn, g_do, if ar { "التراجع عن تغييرات الملفات في آخر دور" } else { "Undo the file changes of the last turn" }, ""));
     }
@@ -220,6 +231,7 @@ mod tests {
             column: ColumnWidth::Px(860.),
             presets: vec![Preset { name: "Reading".into(), width: ColumnWidth::Px(1010.) }, Preset { name: "Whole screen".into(), width: ColumnWidth::Full }],
             can_undo_turn: false,
+            chat_has_answers: false,
         }
     }
 

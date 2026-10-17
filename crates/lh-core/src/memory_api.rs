@@ -263,6 +263,7 @@ async fn accept<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
         None => None,
     };
     let page = r.memory.accept_proposal(id, ProposalEdit { title: b.title, body: b.text, gist: b.gist, privacy }, None).map_err(err)?;
+    crate::rewards::reward(&st.settings.store, "-", "proposal", 1.0, false);
     let (m, e) = (r.memory.clone(), r.embedder.clone());
     tokio::spawn(async move {
         let _ = m.index_pending(&*e).await;
@@ -272,6 +273,7 @@ async fn accept<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
 
 async fn reject<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<i64>) -> Result<StatusCode, ApiError> {
     rt(&st)?.memory.reject_proposal(id).map_err(err)?;
+    crate::rewards::reward(&st.settings.store, "-", "proposal", -1.0, false);
     Ok(StatusCode::NO_CONTENT)
 }
 

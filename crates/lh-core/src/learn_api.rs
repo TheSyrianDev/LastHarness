@@ -233,11 +233,17 @@ struct AcceptBody {
 }
 async fn accept<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<i64>, body: Option<Json<AcceptBody>>) -> Result<Json<Value>, ApiError> {
     let b = body.map(|j| j.0).unwrap_or_default();
-    let a = rt(&st)?.learn.accept_proposal(id, b.edit.as_ref(), "user").map_err(err)?;
+    let r = rt(&st)?;
+    let session = r.learn.get_proposal(id).ok().and_then(|p| p.session).unwrap_or_else(|| "-".into());
+    let a = r.learn.accept_proposal(id, b.edit.as_ref(), "user").map_err(err)?;
+    crate::rewards::reward(&st.settings.store, &session, "proposal", 1.0, false);
     Ok(Json(applied_json(&a)))
 }
 async fn reject<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<i64>) -> Result<StatusCode, ApiError> {
-    rt(&st)?.learn.reject_proposal(id).map_err(err)?;
+    let r = rt(&st)?;
+    let session = r.learn.get_proposal(id).ok().and_then(|p| p.session).unwrap_or_else(|| "-".into());
+    r.learn.reject_proposal(id).map_err(err)?;
+    crate::rewards::reward(&st.settings.store, &session, "proposal", -1.0, false);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -277,6 +283,7 @@ async fn feedback<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(i
         _ => return Err(ApiError(StatusCode::BAD_REQUEST, "kind must be \"up\" or \"down\"".into())),
     };
     r.learn.record_signal(&id, kind, &note, s.project.as_deref()).map_err(err)?;
+    crate::rewards::reward(&st.settings.store, &id, "thumbs", if b.kind == "up" { 1.0 } else { -1.0 }, false);
     Ok(StatusCode::NO_CONTENT)
 }
 

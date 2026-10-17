@@ -28,6 +28,7 @@ pub mod auth;
 pub mod idle;
 pub mod channels;
 pub mod schedules_api;
+mod rewards;
 mod chats_api;
 mod export_api;
 pub mod kv_cache;
@@ -369,6 +370,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
         .merge(schedules_api::routes::<M>())
+        .merge(rewards::routes::<M>())
         .merge(chats_api::routes::<M>())
         .merge(tree_api::routes::<M>())
 }
@@ -804,7 +806,10 @@ impl Recorder {
                 let o = match outcome {
                     Outcome::Allowed => json!("allowed"),
                     Outcome::AllowedByUser => json!("allowed_by_user"),
-                    Outcome::Declined => json!("declined_by_user"),
+                    Outcome::Declined => {
+                        rewards::reward(&self.store, &self.session, "declined", -0.5, self.incognito);
+                        json!("declined_by_user")
+                    }
                     Outcome::Denied(why) => json!({"denied": why}),
                 };
                 let detail = if self.incognito { json!({"tool": tool, "outcome": o, "incognito": true}) } else { json!({"tool": tool, "action": action, "outcome": o}) };
@@ -812,6 +817,14 @@ impl Recorder {
             }
             TurnEvent::ToolResult { id, text, undo } => {
                 let (tool, args) = self.calls.remove(id).unwrap_or_default();
+                if tool == "run_command" {
+                    let cmd = serde_json::from_str::<Value>(&args).ok().and_then(|v| v["command"].as_str().map(str::to_string)).unwrap_or_default();
+                    if rewards::is_test_command(&cmd) {
+                        if let Some(code) = rewards::exit_code(text) {
+                            rewards::reward(&self.store, &self.session, "tests", if code == 0 { 1.0 } else { -1.0 }, self.incognito);
+                        }
+                    }
+                }
                 let preview: String = text.chars().take(300).collect();
                 if !self.incognito {
                     let one = |t: &str, n: usize| t.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(n).collect::<String>();
@@ -1032,6 +1045,9 @@ async fn undo_turn<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(
     }
     let r = st.settings.store.undo_since(&id, s.turn_start.load(Ordering::SeqCst));
     s.finish_turn();
+    if r.as_ref().is_ok_and(|f| !f.is_empty()) {
+        rewards::reward(&st.settings.store, &id, "undone", -1.0, s.incognito);
+    }
     use lh_store::UndoResult::*;
     let files: Vec<Value> = r
         .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -1091,6 +1107,9 @@ async fn spend<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<V
 async fn undo<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(seq): Path<i64>) -> Result<Json<Value>, ApiError> {
     use lh_store::UndoResult::*;
     let r = st.settings.store.undo(seq, "api").map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if !matches!(r, Refused(_)) {
+        rewards::reward(&st.settings.store, "-", "undone", -1.0, false);
+    }
     Ok(Json(match r {
         Restored => json!({"result": "restored", "message": "The file is back to how it was."}),
         Removed => json!({"result": "removed", "message": "The file the assistant created was removed."}),

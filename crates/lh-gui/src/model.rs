@@ -564,6 +564,18 @@ pub fn undo_summary(v: &serde_json::Value) -> String {
     s
 }
 
+/// One line after "Refine": how many suggestions wait, and where to find them.
+pub fn refine_summary(v: &serde_json::Value) -> String {
+    let waiting = v["proposals"].as_array().map_or(0, Vec::len);
+    let applied = v["applied"].as_array().map_or(0, Vec::len);
+    match (waiting, applied) {
+        (0, 0) => "Nothing new worth keeping from this chat.".into(),
+        (w, 0) => format!("{w} suggestion{} wait{} for you in Settings, Learning.", if w == 1 { "" } else { "s" }, if w == 1 { "s" } else { "" }),
+        (0, a) => format!("Learned {a} thing{} from this chat at once (silent learning is on). See Settings, Learning.", if a == 1 { "" } else { "s" }),
+        (w, a) => format!("Learned {a} at once; {w} more wait for you in Settings, Learning."),
+    }
+}
+
 #[cfg(test)]
 mod undo_tests {
     use serde_json::json;
@@ -572,6 +584,8 @@ mod undo_tests {
     fn the_undo_line_says_what_came_back_and_what_did_not() {
         assert_eq!(super::undo_summary(&json!({"files": []})), "The last turn changed no files that can still be put back.");
         let v = json!({"files": [{"path": "/p/a.txt", "result": "restored"}, {"path": "/p/b.txt", "result": "removed"}, {"path": "/p/c.txt", "result": "refused", "message": "the file was changed after the harness wrote it, so it was left alone"}]});
+        assert_eq!(super::refine_summary(&json!({"proposals": [1, 2], "applied": []})), "2 suggestions wait for you in Settings, Learning.");
+        assert_eq!(super::refine_summary(&json!({"proposals": [], "applied": []})), "Nothing new worth keeping from this chat.");
         assert_eq!(super::undo_summary(&v), "Put back a.txt, b.txt. Left alone: c.txt (the file was changed after the harness wrote it, so it was left alone).");
     }
 }

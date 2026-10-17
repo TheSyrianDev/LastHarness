@@ -922,6 +922,17 @@ impl App {
                 }
             }
             ("run", Err(e)) => p.goal_note = Some(e),
+            (t, r) if t.starts_with("refine:") => {
+                let key: u64 = t["refine:".len()..].parse().unwrap_or(0);
+                let line = match r {
+                    Ok(v) => lh_gui::model::refine_summary(&v),
+                    Err(e) => format!("Could not look back over this chat: {e}"),
+                };
+                if let Some(c) = self.chats.by_key(key) {
+                    c.blocks.push(lh_gui::model::Block::Notice(line));
+                }
+            }
+            ("rate", _) => {}
             (t, r) if t.starts_with("undoturn:") => {
                 let key: u64 = t["undoturn:".len()..].parse().unwrap_or(0);
                 let line = match r {
@@ -1132,6 +1143,7 @@ impl App {
             column: self.layout().column,
             presets: self.layout().presets.clone(),
             can_undo_turn: self.chats.current().is_some_and(|c| c.last_turn_wrote()),
+            chat_has_answers: self.chats.current().is_some_and(|c| c.session.is_some() && !c.busy && c.blocks.iter().any(|b| matches!(b, lh_gui::model::Block::Assistant { .. }))),
         }
     }
 
@@ -1188,6 +1200,22 @@ impl App {
                 if let Some(c) = self.chats.current() {
                     if let Some(session) = c.session.clone() {
                         self.backend.send(Cmd::Call { tag: format!("undoturn:{}", c.key), method: "POST".into(), path: format!("/v1/sessions/{session}/undo_turn"), body: None });
+                    }
+                }
+            }
+            Command::Refine => {
+                if let Some(c) = self.chats.current_mut() {
+                    if let Some(session) = c.session.clone() {
+                        c.blocks.push(lh_gui::model::Block::Notice("Looking back over this chat for things worth keeping…".into()));
+                        self.backend.send(Cmd::Call { tag: format!("refine:{}", c.key), method: "POST".into(), path: format!("/v1/sessions/{session}/learn"), body: Some(serde_json::json!({})) });
+                    }
+                }
+            }
+            Command::Rate(up) => {
+                if let Some(c) = self.chats.current_mut() {
+                    if let Some(session) = c.session.clone() {
+                        c.blocks.push(lh_gui::model::Block::Notice(if up { "Noted: that was good.".into() } else { "Noted: that was not right. Say what to do instead and it can become a rule.".into() }));
+                        self.backend.send(Cmd::Call { tag: "rate".into(), method: "POST".into(), path: format!("/v1/sessions/{session}/feedback"), body: Some(serde_json::json!({"kind": if up { "up" } else { "down" }})) });
                     }
                 }
             }

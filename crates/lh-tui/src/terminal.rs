@@ -437,7 +437,7 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                         let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
                         tokio::spawn(async move { let r = c.clone_chat(&s).await.map(|id| format!("Copied this branch into a new chat ({id}). Open it from the chat list in the desktop app.")); let _ = tx.send(Msg::TreeNote(r)); });
                     }
-                    KeyCode::Enter if !app.busy && app.input.trim() == "/learn" => {
+                    KeyCode::Enter if !app.busy && matches!(app.input.trim(), "/learn" | "/refine") => {
                         app.input.clear();
                         let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
                         tokio::spawn(async move {
