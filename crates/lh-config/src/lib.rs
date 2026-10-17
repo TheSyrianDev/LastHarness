@@ -69,6 +69,7 @@ pub const SCHEMA: &[Def] = &[
     d("media.image_model", Kind::Text, "", true, "Model for making images. Empty switches image making off. Applies to new chats"),
     d("web.listen", Kind::Text, "", false, "Address for the browser UI over HTTPS, for example 127.0.0.1:7843. Empty switches it off. Use this machine's network address to reach it from a phone; every device must be paired first. Needs a restart: the port is opened once at start"),
     d("tools.sandbox", Kind::Bool, "true", true, "Run the model's commands in a sandbox: they can change files only in the chat's folder and a private temporary folder, and read the rest. Needs bubblewrap (bwrap). Applies to new chats"),
+    d("tools.codemode", Kind::Bool, "false", true, "Offer the model a tool that runs a short JavaScript script calling the other tools, so long results are filtered before the model reads them. Each call the script makes is checked like any other. Off: one tool less in every request. Applies to new chats"),
     d("web.use_proxy", Kind::Bool, "false", true, "Let web fetch go through the proxy named in the environment. Off by default, because a proxy looks names up itself and the check against private addresses cannot see where it goes. Applies to new chats"),
     d("web.searxng", Kind::Text, "", true, "Address of a SearXNG server for web search. Empty switches search off. Applies to new chats"),
     d("spending.mode", Kind::Choice(&["none", "caps", "estimate"]), "estimate", true, "none: only record. caps: refuse past a limit. estimate: ask before an expensive call"),

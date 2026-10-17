@@ -8,7 +8,8 @@ license.workspace = true
 lh-provider = { path = "../lh-provider" }
 lh-memory = { path = "../lh-memory" }
 lh-learn = { path = "../lh-learn" }
-tokio = { workspace = true, features = ["process", "fs", "io-util", "time"] }
+tokio = { workspace = true, features = ["process", "fs", "io-util", "time", "rt", "macros", "sync"] }
+rquickjs = "0.9"
 serde_json.workspace = true
 reqwest.workspace = true
 thiserror.workspace = true

@@ -129,6 +129,8 @@ pub struct Live {
     pub check_model: String,
     /// `tools.sandbox`: run commands under bubblewrap.
     pub sandbox: bool,
+    /// `tools.codemode`: offer the script tool.
+    pub codemode: bool,
     pub web: lh_tools::WebConfig,
     pub image_model: Option<String>,
 }
@@ -252,6 +254,9 @@ impl<M: Model + 'static> AppState<M> {
             if touched("memory.check_model") {
                 l.check_model = cfg.get("memory.check_model");
             }
+            if touched("tools.codemode") {
+                l.codemode = cfg.get("tools.codemode") == "true";
+            }
             if touched("tools.sandbox") {
                 l.sandbox = cfg.get("tools.sandbox") != "false";
             }
@@ -286,7 +291,7 @@ impl<M: Model + 'static> AppState<M> {
     pub fn new(model: M, settings: Settings) -> Arc<Self> {
         let model = Arc::new(model);
         let idle = idle::Idle::new(settings.idle_after);
-        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, web: settings.web.clone(), image_model: settings.image_model.clone() };
+        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, codemode: false, web: settings.web.clone(), image_model: settings.image_model.clone() };
         let perms = Arc::new(lh_tools::LivePerms::new(settings.bypass, settings.ask_all, settings.sudo_enabled));
         {
             let (model, store) = (model.clone(), settings.store.clone());
@@ -681,7 +686,7 @@ fn session_tools(s: &Settings, live: &Live, tools_on: bool) -> lh_tools::ToolSet
     if !tools_on {
         return lh_tools::ToolSet::default(); // plain chat: the model is told about no tools
     }
-    let mut t = default_tools().with_web(live.web.clone()).with_sandbox(live.sandbox);
+    let mut t = default_tools().with_web(live.web.clone()).with_sandbox(live.sandbox).with_codemode(live.codemode);
     if let Some(g) = outbound_guard(s) {
         t = t.with_outbound_guard(g);
     }

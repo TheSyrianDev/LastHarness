@@ -202,6 +202,78 @@ pub async fn run_turn<M: Model, A: Asker, T: Meter>(
     Ok(TurnEnd::StepLimit)
 }
 
+/// The boxed form of `execute`, so a codemode script's calls can run through it again.
+#[allow(clippy::too_many_arguments)]
+fn execute_boxed<'a, M: Model, T: Meter, A: Asker>(
+    model: &'a M,
+    meter: &'a T,
+    id: &'a str,
+    name: &'a str,
+    args: Result<Value, serde_json::Error>,
+    tools: &'a ToolSet,
+    perms: &'a Permissions,
+    asker: &'a A,
+    opts: &'a TurnOptions,
+    emit: &'a mut (dyn FnMut(TurnEvent) + Send),
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = (String, Option<Undo>)> + Send + 'a>> {
+    Box::pin(execute(model, meter, id, name, args, tools, perms, asker, opts, emit))
+}
+
+/// A codemode script: run it on a thread of its own and answer each tool call it makes through `execute`, so
+/// permissions, hooks, events and undo records are the same as for a direct call.
+#[allow(clippy::too_many_arguments)]
+async fn codemode<M: Model, T: Meter, A: Asker>(
+    model: &M,
+    meter: &T,
+    id: &str,
+    args: &Value,
+    tools: &ToolSet,
+    perms: &Permissions,
+    asker: &A,
+    opts: &TurnOptions,
+    emit: &mut (dyn FnMut(TurnEvent) + Send),
+) -> String {
+    let script = args["script"].as_str().unwrap_or("").to_string();
+    let list: Vec<(String, String)> = tools.defs().into_iter().filter(|d| d.name != "codemode").map(|d| (d.name, d.description)).collect();
+    type Ask = (String, Value, std::sync::mpsc::Sender<Result<String, String>>);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Ask>();
+    let mut job = tokio::task::spawn_blocking(move || {
+        let call: crate::codemode::CallTool = Box::new(move |name: &str, args: Value| {
+            let (rtx, rrx) = std::sync::mpsc::channel();
+            if tx.send((name.to_string(), args, rtx)).is_err() {
+                return Err("the turn was stopped".into());
+            }
+            rrx.recv().unwrap_or_else(|_| Err("the turn was stopped".into()))
+        });
+        crate::codemode::run(&script, &list, call)
+    });
+    let mut n = 0;
+    loop {
+        tokio::select! {
+            ask = rx.recv() => {
+                let Some((name, args, reply)) = ask else { continue };
+                if name == "codemode" {
+                    let _ = reply.send(Err("a script cannot start another script".into()));
+                    continue;
+                }
+                n += 1;
+                let sub = format!("{id}.{n}");
+                emit(TurnEvent::ToolStart { id: sub.clone(), name: name.clone(), arguments: args.to_string() });
+                let (text, undo) = execute_boxed(model, meter, &sub, &name, Ok(args), tools, perms, asker, opts, &mut *emit).await;
+                emit(TurnEvent::ToolResult { id: sub, text: text.clone(), undo });
+                let failed = ["Error:", "Denied:", "The user said no", "Blocked by the hook"].iter().any(|p| text.starts_with(p));
+                let _ = reply.send(if failed { Err(text) } else { Ok(text) });
+            }
+            done = &mut job => {
+                return match done {
+                    Ok(r) => r.text,
+                    Err(e) => format!("Script failed\nScript error: {e}"),
+                };
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn execute<M: Model, T: Meter, A: Asker>(
     model: &M,
@@ -216,6 +288,12 @@ async fn execute<M: Model, T: Meter, A: Asker>(
     emit: &mut (dyn FnMut(TurnEvent) + Send),
 ) -> (String, Option<Undo>) {
     let fail = |m: String| (m, None);
+    if name == "codemode" && tools.get(name).is_some() {
+        return match args {
+            Ok(a) => (codemode(model, meter, id, &a, tools, perms, asker, opts, emit).await, None),
+            Err(e) => fail(format!("Error: the arguments are not valid JSON ({e}).")),
+        };
+    }
     let builtin = tools.get(name);
     let extra = if builtin.is_none() { tools.extra(name) } else { None };
     if builtin.is_none() && extra.is_none() {

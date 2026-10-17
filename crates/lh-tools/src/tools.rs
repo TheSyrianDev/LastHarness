@@ -84,6 +84,7 @@ pub enum Tool {
     Remember,
     Forget,
     CodeLookup,
+    Codemode,
 }
 
 impl Tool {
@@ -103,6 +104,7 @@ impl Tool {
             Tool::Remember => "remember",
             Tool::Forget => "forget",
             Tool::CodeLookup => "code_lookup",
+            Tool::Codemode => "codemode",
         }
     }
 
@@ -145,6 +147,10 @@ impl Tool {
                 "Save something about the user to their memory, when they ask you to remember it. The user is asked to confirm.",
                 json!({"type":"object","properties":{"text":{"type":"string"},"title":{"type":"string"},"layer":{"type":"string","enum":["preferences","facts","projects"]}},"required":["text"]}),
             ),
+            Tool::Codemode => (
+                "Run a short JavaScript script (body of an async function; top-level await and return work) that calls your other tools as `await tools.<name>({...})`, each resolving to the tool's text. Only what the script returns, passes to text() or console.log comes back to you. Use it to loop, filter long results or combine several calls in one step. No files, network or timers except through tools.",
+                json!({"type":"object","properties":{"script":{"type":"string"}},"required":["script"]}),
+            ),
             Tool::CodeLookup => (
                 "Ask the language server about code: where a name is defined, where it is used, what it is (hover), the names in a file, or its errors. Line and column count from 1.",
                 json!({"type":"object","properties":{"what":{"type":"string","enum":["definition","references","hover","symbols","diagnostics"]},"path":{"type":"string"},"line":{"type":"integer"},"column":{"type":"integer"}},"required":["what","path"]}),
@@ -162,6 +168,8 @@ impl Tool {
         };
         Ok(match self {
             Tool::ReadFile | Tool::ListDir | Tool::CodeLookup => Action::Read(path(args)?),
+            // the script itself does nothing; every tool it calls is checked on its own (see runner)
+            Tool::Codemode => Action::Read(root.to_path_buf()),
             Tool::WriteFile => Action::Write(path(args)?),
             Tool::WebFetch => Action::Fetch(args["url"].as_str().ok_or_else(|| ToolError::Args("`url` must be a string".into()))?.to_string()),
             Tool::WebSearch => Action::Fetch(format!("search: {}", args["query"].as_str().ok_or_else(|| ToolError::Args("`query` must be a string".into()))?)),
@@ -240,6 +248,7 @@ impl Tool {
                 }
                 Ok(ToolOutput { text: format!("wrote {} bytes to {}", content.len(), p.strip_prefix(root).unwrap_or(&p).display()), undo })
             }
+            Tool::Codemode => Err(ToolError::Failed("codemode runs through the turn runner".into())),
             Tool::CodeLookup => {
                 let Action::Read(p) = self.action(args, root)? else { unreachable!() };
                 let (line, column) = (args["line"].as_u64().unwrap_or(1), args["column"].as_u64().unwrap_or(1));
@@ -409,6 +418,13 @@ pub struct ToolSet {
 }
 
 impl ToolSet {
+    /// Offer the `codemode` tool (see `codemode`).
+    pub fn with_codemode(mut self, on: bool) -> Self {
+        if on && !self.tools.contains(&Tool::Codemode) && !self.tools.is_empty() {
+            self.tools.push(Tool::Codemode);
+        }
+        self
+    }
     /// Run commands under bubblewrap when it is installed (see `sandbox_args`).
     pub fn with_sandbox(mut self, on: bool) -> Self {
         self.sandbox = on;

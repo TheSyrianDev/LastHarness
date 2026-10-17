@@ -324,3 +324,34 @@ async fn tools_from_outside_the_crate_go_through_the_same_rules() {
     assert_eq!(only.defs().iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), ["read_file", "echo"]);
     assert!(default_tools().without(&["run_command"]).get("run_command").is_none());
 }
+
+#[tokio::test]
+async fn a_codemode_script_calls_tools_under_the_same_rules() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(d.path().join("a.txt"), "alpha\nbeta\ngamma").unwrap();
+    let perms = Permissions::new(d.path()).unwrap();
+    let script = r#"const t = await tools.read_file({path: "a.txt"});
+let wrote = "yes";
+try { await tools.write_file({path: "b.txt", content: "x"}); } catch (e) { wrote = e.message; }
+return t.split("\n").filter(l => l.startsWith("g")).join(",") + " | " + wrote;"#;
+    let args = serde_json::json!({ "script": script }).to_string();
+    let model = Script::new(vec![tools_reply(vec![call("1", "codemode", &args)]), text_reply("done")]);
+    let (u, mut r) = (user(Answer::No), req());
+    let mut events = vec![];
+    let tools = default_tools().with_codemode(true);
+    assert!(tools.defs().iter().any(|t| t.name == "codemode"));
+    assert!(!default_tools().defs().iter().any(|t| t.name == "codemode"), "off unless asked for");
+    run_turn(&model, &NoMeter, &mut r, &tools, &perms, &u, &TurnOptions::default(), |e| {
+        if let TurnEvent::ToolStart { id, name, .. } = e {
+            events.push(format!("{id} {name}"));
+        }
+    })
+    .await
+    .unwrap();
+    let out = &tool_results(&r)[0];
+    assert!(out.starts_with("Script completed (2 tool calls)"), "{out}");
+    assert!(out.contains("gamma | The user said no"), "the filtered line, and the refused write as an error: {out}");
+    assert_eq!(u.asked.load(Ordering::SeqCst), 1, "the write inside the script asked like a direct one");
+    assert!(!d.path().join("b.txt").exists());
+    assert_eq!(events, ["1 codemode", "1.1 read_file", "1.2 write_file"], "each inner call is shown");
+}

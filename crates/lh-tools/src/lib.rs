@@ -14,6 +14,7 @@ mod web;
 pub use base_prompt::{base_prompt, display_name, estimate_tokens as estimate_text_tokens, format_params, identity_line, today, ymd, BaseContext, Identity, SessionKind, CAP_TOKENS, TARGET_TOKENS};
 pub use command::{classify, Class};
 pub use memory_tools::{MemoryHandle, PrivacyJudge};
+pub mod codemode;
 pub mod diff;
 pub mod hooks;
 pub mod lsp;
