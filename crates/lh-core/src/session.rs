@@ -17,8 +17,6 @@ pub const ASK_TIMEOUT: Duration = Duration::from_secs(600);
 pub struct SystemParts {
     pub kind: lh_tools::SessionKind,
     pub folder: Option<std::path::PathBuf>,
-    pub permissions: lh_tools::Mode,
-    pub sudo_enabled: bool,
     pub guidelines: Vec<String>,
     pub client_block: String,
     pub learned_block: String,
@@ -29,6 +27,8 @@ pub struct Session {
     pub parts: SystemParts,
     /// True until the system message has been built for the current model.
     pub identity_stale: AtomicBool,
+    /// The permission mode and sudo the system prompt last described; a change rebuilds the prompt.
+    pub shown_perms: Mutex<Option<(lh_tools::Mode, bool)>>,
     pub req: tokio::sync::Mutex<ChatRequest>,
     pub perms: Permissions,
     pub tools: ToolSet,
@@ -60,8 +60,13 @@ pub struct Session {
 }
 
 impl Session {
+    /// Has the permission mode or sudo changed since the system prompt last described them?
+    pub fn perms_changed(&self) -> bool {
+        *self.shown_perms.lock().unwrap() != Some((self.perms.effective_mode(), self.perms.sudo_allowed()))
+    }
+
     pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet, parts: SystemParts) -> Self {
-        Self { parts, identity_stale: AtomicBool::new(true), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None), kv_gate: Arc::new(tokio::sync::Mutex::new(())), kv_restore: AtomicBool::new(false) }
+        Self { parts, identity_stale: AtomicBool::new(true), shown_perms: Mutex::new(None), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None), kv_gate: Arc::new(tokio::sync::Mutex::new(())), kv_restore: AtomicBool::new(false) }
     }
 
     pub fn try_start(&self) -> bool {

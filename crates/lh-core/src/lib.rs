@@ -11,6 +11,7 @@
 //! POST   /v1/sessions/{id}/answers/{ask}    {answer: "yes"|"no"}
 //! POST   /v1/sessions/{id}/cancel
 //! GET    /v1/activity?limit=&kind=          -> {entries: [...]}  newest first
+//! GET    /v1/events                         -> SSE: app-wide news (`title` when a chat is named)
 //! POST   /v1/activity/{seq}/undo            -> {result: restored|removed|refused, message}
 //! GET    /v1/capabilities?model=NAME        -> {context_tokens, tools, vision, reasoning_effort, source}
 //! GET/POST /v1/learn/...                    rules, style, skills, suggestions, signals, habits
@@ -141,6 +142,8 @@ pub struct AppState<M> {
     perms: Arc<lh_tools::LivePerms>,
     /// Where API keys are kept: the system secret store unless a test sets another.
     pub secrets: std::sync::OnceLock<Arc<dyn lh_secrets::SecretStore>>,
+    /// News for every open client that is not tied to one turn, such as a chat getting its title. See `/v1/events`.
+    pub events: tokio::sync::broadcast::Sender<Value>,
 }
 
 impl<M: Model + 'static> AppState<M> {
@@ -296,7 +299,7 @@ impl<M: Model + 'static> AppState<M> {
         }
         tokio::spawn(idle.clone().run());
         let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
-        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms, secrets: std::sync::OnceLock::new() })
+        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms, secrets: std::sync::OnceLock::new(), events: tokio::sync::broadcast::channel(64).0 })
     }
 
     pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
@@ -313,6 +316,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/activity", get(activity::<M>))
         .route("/v1/activity/{seq}/undo", post(undo::<M>))
         .route("/v1/spend", get(spend::<M>))
+        .route("/v1/events", get(app_events::<M>))
         .route("/v1/sessions", post(create_session::<M>))
         .route("/v1/sessions/{id}", get(get_session::<M>).delete(delete_session::<M>))
         .route("/v1/sessions/{id}/turns", post(start_turn::<M>))
@@ -535,7 +539,7 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         }
         slot
     });
-    let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), permissions: perms.effective_mode(), sudo_enabled: perms.sudo_allowed(), guidelines: tools.guidelines(), client_block, learned_block, about };
+    let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), guidelines: tools.guidelines(), client_block, learned_block, about };
     let mut session = Session::new(req, perms, tools, parts);
     (session.incognito, session.dest, session.conv, session.project) = (b.incognito, dest, conv, project);
     let session = Arc::new(session);
@@ -555,12 +559,15 @@ async fn build_system<M: Model + 'static>(st: &AppState<M>, s: &Session, message
         None => st.model.provider_name().await,
     };
     let p = &s.parts;
+    // the settings can change while a chat is open, so describe what is in force now
+    let (permissions, sudo_enabled) = (s.perms.effective_mode(), s.perms.sudo_allowed());
+    *s.shown_perms.lock().unwrap() = Some((permissions, sudo_enabled));
     let base = lh_tools::base_prompt(&lh_tools::BaseContext {
         identity: lh_tools::Identity { model: Some(model_id.to_string()), parameters: caps.parameters, provider },
         kind: p.kind,
         folder: p.folder.as_deref(),
-        permissions: p.permissions,
-        sudo_enabled: p.sudo_enabled,
+        permissions,
+        sudo_enabled,
         date: &lh_tools::today(),
         guidelines: &p.guidelines,
     });
@@ -803,7 +810,7 @@ async fn start_turn<M: Model + 'static>(
                 }
             }
             let stale = s.identity_stale.load(Ordering::SeqCst);
-            if stale {
+            if stale || s.perms_changed() {
                 build_system(&st2, &s, &mut work.messages, &model_id).await;
             }
             let mut user_text = b.text.clone();
@@ -892,12 +899,11 @@ async fn start_turn<M: Model + 'static>(
                         }
                         if let (Some(fallback), Some(tm), false, false) = (first, Some(st2.live().title_model.clone()).filter(|m| !m.is_empty()), s.incognito, r.text.is_empty()) {
                             let job = titles::Job { model: tm.clone(), conv: conv.clone(), fallback, user: b.text.clone(), reply: r.text.clone(), session: id.clone() };
-                            let (st3, weak) = (st2.clone(), tx.downgrade());
+                            let st3 = st2.clone();
+                            // the turn's stream has closed by the time the title comes, so it goes to /v1/events
                             tokio::spawn(async move {
                                 if let Some(title) = titles::run(&*st3.model, &st3.settings, &job).await {
-                                    if let Some(tx) = weak.upgrade() {
-                                        let _ = tx.send(("title".into(), json!({"type":"title","conversation":job.conv,"title":title})));
-                                    }
+                                    let _ = st3.events.send(json!({"type":"title","conversation":job.conv,"session":job.session,"title":title}));
                                 }
                             });
                         }
@@ -963,6 +969,25 @@ async fn activity<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Query(
     let undoable = st.settings.store.undoable(&rows.iter().map(|e| e.seq).collect::<Vec<_>>()).unwrap_or_default();
     let entries: Vec<Value> = rows.iter().map(|e| json!({"seq": e.seq, "at": e.at, "kind": e.kind, "session": e.session, "actor": e.actor, "detail": e.detail, "undoable": undoable.contains(&e.seq)})).collect();
     Ok(Json(json!({"entries": entries})))
+}
+
+/// Events for the whole app, as server-sent events, for as long as the client listens. A client that falls behind
+/// misses the oldest events, which only ever repeat what a fresh list call would show.
+async fn app_events<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> SseResponse<impl Stream<Item = Result<Sse, Infallible>>> {
+    let rx = st.events.subscribe();
+    let out = stream::unfold(rx, |mut rx| async move {
+        loop {
+            match rx.recv().await {
+                Ok(v) => {
+                    let name = v["type"].as_str().unwrap_or("event").to_string();
+                    return Some((Ok(Sse::default().event(name).data(v.to_string())), rx));
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    });
+    SseResponse::new(out).keep_alive(KeepAlive::default())
 }
 
 /// Spending today, this month and per provider this month, from the spend ledger.

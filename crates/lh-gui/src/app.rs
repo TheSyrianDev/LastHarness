@@ -758,6 +758,12 @@ impl App {
                     }
                 }
             }
+            Ev::Title { session, title } => {
+                if let Some(c) = self.chats.by_session(&session) {
+                    c.title = lh_gui::model::one_line(&title);
+                    self.persist();
+                }
+            }
             Ev::Chats(list) => {
                 for s in &list {
                     stored_to_chat(&mut self.chats, &self.models, s);

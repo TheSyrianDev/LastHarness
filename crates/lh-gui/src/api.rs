@@ -89,6 +89,8 @@ pub enum Ev {
     RunStarted { run: String, department: String, goal: String },
     RunEvent { run: String, event: Value },
     RunEnded { run: String },
+    /// The core named a chat (with `chats.title_model`), after its turn had already ended.
+    Title { session: String, title: String },
 }
 
 pub struct Backend {
@@ -191,6 +193,7 @@ async fn run(cfg: Config, mut rx: mpsc::UnboundedReceiver<Cmd>, out: Out) {
     // a missing token file is not fatal: the core may start later, and Refresh tries again
     let client = Arc::new(loop_client(&cfg));
     let mut turns: HashMap<u64, AbortHandle> = HashMap::new();
+    tokio::spawn(app_events(cfg.clone(), out.clone()));
     while let Some(cmd) = rx.recv().await {
         turns.retain(|_, h| !h.is_aborted());
         match cmd {
@@ -343,6 +346,23 @@ async fn follow(client: Arc<Client>, out: Out, run: String) {
         }
     }
     out.send(Ev::RunEnded { run });
+}
+
+/// Listen to the core's app-wide events for as long as the app runs, coming back after the core restarts.
+async fn app_events(cfg: Config, out: Out) {
+    loop {
+        if let Ok(mut stream) = loop_client(&cfg).events("/v1/events").await {
+            while let Ok(Some(v)) = stream.next().await {
+                if v["type"] == "title" {
+                    let (session, title) = (v["session"].as_str().unwrap_or(""), v["title"].as_str().unwrap_or(""));
+                    if !session.is_empty() && !title.is_empty() {
+                        out.send(Ev::Title { session: session.into(), title: title.into() });
+                    }
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
 }
 
 fn loop_client(cfg: &Config) -> Client {

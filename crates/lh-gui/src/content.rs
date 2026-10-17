@@ -73,6 +73,50 @@ impl Content {
     }
 }
 
+/// Keep the model's single line breaks. Markdown joins two lines that have no blank line between them, but models
+/// write short lines on purpose (addresses, poems, steps without list marks). Each such line gets a hard break
+/// (two trailing spaces). Code blocks, tables, headings and lines next to a blank line or a new block are left alone.
+pub fn keep_line_breaks(text: &str) -> String {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut out = String::with_capacity(text.len() + lines.len() * 2);
+    let mut fence: Option<&str> = None;
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim_start();
+        let marker = if t.starts_with("```") { Some("```") } else if t.starts_with("~~~") { Some("~~~") } else { None };
+        let mut hard = false;
+        match (fence, marker) {
+            (Some(f), Some(m)) if f == m => fence = None,
+            (Some(_), _) => {}
+            (None, Some(m)) => fence = Some(m),
+            (None, None) => {
+                let next = lines.get(i + 1).map(|n| n.trim_start());
+                hard = matches!(next, Some(n) if !n.trim().is_empty() && !starts_block(n))
+                    && !line.trim().is_empty()
+                    && !t.starts_with('#')
+                    && !t.starts_with('|')
+                    && !line.ends_with("  ")
+                    && !line.ends_with('\\');
+            }
+        }
+        out.push_str(line.trim_end_matches('\r'));
+        if hard {
+            out.push_str("  ");
+        }
+        if i + 1 < lines.len() {
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Does this line open a block of its own (so the line before it needs no break)?
+fn starts_block(t: &str) -> bool {
+    let list = t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ")
+        || t.split_once(['.', ')']).is_some_and(|(n, rest)| !n.is_empty() && n.len() <= 9 && n.chars().all(|c| c.is_ascii_digit()) && (rest.is_empty() || rest.starts_with(' ')));
+    let rule = t.len() >= 3 && (t.chars().all(|c| c == '-' || c == ' ') || t.chars().all(|c| c == '=' || c == ' ') || t.chars().all(|c| c == '*' || c == ' '));
+    list || rule || t.starts_with('#') || t.starts_with('>') || t.starts_with('|') || t.starts_with("```") || t.starts_with("~~~")
+}
+
 /// A markdown table: a row of cells followed by the divider row (`|---|---|`, with optional colons).
 fn has_table(text: &str) -> bool {
     let mut lines = text.lines().map(str::trim);
@@ -90,6 +134,20 @@ fn has_table(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn single_line_breaks_are_kept() {
+        assert_eq!(keep_line_breaks("one\ntwo\nthree"), "one  \ntwo  \nthree");
+        assert_eq!(keep_line_breaks("para\n\nnext"), "para\n\nnext", "blank lines stay paragraph breaks");
+        assert_eq!(keep_line_breaks("intro\n- a\n- b"), "intro\n- a\n- b", "a list needs no break before it");
+        assert_eq!(keep_line_breaks("Steps:\n1. go\n2. stop"), "Steps:\n1. go\n2. stop");
+        assert_eq!(keep_line_breaks("```\na\nb\n```"), "```\na\nb\n```", "code is left alone");
+        assert_eq!(keep_line_breaks("| a | b |\n|---|---|\n| 1 | 2 |"), "| a | b |\n|---|---|\n| 1 | 2 |");
+        assert_eq!(keep_line_breaks("# Title\ntext"), "# Title\ntext");
+        assert_eq!(keep_line_breaks("Title\n---"), "Title\n---", "a setext heading stays a heading");
+        assert_eq!(keep_line_breaks("done  \nnext"), "done  \nnext", "an existing break is not doubled");
+        assert_eq!(keep_line_breaks("سطر\nسطر"), "سطر  \nسطر");
+    }
 
     #[test]
     fn content_gets_the_viewer_that_suits_it() {

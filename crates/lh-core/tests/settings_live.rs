@@ -161,6 +161,25 @@ async fn permissions_apply_to_the_next_tool_call_of_a_chat_that_is_already_open(
     assert!(entries.iter().any(|e| e["detail"]["key"] == "permissions.bypass" && e["detail"]["value"] == "true" && e["detail"]["applies"] == "now"), "{log}");
 }
 
+/// The system prompt of an open chat tells the model the permission mode that is in force now, not the one the
+/// chat started with.
+#[tokio::test]
+async fn an_open_chat_is_told_when_the_permission_mode_changes() {
+    let d = tempfile::tempdir().unwrap();
+    let proj = tempfile::tempdir().unwrap();
+    let s = start(d.path(), vec![], false);
+    let id = s.session(json!({"model": "m", "project_dir": proj.path()})).await;
+    let system = |s: &Server| s.seen.lock().unwrap().iter().rev().find(|r| r.model != "titler").and_then(|r| r.messages[0].content.clone()).unwrap_or_default();
+    s.turn(&id, "hi", "no").await;
+    assert!(!system(&s).contains("permission prompts off"));
+    s.set(json!({"permissions.bypass": true})).await;
+    s.turn(&id, "again", "no").await;
+    assert!(system(&s).contains("permission prompts off"), "{}", system(&s));
+    s.set(json!({"permissions.bypass": false})).await;
+    s.turn(&id, "and again", "no").await;
+    assert!(!system(&s).contains("permission prompts off"));
+}
+
 #[tokio::test]
 async fn ask_for_everything_follows_the_setting() {
     let d = tempfile::tempdir().unwrap();

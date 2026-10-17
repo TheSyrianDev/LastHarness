@@ -107,6 +107,29 @@ fn start(dir: &std::path::Path, title: Option<&str>, setting: &str, trust: Trust
     Server { base: format!("http://127.0.0.1:{port}"), token, http: reqwest::Client::new(), calls, store }
 }
 
+/// The title comes after the turn's stream has closed, so open clients hear of it on `/v1/events`.
+#[tokio::test]
+async fn the_title_is_announced_to_listening_clients() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path(), Some("Trip to Rome"), "titler", Trust::Local);
+    let mut events = s.http.get(format!("{}/v1/events", s.base)).bearer_auth(&s.token).send().await.unwrap();
+    assert!(events.status().is_success());
+    let id = s.session(false).await;
+    s.turn(&id, "plan my trip").await;
+    let mut p = SseParser::new();
+    loop {
+        let chunk = tokio::time::timeout(Duration::from_secs(10), events.chunk()).await.expect("a title event in time").unwrap().unwrap();
+        for d in p.push(&chunk) {
+            let v: Value = serde_json::from_str(&d).unwrap();
+            if v["type"] == "title" {
+                assert_eq!(v["title"], "Trip to Rome");
+                assert_eq!(v["session"], id.as_str());
+                return;
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn model_names_the_chat() {
     let dir = tempfile::tempdir().unwrap();

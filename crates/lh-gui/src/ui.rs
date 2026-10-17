@@ -480,7 +480,7 @@ impl App {
         let content = crate::panels::Content::detect(&self.chats.list.iter().find(|c| c.key == key).map(|c| c.title.clone()).unwrap_or_default(), text);
         let open_btn = self.button(format!("open-{key}-{i}"), "Open in panel", Kind::Ghost, cx, move |a, _, cx| a.open_content(content.clone(), cx));
         div().id(SharedString::from(format!("a{key}-{i}"))).role(Role::Label).w_full().flex().flex_col().gap_2().text_color(p.text).when(is_rtl, |d| d.text_right())
-            .child(TextView::markdown(SharedString::from(format!("md{key}-{i}")), text.to_string()))
+            .child(TextView::markdown(SharedString::from(format!("md{key}-{i}")), lh_gui::content::keep_line_breaks(text)))
             .when(lh_gui::content::Content::worth_opening(text), |d| d.child(div().flex().when(is_rtl, |d| d.flex_row_reverse()).child(open_btn)))
             .into_any_element()
     }
