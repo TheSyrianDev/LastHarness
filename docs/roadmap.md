@@ -171,7 +171,7 @@ Approved by the user before mobile (decision log, "harness milestone"). Built wh
 - [x] Headless `lh -p`.
 - [x] Scheduled tasks (`lh schedule`, `/v1/schedules`). A page in the app is not built yet.
 - [x] Code intelligence for coding roles: `code_lookup` over LSP.
-- [ ] Servo replacing Blitz in the same sandbox: helper written (`crates/lh-pageview-servo`), not built or tested yet.
+- [x] Servo replacing Blitz in the same sandbox: `crates/lh-pageview-servo`, same protocol, used when installed beside the app (Blitz otherwise).
 - [ ] Voice comes after, optional.
 
 ## Milestone 9: Mobile app (weeks 27–33)

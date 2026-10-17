@@ -148,7 +148,8 @@ impl Page {
         while out.borrow().is_none() && t0.elapsed() < SCRIPT_WAIT {
             self.spin();
         }
-        out.borrow_mut().take().flatten()
+        let answer = out.borrow_mut().take().flatten();
+        answer
     }
 
     fn number(&mut self, script: &str) -> f32 {
