@@ -41,6 +41,8 @@ pub struct AskRequest<'a> {
     pub reason: String,
     /// Which worker is asking (shown in the prompt).
     pub worker: &'a str,
+    /// More to look at before answering, such as the diff of a file write. Shown, never logged. Often empty.
+    pub detail: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -29,6 +29,8 @@ pub struct Session {
     pub identity_stale: AtomicBool,
     /// The permission mode and sudo the system prompt last described; a change rebuilds the prompt.
     pub shown_perms: Mutex<Option<(lh_tools::Mode, bool)>>,
+    /// The newest activity number when the last turn started: what "undo the last turn" goes back to.
+    pub turn_start: std::sync::atomic::AtomicI64,
     pub req: tokio::sync::Mutex<ChatRequest>,
     pub perms: Permissions,
     pub tools: ToolSet,
@@ -66,7 +68,7 @@ impl Session {
     }
 
     pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet, parts: SystemParts) -> Self {
-        Self { parts, identity_stale: AtomicBool::new(true), shown_perms: Mutex::new(None), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None), kv_gate: Arc::new(tokio::sync::Mutex::new(())), kv_restore: AtomicBool::new(false) }
+        Self { parts, identity_stale: AtomicBool::new(true), shown_perms: Mutex::new(None), turn_start: Default::default(), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None), kv_gate: Arc::new(tokio::sync::Mutex::new(())), kv_restore: AtomicBool::new(false) }
     }
 
     pub fn try_start(&self) -> bool {
@@ -90,10 +92,10 @@ impl Session {
 
 impl Session {
     /// Ask the user through the running turn. `No` when no turn is running.
-    pub async fn ask_user(self: &Arc<Self>, tool: &str, what: String, reason: String, worker: &str) -> Answer {
+    pub async fn ask_user(self: &Arc<Self>, tool: &str, what: String, reason: String, worker: &str, detail: String) -> Answer {
         let events = self.turn_events.lock().unwrap().as_ref().and_then(|w| w.upgrade());
         match events {
-            Some(events) => ApiAsker { session: self.clone(), events }.ask(&AskRequest { tool, what, reason, worker }).await,
+            Some(events) => ApiAsker { session: self.clone(), events }.ask(&AskRequest { tool, what, reason, worker, detail }).await,
             None => Answer::No,
         }
     }
@@ -110,7 +112,7 @@ impl Asker for ApiAsker {
         let id = format!("a{}", self.session.next_ask.fetch_add(1, Ordering::SeqCst));
         let (tx, rx) = oneshot::channel();
         self.session.pending.lock().unwrap().insert(id.clone(), tx);
-        let sent = self.events.send(("ask".into(), json!({"type":"ask","id":id,"tool":r.tool,"what":r.what,"reason":r.reason,"worker":r.worker})));
+        let sent = self.events.send(("ask".into(), json!({"type":"ask","id":id,"tool":r.tool,"what":r.what,"reason":r.reason,"worker":r.worker,"detail":r.detail})));
         if sent.is_err() {
             return Answer::No;
         }

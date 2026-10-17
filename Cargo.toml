@@ -2,7 +2,7 @@
 resolver = "2"
 members = ["crates/*"]
 # its own workspace: stylo (inside Blitz) does not compile together with the window toolkit, see its Cargo.toml
-exclude = ["crates/lh-pageview-engine"]
+exclude = ["crates/lh-pageview-engine", "crates/lh-pageview-servo"]
 
 [workspace.package]
 version = "0.0.0"

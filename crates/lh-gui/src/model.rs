@@ -25,6 +25,8 @@ pub struct Ask {
     pub what: String,
     pub reason: String,
     pub worker: String,
+    /// More to look at before answering, such as the diff of a file write. Often empty.
+    pub detail: String,
 }
 
 /// How a chat works with the computer. A chat without tools only talks; an assistant works from the home
@@ -188,7 +190,7 @@ impl Chat {
                     *result = Some(text.clone());
                 }
             }
-            ServerEvent::Ask { id, tool, what, reason, worker } => self.asks.push(Ask { id: id.clone(), tool: tool.clone(), what: what.clone(), reason: reason.clone(), worker: worker.clone() }),
+            ServerEvent::Ask { id, tool, what, reason, worker, detail } => self.asks.push(Ask { id: id.clone(), tool: tool.clone(), what: what.clone(), reason: reason.clone(), worker: worker.clone(), detail: detail.clone() }),
             ServerEvent::Usage { prompt_tokens, completion_tokens, .. } => self.context_tokens = Some(prompt_tokens + completion_tokens),
             ServerEvent::Done { empty } => {
                 self.end_turn();
@@ -224,6 +226,11 @@ impl Chat {
         self.busy = false;
         self.asks.clear();
         self.think.reset();
+    }
+
+    /// Did the last turn write a file? Then "undo the last turn" has something to put back.
+    pub fn last_turn_wrote(&self) -> bool {
+        !self.busy && self.session.is_some() && self.blocks.iter().rev().take_while(|b| !matches!(b, Block::User(_))).any(|b| matches!(b, Block::Tool { name, .. } if name == "write_file"))
     }
 
     /// A chat nobody has written in and the core has never stored. It is not listed.
@@ -407,7 +414,7 @@ mod tests {
         let mut c = Chat::new(1, "m");
         c.push_user("list files");
         c.apply(&ServerEvent::ToolStart { id: "t1".into(), name: "run_command".into(), arguments: "{\"command\":\"ls\"}".into() });
-        c.apply(&ServerEvent::Ask { id: "a1".into(), tool: "run_command".into(), what: "ls".into(), reason: "reads the folder".into(), worker: String::new() });
+        c.apply(&ServerEvent::Ask { id: "a1".into(), tool: "run_command".into(), what: "ls".into(), reason: "reads the folder".into(), worker: String::new(), detail: String::new() });
         assert_eq!(c.asks.len(), 1);
         c.answer("a1");
         assert!(c.asks.is_empty());
@@ -425,7 +432,7 @@ mod tests {
         for ev in [ServerEvent::Done { empty: false }, ServerEvent::StepLimit, ServerEvent::Refused("limit".into()), ServerEvent::Error("boom".into()), ServerEvent::Error("stopped".into())] {
             let mut c = Chat::new(1, "m");
             c.push_user("x");
-            c.apply(&ServerEvent::Ask { id: "a".into(), tool: "t".into(), what: "w".into(), reason: String::new(), worker: String::new() });
+            c.apply(&ServerEvent::Ask { id: "a".into(), tool: "t".into(), what: "w".into(), reason: String::new(), worker: String::new(), detail: String::new() });
             c.apply(&ev);
             assert!(!c.busy, "{ev:?}");
             assert!(c.asks.is_empty(), "{ev:?}");
@@ -535,5 +542,36 @@ mod tests {
         c.apply(&ServerEvent::Reasoning("w".into()));
         c.push_user("and again");
         assert!(!c.think.active(), "a new message starts clean");
+    }
+}
+
+/// One line for the chat after "undo the last turn": what was put back and what was left alone, and why.
+pub fn undo_summary(v: &serde_json::Value) -> String {
+    let files = v["files"].as_array().cloned().unwrap_or_default();
+    if files.is_empty() {
+        return "The last turn changed no files that can still be put back.".into();
+    }
+    let name = |f: &serde_json::Value| f["path"].as_str().map(|p| p.rsplit('/').next().unwrap_or(p).to_string()).unwrap_or_default();
+    let back: Vec<String> = files.iter().filter(|f| f["result"] != "refused").map(name).collect();
+    let left: Vec<String> = files.iter().filter(|f| f["result"] == "refused").map(|f| format!("{} ({})", name(f), f["message"].as_str().unwrap_or(""))).collect();
+    let mut s = String::new();
+    if !back.is_empty() {
+        s.push_str(&format!("Put back {}.", back.join(", ")));
+    }
+    if !left.is_empty() {
+        s.push_str(&format!("{}Left alone: {}.", if s.is_empty() { "" } else { " " }, left.join(", ")));
+    }
+    s
+}
+
+#[cfg(test)]
+mod undo_tests {
+    use serde_json::json;
+
+    #[test]
+    fn the_undo_line_says_what_came_back_and_what_did_not() {
+        assert_eq!(super::undo_summary(&json!({"files": []})), "The last turn changed no files that can still be put back.");
+        let v = json!({"files": [{"path": "/p/a.txt", "result": "restored"}, {"path": "/p/b.txt", "result": "removed"}, {"path": "/p/c.txt", "result": "refused", "message": "the file was changed after the harness wrote it, so it was left alone"}]});
+        assert_eq!(super::undo_summary(&v), "Put back a.txt, b.txt. Left alone: c.txt (the file was changed after the harness wrote it, so it was left alone).");
     }
 }

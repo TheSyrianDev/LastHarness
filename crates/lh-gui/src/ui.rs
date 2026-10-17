@@ -612,6 +612,14 @@ impl App {
                     .id(SharedString::from(format!("ask-{}", a.id))).role(Role::Group).aria_label(format!("Permission question. {question}")).aria_keyshortcuts("Y N")
                     .child(div().child(question))
                     .child(div().text_sm().text_color(p.muted).child(a.what.clone()))
+                    // a file write shows what it changes, in the code font, scrolling when long
+                    .when(!a.detail.is_empty(), |d| {
+                        d.child(
+                            div().id(SharedString::from(format!("ask-diff-{}", a.id))).max_h(px(320.)).overflow_y_scroll().p_2().rounded(p.inner).bg(p.sunken)
+                                .font_family(p.mono.clone()).text_xs().text_color(p.text).role(Role::Label).aria_label(format!("The change: {}", a.detail.lines().next().unwrap_or("")))
+                                .children(a.detail.lines().map(|l| div().whitespace_nowrap().child(if l.is_empty() { " ".to_string() } else { l.to_string() }))),
+                        )
+                    })
                     .when(!a.reason.is_empty(), |d| d.child(div().text_sm().text_color(p.muted).child(a.reason.clone())))
                     .child(div().flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_2().child(yes).child(no).children(always)).into_any_element(),
             );

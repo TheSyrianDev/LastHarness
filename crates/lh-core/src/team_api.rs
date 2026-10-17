@@ -110,7 +110,7 @@ impl Approver for RunApprover {
         Box::pin(async move {
             if let Some(sess) = &self.1 {
                 let list = plan.steps.iter().map(|s| format!("{}. {} ({})", s.id, s.title, s.assignee)).collect::<Vec<_>>().join("; ");
-                let a = sess.ask_user("call_department", format!("run this plan in {dept}: {list}"), "the department planned the work and waits for a yes".into(), dept).await;
+                let a = sess.ask_user("call_department", format!("run this plan in {dept}: {list}"), "the department planned the work and waits for a yes".into(), dept, String::new()).await;
                 return if a == Answer::Yes { PlanDecision::Approve } else { PlanDecision::Reject("the user did not approve the plan".into()) };
             }
             let steps: Vec<Value> = plan.steps.iter().map(|s| json!({"id": s.id, "title": s.title, "assignee": s.assignee, "brief": s.brief, "depends_on": s.depends_on, "milestone": s.milestone})).collect();
@@ -129,7 +129,7 @@ impl Approver for RunApprover {
     fn checkin<'a>(&'a self, dept: &'a str, milestone: &'a str, summaries: &'a [String]) -> BoxFut<'a, bool> {
         Box::pin(async move {
             if let Some(sess) = &self.1 {
-                return sess.ask_user("call_department", format!("{dept} finished {milestone}: {}. Go on?", summaries.join("; ")), "check-in".into(), dept).await == Answer::Yes;
+                return sess.ask_user("call_department", format!("{dept} finished {milestone}: {}. Go on?", summaries.join("; ")), "check-in".into(), dept, String::new()).await == Answer::Yes;
             }
             let a = self.0.question(json!({"type": "checkin_needed", "dept": dept, "milestone": milestone, "summaries": summaries})).await;
             a.as_ref().and_then(|v| v["decision"].as_str()) == Some("continue")
@@ -152,9 +152,9 @@ impl Asker for RunAsker {
             return Answer::No;
         }
         if let Some(sess) = &self.parent {
-            return sess.ask_user(r.tool, r.what.clone(), r.reason.clone(), r.worker).await;
+            return sess.ask_user(r.tool, r.what.clone(), r.reason.clone(), r.worker, r.detail.clone()).await;
         }
-        let a = self.run.question(json!({"type": "ask", "tool": r.tool, "what": r.what, "reason": r.reason, "worker": r.worker})).await;
+        let a = self.run.question(json!({"type": "ask", "tool": r.tool, "what": r.what, "reason": r.reason, "worker": r.worker, "detail": r.detail})).await;
         if a.as_ref().and_then(|v| v["answer"].as_str()) == Some("yes") {
             Answer::Yes
         } else {
@@ -503,7 +503,7 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
                 MemorySlice::Layers(l) => Some(Some(l.clone())),
             };
             if let Some(layers) = layers {
-                tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: rt.destination(job.project.clone()), cfg: live.recall.clone(), layers }));
+                tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: rt.destination(job.project.clone()), cfg: live.recall.clone(), layers, judge: None }));
             }
         }
         if let Some(lr) = &s.learn {

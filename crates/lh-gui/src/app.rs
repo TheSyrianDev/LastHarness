@@ -922,6 +922,16 @@ impl App {
                 }
             }
             ("run", Err(e)) => p.goal_note = Some(e),
+            (t, r) if t.starts_with("undoturn:") => {
+                let key: u64 = t["undoturn:".len()..].parse().unwrap_or(0);
+                let line = match r {
+                    Ok(v) => lh_gui::model::undo_summary(&v),
+                    Err(e) => format!("The files could not be put back: {e}"),
+                };
+                if let Some(c) = self.chats.by_key(key) {
+                    c.blocks.push(lh_gui::model::Block::Notice(line));
+                }
+            }
             (t, r) if t.starts_with("tree") => self.on_tree_reply(t, r),
             (t, r) if t.starts_with("pg:") || t.starts_with("pg-act:") => self.on_pg_reply(t, r),
             (t, Ok(_)) if t.starts_with("setting:") => {
@@ -1121,6 +1131,7 @@ impl App {
             direction: self.prefs.direction,
             column: self.layout().column,
             presets: self.layout().presets.clone(),
+            can_undo_turn: self.chats.current().is_some_and(|c| c.last_turn_wrote()),
         }
     }
 
@@ -1173,6 +1184,13 @@ impl App {
         use lh_gui::palette::Command;
         self.close_palette(window, cx);
         match command {
+            Command::UndoTurn => {
+                if let Some(c) = self.chats.current() {
+                    if let Some(session) = c.session.clone() {
+                        self.backend.send(Cmd::Call { tag: format!("undoturn:{}", c.key), method: "POST".into(), path: format!("/v1/sessions/{session}/undo_turn"), body: None });
+                    }
+                }
+            }
             Command::NewChat => self.new_chat(cx),
             Command::Settings => self.open_settings(window, cx),
             Command::ToggleChatList => {

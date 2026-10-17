@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 mod activity;
+pub mod schedules;
 
 pub use activity::{content_hash, Entry, UndoResult};
 pub use rusqlite;
@@ -288,6 +289,21 @@ const MIGRATIONS: &[&str] = &[r#"
     create table chat_branch(conv text primary key, leaf integer not null);
     -- A name the user gave a message, to find it again in the tree.
     create table chat_labels(msg integer primary key, label text not null);
+"#, r#"
+    -- Tasks the core runs by itself at set times (see schedules.rs).
+    create table schedules(
+      id integer primary key,
+      name text not null,
+      prompt text not null,
+      folder text not null,
+      model text not null,
+      run_when text not null,             -- "every 2h" or "daily 08:00"
+      enabled integer not null default 1,
+      next_run integer not null,          -- unix seconds
+      last_run integer,
+      last_result text not null default '',
+      created integer not null
+    );
 "#];
 
 pub struct Store {
@@ -356,7 +372,8 @@ mod tests {
     fn chats_stored_before_the_tree_become_one_straight_branch_and_stay_uneditable() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("pragma journal_mode=wal;").unwrap();
-        let before = MIGRATIONS.len() - 1;
+        // run every migration before the one that made chats a tree
+        let before = MIGRATIONS.iter().position(|m| m.contains("create table chat_branch")).unwrap();
         for (i, m) in MIGRATIONS.iter().enumerate().take(before) {
             conn.execute_batch(m).unwrap();
             conn.execute_batch(&format!("pragma user_version = {}", i + 1)).unwrap();

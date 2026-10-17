@@ -55,15 +55,20 @@ pub fn check_url(url: &str) -> Option<String> {
 
 async fn show<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
     let cfg = load(&st)?;
-    let url = cfg.get_opt("provider.url").unwrap_or_default();
+    let saved_url = cfg.get_opt("provider.url").unwrap_or_default();
+    // the core may have been started with --provider and nothing saved: show what it actually uses
+    let started_with = st.kv_endpoint.get().map(|(u, _)| u.clone()).filter(|_| saved_url.is_empty());
+    let url = started_with.clone().unwrap_or(saved_url);
     let key = cfg.get_opt("provider.key").unwrap_or_default();
+    let name = cfg.get_opt("provider.name").filter(|n| !n.is_empty()).or_else(|| started_with.as_ref().and(st.settings.provider_name.clone())).unwrap_or_default();
     let (reachable, models) = match st.model.models().await {
         Ok(m) => (true, m.len()),
         Err(_) => (false, 0),
     };
     Ok(Json(json!({
         "url": url,
-        "name": cfg.get_opt("provider.name").unwrap_or_default(),
+        "name": name,
+        "from_start": started_with.is_some(),
         "key_saved": !key.is_empty(),
         "local": !url.is_empty() && lh_provider::is_local_url(&url),
         "reachable": reachable,

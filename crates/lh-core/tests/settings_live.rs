@@ -180,6 +180,25 @@ async fn an_open_chat_is_told_when_the_permission_mode_changes() {
     assert!(!system(&s).contains("permission prompts off"));
 }
 
+/// "Undo the last turn" puts back the files that turn wrote and nothing from earlier turns.
+#[tokio::test]
+async fn the_last_turn_can_be_undone_as_a_whole() {
+    let d = tempfile::tempdir().unwrap();
+    let proj = tempfile::tempdir().unwrap();
+    let s = start(d.path(), vec![write_call("c1", "a.txt"), text("one"), write_call("c2", "b.txt"), write_call("c3", "c.txt"), text("two")], false);
+    s.set(json!({"permissions.bypass": true})).await;
+    let id = s.session(json!({"model": "m", "project_dir": proj.path()})).await;
+    s.turn(&id, "write a", "yes").await;
+    s.turn(&id, "write b and c", "yes").await;
+    assert!(proj.path().join("b.txt").exists() && proj.path().join("c.txt").exists());
+    let r = s.json(s.req(reqwest::Method::POST, &format!("/v1/sessions/{id}/undo_turn"))).await;
+    let files = r["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2, "{r}");
+    assert!(files.iter().all(|f| f["result"] == "removed"), "{r}");
+    assert!(!proj.path().join("b.txt").exists() && !proj.path().join("c.txt").exists());
+    assert!(proj.path().join("a.txt").exists(), "the turn before is kept");
+}
+
 #[tokio::test]
 async fn ask_for_everything_follows_the_setting() {
     let d = tempfile::tempdir().unwrap();

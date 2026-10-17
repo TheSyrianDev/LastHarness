@@ -160,6 +160,20 @@ Throwaway code that answers the questions the design depends on.
 - [x] Target: noticeably lighter than an Electron app: about 115 MB idle, 0.0 to 0.4% CPU idle, 64 MiB binary.
 - [ ] Left for later: automatic opening of agent content, the KV cache per chat, Orca check with real speech, drawing the app's own window frame, Servo as an optional add-on.
 
+## Harness milestone (before mobile)
+
+Approved by the user before mobile (decision log, "harness milestone"). Built while the user was away on 2026-10-17. The working choices and open questions are in `.grill/parked.md`.
+
+- [x] File checkpoints and undo of a whole turn (`/v1/sessions/{id}/undo_turn`, a palette entry in the app).
+- [x] Diff review: a file write's permission question shows what changes.
+- [x] Command sandbox under the permission tiers (`tools.sandbox`, bubblewrap).
+- [x] Hooks before and after tool calls (`hooks.toml`).
+- [x] Headless `lh -p`.
+- [x] Scheduled tasks (`lh schedule`, `/v1/schedules`). A page in the app is not built yet.
+- [x] Code intelligence for coding roles: `code_lookup` over LSP.
+- [ ] Servo replacing Blitz in the same sandbox: helper written (`crates/lh-pageview-servo`), not built or tested yet.
+- [ ] Voice comes after, optional.
+
 ## Milestone 9: Mobile app (weeks 27–33)
 
 - [ ] Week 1 spike: verify Keychain and Keystore key storage, push notifications, and Arabic and right-to-left text before committing.

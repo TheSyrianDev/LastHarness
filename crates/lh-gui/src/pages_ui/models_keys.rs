@@ -64,7 +64,8 @@ impl App {
                     .aria_label(format!("{}: {}", info.title(), status.words()))
                     .child(div().flex().flex_wrap().items_center().gap_2().child(div().w(px(10.)).h(px(10.)).rounded_full().bg(dot)).child(div().flex_1().min_w_0().child(info.title())).child(div().text_sm().text_color(p.muted).child(status.words())).child(test).child(edit))
                     .child(self.pg_small(format!("{}   {}   {}", info.url, if info.local { "On this computer." } else { "Another computer or a cloud service." }, key_words)))
-                    .when(status == Status::Working, |c| c.child(self.pg_small(format!("It offers {} model{}.", info.models, if info.models == 1 { "" } else { "s" })))),
+                    .when(status == Status::Working, |c| c.child(self.pg_small(format!("It offers {} model{}.", info.models, if info.models == 1 { "" } else { "s" }))))
+                    .when(info.from_start, |c| c.child(self.pg_small("This address comes from how the core was started. Save it here to keep it in your settings."))),
             );
             if !editing {
                 if let Some(r) = self.sp.models_keys.result.clone() {

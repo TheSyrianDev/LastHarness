@@ -171,7 +171,7 @@ pub async fn run_turn<M: Model, A: Asker, T: Meter>(
             MeterVerdict::Allow => {}
             MeterVerdict::Refuse(why) => return Ok(TurnEnd::Refused(why)),
             MeterVerdict::Ask(what) => {
-                let q = AskRequest { tool: "model_call", what, reason: "this model call costs money".into(), worker: &opts.worker };
+                let q = AskRequest { tool: "model_call", what, reason: "this model call costs money".into(), worker: &opts.worker, detail: String::new() };
                 if asker.ask(&q).await == Answer::No {
                     return Ok(TurnEnd::Refused("You declined the cost of this model call.".into()));
                 }
@@ -249,7 +249,11 @@ async fn execute<M: Model, T: Meter, A: Asker>(
             return fail(format!("Denied: {why}"));
         }
         Decision::Ask { reason, session_grant } => {
-            let req = AskRequest { tool: name, what: format!("{action:?}"), reason, worker: &opts.worker };
+            let detail = match &action {
+                Action::Write(path) => crate::diff::diff(std::fs::read_to_string(path).ok().as_deref(), args["content"].as_str().unwrap_or("")),
+                _ => String::new(),
+            };
+            let req = AskRequest { tool: name, what: format!("{action:?}"), reason, worker: &opts.worker, detail };
             match asker.ask(&req).await {
                 Answer::No => {
                     decision(Outcome::Declined);
@@ -265,19 +269,31 @@ async fn execute<M: Model, T: Meter, A: Asker>(
         }
         Decision::Allow => decision(Outcome::Allowed),
     }
-    if let Some(x) = extra {
-        return match x.run(args).await {
+    // the user's own hooks, for calls the rules let through
+    if let Some(h) = &tools.hooks {
+        if let Err(why) = h.before(name, &args, perms.root()).await {
+            return fail(why);
+        }
+    }
+    let (text, undo) = if let Some(x) = extra {
+        match x.run(args.clone()).await {
             Ok(text) => (text, None),
             Err(e) => fail(format!("Error: {e}")),
-        };
-    }
-    let tool = builtin.expect("checked above");
-    if tool == Tool::GenerateImage {
-        return generate_image(model, meter, asker, opts, tools, perms.root(), &args).await;
-    }
-    match tool.run(&args, perms.root(), tools).await {
-        Ok(out) => (out.text, out.undo),
-        Err(e) => fail(format!("Error: {e}")),
+        }
+    } else {
+        let tool = builtin.expect("checked above");
+        if tool == Tool::GenerateImage {
+            generate_image(model, meter, asker, opts, tools, perms.root(), &args).await
+        } else {
+            match tool.run(&args, perms.root(), tools).await {
+                Ok(out) => (out.text, out.undo),
+                Err(e) => fail(format!("Error: {e}")),
+            }
+        }
+    };
+    match &tools.hooks {
+        Some(h) => (h.after(name, &args, perms.root(), text).await, undo),
+        None => (text, undo),
     }
 }
 
@@ -291,7 +307,7 @@ async fn generate_image<M: Model, T: Meter, A: Asker>(model: &M, meter: &T, aske
         MeterVerdict::Allow => {}
         MeterVerdict::Refuse(why) => return fail(format!("Denied: {why}")),
         MeterVerdict::Ask(what) => {
-            let q = AskRequest { tool: "image_cost", what, reason: "this image costs money".into(), worker: &opts.worker };
+            let q = AskRequest { tool: "image_cost", what, reason: "this image costs money".into(), worker: &opts.worker, detail: String::new() };
             if asker.ask(&q).await == Answer::No {
                 return fail("The user declined the cost of the image.".into());
             }

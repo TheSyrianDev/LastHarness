@@ -154,6 +154,56 @@ fn hand_edits_are_applied_logged_and_the_old_version_kept() {
 }
 
 #[test]
+fn a_hand_edit_can_raise_privacy_but_never_lower_it() {
+    let (_d, m) = mem();
+    let mut np = NewPage::new(Layer::Facts, "Doctor", "Sees Dr. Amal on Tuesdays.");
+    np.privacy = Privacy::Sensitive;
+    let p = m.create(np, By::User).unwrap();
+    let path = m.root().join("facts/doctor.md");
+
+    // the header line flipped to normal: ignored, and the file is put right
+    let text = std::fs::read_to_string(&path).unwrap().replace("privacy: sensitive", "privacy: normal");
+    std::fs::write(&path, text).unwrap();
+    m.scan().unwrap();
+    assert_eq!(m.get(&p.id).unwrap().privacy, Privacy::Sensitive);
+    assert!(std::fs::read_to_string(&path).unwrap().contains("privacy: sensitive"), "the file says what is true");
+
+    // the same with a text change: the text is kept, the privacy is not lowered, and the history says why
+    let text = std::fs::read_to_string(&path).unwrap().replace("privacy: sensitive", "privacy: normal").replace("Tuesdays", "Mondays");
+    std::fs::write(&path, text).unwrap();
+    m.scan().unwrap();
+    let now = m.get(&p.id).unwrap();
+    assert_eq!((now.privacy, now.body.as_str()), (Privacy::Sensitive, "Sees Dr. Amal on Mondays."));
+    assert!(m.history(&p.id).unwrap().last().unwrap().note.contains("cannot lower"));
+
+    // a normal page edited to hold a password becomes sensitive, header or not
+    let q = page(&m, Layer::Facts, "Wifi", "The router is in the hall.");
+    let path = m.root().join("facts/wifi.md");
+    let text = std::fs::read_to_string(&path).unwrap().replace("in the hall.", "in the hall. password: hunter22");
+    std::fs::write(&path, text).unwrap();
+    m.scan().unwrap();
+    assert_eq!(m.get(&q.id).unwrap().privacy, Privacy::Sensitive);
+
+    // and so does a new file dropped in with no header
+    std::fs::write(m.root().join("facts/bank.md"), "# Bank\n\npassword: hunter22").unwrap();
+    let rep = m.scan().unwrap();
+    assert_eq!(m.get(&rep.created[0]).unwrap().privacy, Privacy::Sensitive);
+}
+
+#[test]
+fn an_unchanged_folder_is_not_read_again() {
+    let (_d, m) = mem();
+    let p = page(&m, Layer::Facts, "Tea", "Green.");
+    assert_eq!(m.scan_if_changed().unwrap(), ScanReport::default());
+    let path = m.root().join("facts/tea.md");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let text = std::fs::read_to_string(&path).unwrap().replace("Green.", "Green, no sugar.");
+    std::fs::write(&path, text).unwrap();
+    assert_eq!(m.scan_if_changed().unwrap().edited, vec![p.id.clone()], "an edit is seen");
+    assert_eq!(m.scan_if_changed().unwrap(), ScanReport::default(), "and only once");
+}
+
+#[test]
 fn an_emptied_file_is_left_alone() {
     let (_d, m) = mem();
     let p = page(&m, Layer::Facts, "Keep me", "Important.");

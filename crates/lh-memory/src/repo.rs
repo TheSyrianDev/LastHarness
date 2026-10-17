@@ -87,6 +87,8 @@ pub struct Memory {
     pub(crate) store: Arc<Store>,
     root: PathBuf,
     pub(crate) cache: std::sync::Mutex<Option<Arc<crate::vectors::VectorCache>>>,
+    /// What the page files looked like at the last scan (names, sizes, times), so an unchanged folder is not read.
+    last_look: std::sync::Mutex<Option<u64>>,
 }
 
 fn new_id() -> String {
@@ -111,7 +113,7 @@ impl Memory {
         for l in Layer::ALL {
             std::fs::create_dir_all(root.join(l.as_str()))?;
         }
-        Ok(Self { store, root, cache: Default::default() })
+        Ok(Self { store, root, cache: Default::default(), last_look: Default::default() })
     }
 
     #[doc(hidden)]
@@ -420,6 +422,32 @@ impl Memory {
         self.scan_as(By::HandEdit)
     }
 
+    /// Like `scan`, but only when a page file was added, removed or changed since the last look. Costs one
+    /// directory listing and one file-information call per page, without reading any file.
+    pub fn scan_if_changed(&self) -> Result<ScanReport> {
+        let look = self.look();
+        if *self.last_look.lock().unwrap() == Some(look) {
+            return Ok(ScanReport::default());
+        }
+        let rep = self.scan()?;
+        // the scan may rewrite files (a new file gets its header), so look again afterwards
+        *self.last_look.lock().unwrap() = Some(self.look());
+        Ok(rep)
+    }
+
+    fn look(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for layer in Layer::ALL {
+            let mut entries: Vec<(String, u64, Option<std::time::SystemTime>)> = std::fs::read_dir(self.dir(layer))
+                .map(|rd| rd.flatten().filter_map(|e| e.metadata().ok().map(|m| (e.file_name().to_string_lossy().to_string(), m.len(), m.modified().ok()))).collect())
+                .unwrap_or_default();
+            entries.sort();
+            entries.hash(&mut h);
+        }
+        h.finish()
+    }
+
     fn scan_as(&self, by: By) -> Result<ScanReport> {
         let mut rep = ScanReport::default();
         let mut seen: HashSet<String> = HashSet::new();
@@ -448,7 +476,14 @@ impl Memory {
                         p.title = title;
                         p.body = parts.body.clone();
                         p.gist = parts.get("gist").unwrap_or(&old.gist).to_string();
-                        p.privacy = header_privacy.unwrap_or(old.privacy);
+                        // a hand edit can make a page more private, never less: the header line could have been changed by
+                        // anything that writes files, and lowering it would let the page go to cloud models
+                        p.privacy = if old.privacy == Privacy::Sensitive { Privacy::Sensitive } else { header_privacy.unwrap_or(old.privacy) };
+                        let found = crate::privacy::detect(&format!("{}\n{}", p.title, p.body));
+                        if found.privacy == Privacy::Sensitive && p.privacy == Privacy::Normal {
+                            p.privacy = Privacy::Sensitive;
+                            p.privacy_reason = found.reason;
+                        }
                         p.pinned = parts.get("pinned").map_or(old.pinned, |v| v == "true");
                         p.project = parts.get("project").map(str::to_string).filter(|s| !s.is_empty()).or(old.project.clone());
                         p.slug = stem;
@@ -461,9 +496,12 @@ impl Memory {
                             p.version += 1;
                             p.updated = now();
                         }
+                        // the file says what is true: put the privacy kept or found back into its header
+                        let hash = if header_privacy.is_some_and(|h| h != p.privacy) { self.write_live(&p)? } else { hash };
                         self.save(&p, hash)?;
                         if changed {
-                            self.note_history(&p, "hand_edit", by, "")?;
+                            let note = if header_privacy == Some(Privacy::Normal) && old.privacy == Privacy::Sensitive { "privacy stays sensitive; a hand edit cannot lower it" } else { "" };
+                            self.note_history(&p, "hand_edit", by, note)?;
                             rep.edited.push(p.id.clone());
                         }
                     }
@@ -472,9 +510,14 @@ impl Memory {
                         if parts.body.trim().is_empty() {
                             continue;
                         }
-                        let mut np = NewPage::new(layer, title, parts.body.clone());
+                        let mut np = NewPage::new(layer, title.clone(), parts.body.clone());
                         np.gist = parts.get("gist").unwrap_or("").to_string();
                         np.privacy = header_privacy.unwrap_or(Privacy::Normal);
+                        let found = crate::privacy::detect(&format!("{title}\n{}", parts.body));
+                        if found.privacy == Privacy::Sensitive && np.privacy == Privacy::Normal {
+                            np.privacy = Privacy::Sensitive;
+                            np.privacy_reason = found.reason;
+                        }
                         np.pinned = parts.get("pinned") == Some("true");
                         np.project = parts.get("project").map(str::to_string).filter(|s| !s.is_empty());
                         np.source = parts.get("source").unwrap_or("hand").to_string();

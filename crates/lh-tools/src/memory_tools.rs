@@ -19,7 +19,13 @@ pub struct MemoryHandle {
     pub cfg: RecallConfig,
     /// A role's memory slice: only these layers are visible. `None` means all of them.
     pub layers: Option<Vec<lh_memory::Layer>>,
+    /// A model on this machine that judges what the patterns let through, as the end-of-chat review does.
+    /// `None`: patterns only. Never a cloud model, since judging means reading the note.
+    pub judge: Option<PrivacyJudge>,
 }
+
+/// Reads a note and says whether it is sensitive.
+pub type PrivacyJudge = Arc<dyn Fn(String) -> std::pin::Pin<Box<dyn std::future::Future<Output = lh_memory::Judgement> + Send>> + Send + Sync>;
 
 impl std::fmt::Debug for MemoryHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -61,7 +67,14 @@ pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<St
                 return Err(fail("this role may not save to that part of memory"));
             }
             let title = args["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).unwrap_or_else(|| excerpt(text, 50));
-            let class = detect(&format!("{title} {text}"));
+            let mut class = detect(&format!("{title} {text}"));
+            if let (Privacy::Normal, Some(judge)) = (class.privacy, &h.judge) {
+                class = match judge(format!("{title}\n{text}")).await {
+                    lh_memory::Judgement::Normal => class,
+                    lh_memory::Judgement::Sensitive(why) => lh_memory::Classification { privacy: Privacy::Sensitive, reason: format!("judged sensitive: {why}") },
+                    lh_memory::Judgement::Unsure => lh_memory::Classification { privacy: Privacy::Sensitive, reason: "the model was unsure".into() },
+                };
+            }
             let mut n = NewPage::new(layer, title.clone(), text);
             n.gist = excerpt(text, 120);
             n.privacy = class.privacy;

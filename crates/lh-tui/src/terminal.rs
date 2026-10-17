@@ -1,12 +1,14 @@
 //! `lh`: terminal chat for the LastHarness core.
 //!
 //! lh [--url http://127.0.0.1:7842] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]
+//! lh -p "question" [--json] [--model NAME]   one turn, answer on standard output (see `headless`)
 //! lh memory <command>     (see `lh memory help`)
 //! lh learn <command>      (see `lh learn help`)
 //! lh team <command>       (see `lh team help`)
 //! lh service [preview|install|remove|status]  start the core at login (systemd user service)
 //! lh channels [add|enable|...]  messaging channels (see `lh channels help`)
 //! lh devices [accept PIN|remove ID]
+//! lh schedule [add|on|off|remove]  tasks the core runs at set times
 //! lh export <folder>; lh import <folder> [--apply]
 //! lh setup                first-run questions; lh settings [group|set|reset]
 //! lh mcp <command>        (see `lh mcp help`); lh trust <folder>
@@ -78,6 +80,8 @@ pub async fn run() {
     let mut devices_cmd: Option<Vec<String>> = None;
     let mut channels_cmd: Option<Vec<String>> = None;
     let mut service_cmd: Option<Vec<String>> = None;
+    let mut schedule_cmd: Option<Vec<String>> = None;
+    let (mut print, mut as_json): (Option<String>, bool) = (None, false);
     while let Some(arg) = a.next() {
         let mut val = || a.next().unwrap_or_else(|| fail(format!("{arg} needs a value")));
         match arg.as_str() {
@@ -86,8 +90,10 @@ pub async fn run() {
             "--model" => model = Some(val()),
             "--ask-all" => ask_all = true,
             "--incognito" => incognito = true,
+            "-p" | "--print" => print = Some(val()),
+            "--json" => as_json = true,
             "--help" | "-h" => {
-                println!("lh [--url URL] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]    chat with the core in the terminal\nOther commands: setup, settings, memory, learn, team, mcp, trust, devices, channels, export, import, service. Run `lh <command> help` for each.");
+                println!("lh [--url URL] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]    chat with the core in the terminal\nlh -p \"question\" [--json] [--model NAME]    one turn: the answer on standard output (\"-\" reads the question from standard input; piped text is added to it)\nOther commands: setup, settings, memory, learn, team, mcp, trust, devices, channels, schedule, export, import, service. Run `lh <command> help` for each.");
                 return;
             }
             "learn" => {
@@ -100,6 +106,10 @@ pub async fn run() {
             }
             "channels" => {
                 channels_cmd = Some(a.by_ref().collect());
+                break;
+            }
+            "schedule" => {
+                schedule_cmd = Some(a.by_ref().collect());
                 break;
             }
             "devices" => {
@@ -171,6 +181,7 @@ pub async fn run() {
         (&settings_cmd, crate::settings_cli::HELP),
         (&devices_cmd, crate::devices_cli::HELP),
         (&channels_cmd, crate::channels_cli::HELP),
+        (&schedule_cmd, crate::schedule_cli::HELP),
     ] {
         if wants_help(cmd) {
             println!("{text}");
@@ -206,6 +217,13 @@ pub async fn run() {
             crate::channels_cli::run(&client, &cmd, &mut ask).await
         };
         match r {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    if let Some(cmd) = schedule_cmd {
+        match crate::schedule_cli::run(&client, &cmd, model.clone()).await {
             Ok(text) => println!("{text}"),
             Err(e) => fail(e),
         }
@@ -254,6 +272,26 @@ pub async fn run() {
             Err(e) => fail(e),
         }
         return;
+    }
+    if let Some(given) = print {
+        use std::io::IsTerminal;
+        let text = crate::headless::prompt(&given, &mut io::stdin(), io::stdin().is_terminal());
+        if text.trim().is_empty() {
+            fail("the question is empty");
+        }
+        // no one is there to pick a model: --model, then LH_MODEL, then the only model the server has
+        let model = match model.or_else(|| std::env::var("LH_MODEL").ok().filter(|m| !m.is_empty())) {
+            Some(m) => m,
+            None => match client.models().await.unwrap_or_else(|e| fail(e)).as_slice() {
+                [only] => only.clone(),
+                _ => fail("pick a model with --model NAME or the LH_MODEL variable"),
+            },
+        };
+        let dir = std::env::current_dir().unwrap_or_else(|e| fail(format!("cannot read the current folder: {e}")));
+        let session = client.create_session(&model, &dir, ask_all, incognito).await.unwrap_or_else(|e| fail(e));
+        let end = crate::headless::run(&client, &session, &text, as_json, &mut io::stdout(), &mut io::stderr()).await;
+        let _ = client.call("DELETE", &format!("/v1/sessions/{session}"), None).await;
+        std::process::exit(end.code());
     }
     let model = match model {
         Some(m) => m,

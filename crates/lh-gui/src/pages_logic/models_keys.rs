@@ -33,6 +33,8 @@ pub struct ProviderInfo {
     pub local: bool,
     pub reachable: bool,
     pub models: usize,
+    /// The address came from how the core was started (`--provider`), not from the settings file.
+    pub from_start: bool,
 }
 
 impl ProviderInfo {
@@ -44,6 +46,7 @@ impl ProviderInfo {
             local: v["local"].as_bool().unwrap_or(false),
             reachable: v["reachable"].as_bool().unwrap_or(false),
             models: v["models"].as_u64().unwrap_or(0) as usize,
+            from_start: v["from_start"].as_bool().unwrap_or(false),
         }
     }
 

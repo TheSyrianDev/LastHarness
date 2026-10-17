@@ -195,14 +195,14 @@ async fn remove<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(nam
 
 // ---- carrying messages ----
 
-struct Api {
-    base: String,
-    token: String,
-    http: reqwest::Client,
+pub(crate) struct Api {
+    pub(crate) base: String,
+    pub(crate) token: String,
+    pub(crate) http: reqwest::Client,
 }
 
 impl Api {
-    async fn call(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
+    pub(crate) async fn call(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
         let mut rb = self.http.request(method, format!("{}{path}", self.base)).bearer_auth(&self.token);
         if let Some(b) = body {
             rb = rb.json(&b);
@@ -214,7 +214,7 @@ impl Api {
     }
 
     /// Follow a server-sent stream, calling `on` for each event until the stream ends.
-    async fn stream(&self, method: reqwest::Method, path: &str, body: Option<Value>, mut on: impl FnMut(Value)) -> Result<(), String> {
+    pub(crate) async fn stream(&self, method: reqwest::Method, path: &str, body: Option<Value>, mut on: impl FnMut(Value)) -> Result<(), String> {
         let mut rb = self.http.request(method, format!("{}{path}", self.base)).bearer_auth(&self.token);
         if let Some(b) = body {
             rb = rb.json(&b);

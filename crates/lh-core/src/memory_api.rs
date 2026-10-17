@@ -298,21 +298,60 @@ async fn maintenance<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, bod
         if r.trust != Trust::Local {
             return Err(ApiError(StatusCode::BAD_REQUEST, "the contradiction check reads your notes, so it only runs on a model on this machine".into()));
         }
-        let meter = st.settings.spend.for_session("maintenance");
-        for (a, b) in r.memory.contradiction_candidates(5).map_err(err)? {
-            let req = ChatRequest { model: model.clone(), messages: vec![Message::user(contradiction_prompt(&a, &b))], max_tokens: Some(1000), ..Default::default() };
-            if meter.before(&req).await != MeterVerdict::Allow {
-                break;
-            }
-            let Ok(resp) = st.model.complete(&req, &mut |_| {}).await else { break };
-            meter.after(&req, resp.usage).await;
-            if let Some(why) = parse_contradiction(&resp.text) {
-                findings.push(json!({"kind": "contradiction", "pages": [a.id, b.id], "detail": why}));
-            }
+        for (a, b, why) in check_contradictions(&st, &model).await {
+            findings.push(json!({"kind": "contradiction", "pages": [a, b], "detail": why}));
         }
     }
     let pending = r.memory.list_proposals(Some("pending")).map_err(err)?.len();
     Ok(Json(json!({"findings": findings, "pending_suggestions": pending})))
+}
+
+/// Ask `model` about pairs of notes that may disagree. For each pair it says disagree, the older page gets a
+/// suggestion to archive it, which the user accepts or rejects; nothing is changed here. Pairs already asked about
+/// (same versions) are not asked again, and a page whose archive suggestion was rejected is not suggested again.
+/// Returns (older page, newer page, reason). Only for memory kept on this machine: the notes go to the model.
+pub(crate) async fn check_contradictions<M: Model + 'static>(st: &AppState<M>, model: &str) -> Vec<(String, String, String)> {
+    let Some(r) = &st.settings.memory else { return vec![] };
+    if r.trust != Trust::Local {
+        return vec![];
+    }
+    let Ok(pairs) = r.memory.contradiction_candidates(5) else { return vec![] };
+    let meter = st.settings.spend.for_session("maintenance");
+    let mut out = vec![];
+    for (a, b) in pairs {
+        let key = (a.id.clone(), a.version, b.id.clone(), b.version);
+        if st.checked_pairs.lock().unwrap().contains(&key) {
+            continue;
+        }
+        let req = ChatRequest { model: model.to_string(), messages: vec![Message::user(contradiction_prompt(&a, &b))], max_tokens: Some(1000), ..Default::default() };
+        if meter.before(&req).await != MeterVerdict::Allow {
+            break;
+        }
+        let Ok(resp) = st.model.complete(&req, &mut |_| {}).await else { break };
+        meter.after(&req, resp.usage).await;
+        st.checked_pairs.lock().unwrap().insert(key);
+        let Some(why) = parse_contradiction(&resp.text) else { continue };
+        let (older, newer) = if a.updated <= b.updated { (&a, &b) } else { (&b, &a) };
+        let evidence = format!("disagrees with the newer note \"{}\"{}", newer.title, if why.is_empty() { String::new() } else { format!(": {why}") });
+        let refused_before = r.memory.list_proposals(None).unwrap_or_default().iter().any(|p| p.kind == lh_memory::Kind::Archive && p.target_page.as_deref() == Some(older.id.as_str()) && p.status == "rejected");
+        if !older.pinned && !refused_before {
+            let _ = r.memory.add_proposal(NewProposal {
+                kind: lh_memory::Kind::Archive,
+                layer: older.layer,
+                title: older.title.clone(),
+                body: older.body.clone(),
+                gist: older.gist.clone(),
+                target_page: Some(older.id.clone()),
+                privacy: older.privacy,
+                privacy_reason: older.privacy_reason.clone(),
+                evidence,
+                conv: None,
+                project: older.project.clone(),
+            });
+        }
+        out.push((older.id.clone(), newer.id.clone(), why));
+    }
+    out
 }
 
 #[derive(Deserialize)]

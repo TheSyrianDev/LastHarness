@@ -50,7 +50,9 @@ impl Default for Options {
     }
 }
 
-/// Where the helper is looked for: the given path, `LH_PAGEVIEW_HELPER`, or next to the running program.
+/// Where the helper is looked for: the given path, `LH_PAGEVIEW_HELPER`, or next to the running program. Next to the
+/// program, the Servo helper (`lh-pageview-servo`, pages may run scripts) is used when it is there, and the Blitz
+/// helper (`lh-pageview-helper`, no scripts) otherwise. The crash tests always use Blitz: only it has test faults.
 pub fn helper_path(opts: &Options) -> Option<PathBuf> {
     if let Some(p) = &opts.helper {
         return Some(p.clone());
@@ -61,7 +63,8 @@ pub fn helper_path(opts: &Options) -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
     // beside the program, or one folder up (a test program lives in `deps/`)
-    [dir.join("lh-pageview-helper"), dir.parent()?.join("lh-pageview-helper")].into_iter().find(|p| p.is_file())
+    let names: &[&str] = if opts.fault == Fault::None { &["lh-pageview-servo", "lh-pageview-helper"] } else { &["lh-pageview-helper"] };
+    names.iter().flat_map(|n| [dir.join(n), dir.parent().map(|d| d.join(n)).unwrap_or_default()]).find(|p| p.is_file())
 }
 
 /// Why the page cannot be shown inside the app. The app shows its plain card and says this.

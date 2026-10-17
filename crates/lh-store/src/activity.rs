@@ -142,6 +142,27 @@ impl Store {
         })
     }
 
+    /// The newest activity number, or 0 when nothing is logged. A turn remembers it when it starts.
+    pub fn last_seq(&self) -> Result<i64> {
+        self.with(|c| c.query_row("select coalesce(max(seq), 0) from activity", [], |r| r.get(0)))
+    }
+
+    /// Put back every file this session wrote after activity `after`, newest first: the undo of one turn. Each
+    /// file is checked as `undo` checks it, so a file someone changed since is left alone and reported.
+    pub fn undo_since(&self, session: &str, after: i64) -> Result<Vec<(i64, String, UndoResult)>> {
+        let rows: Vec<(i64, String)> = self.with(|c| {
+            let mut q = c.prepare("select u.seq, u.path from undo u join activity a on a.seq = u.seq where a.session = ?1 and u.seq > ?2 and u.undone_at is null order by u.seq desc")?;
+            let rows = q.query_map((session, after), |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect()
+        })?;
+        let mut out = vec![];
+        for (seq, path) in rows {
+            let r = self.undo(seq, session)?;
+            out.push((seq, path, r));
+        }
+        Ok(out)
+    }
+
     /// Put the file written by activity `seq` back. Refuses if anything edited it since.
     pub fn undo(&self, seq: i64, session: &str) -> Result<UndoResult> {
         let row = self.with(|c| {
@@ -191,6 +212,25 @@ mod tests {
         let seq = s.log("tool_call", "s1", "assistant", &json!({"tool":"write_file"})).unwrap();
         s.log_file_change(seq, path, previous, content_hash(content)).unwrap();
         seq
+    }
+
+    #[test]
+    fn a_whole_turn_is_undone_newest_first() {
+        let (s, d) = (Store::open_memory().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (d.path().join("a.txt"), d.path().join("b.txt"));
+        logged_write(&s, &a, None, b"first turn");
+        let start = s.last_seq().unwrap();
+        logged_write(&s, &a, Some(b"first turn"), b"second turn");
+        logged_write(&s, &a, Some(b"second turn"), b"second turn, again");
+        logged_write(&s, &b, None, b"new file");
+        let other = s.log("tool_call", "s2", "assistant", &json!({})).unwrap();
+        s.log_file_change(other, &d.path().join("c.txt"), None, 0).unwrap();
+        let done = s.undo_since("s1", start).unwrap();
+        assert_eq!(done.len(), 3, "only this session's writes after the start: {done:?}");
+        assert!(done.iter().all(|(_, _, r)| matches!(r, UndoResult::Restored | UndoResult::Removed)), "{done:?}");
+        assert_eq!(std::fs::read(&a).unwrap(), b"first turn");
+        assert!(!b.exists(), "a file the turn made is removed");
+        assert!(s.undo_since("s1", start).unwrap().is_empty(), "nothing is undone twice");
     }
 
     #[test]

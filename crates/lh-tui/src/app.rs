@@ -18,6 +18,8 @@ pub struct Question {
     pub what: String,
     pub reason: String,
     pub worker: String,
+    /// The diff of a file write, or empty.
+    pub detail: String,
 }
 
 /// One suggestion from the end-of-session review, as the screen shows it.
@@ -130,7 +132,7 @@ impl App {
                     *result = Some(text);
                 }
             }
-            ServerEvent::Ask { id, tool, what, reason, worker } => self.question = Some(Question { id, tool, what, reason, worker }),
+            ServerEvent::Ask { id, tool, what, reason, worker, detail } => self.question = Some(Question { id, tool, what, reason, worker, detail }),
             ServerEvent::Usage { prompt_tokens, completion_tokens, cached_tokens } => self.usage = Some((prompt_tokens, completion_tokens, cached_tokens)),
             ServerEvent::Finish(r) => self.last_finish = Some(r),
             ServerEvent::Done { empty } => {
@@ -225,7 +227,7 @@ mod tests {
     #[test]
     fn a_question_blocks_until_the_turn_ends() {
         let mut a = App::new("m");
-        a.apply(ServerEvent::Ask { id: "a1".into(), tool: "write_file".into(), what: "w".into(), reason: "r".into(), worker: "assistant".into() });
+        a.apply(ServerEvent::Ask { id: "a1".into(), tool: "write_file".into(), what: "w".into(), reason: "r".into(), worker: "assistant".into(), detail: String::new() });
         assert_eq!(a.question.as_ref().unwrap().id, "a1");
         a.apply(ServerEvent::Error("boom".into()));
         assert!(a.question.is_none() && !a.busy);

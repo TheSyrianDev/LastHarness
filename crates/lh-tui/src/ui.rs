@@ -143,16 +143,25 @@ pub fn draw(f: &mut Frame, app: &App) {
         f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }).block(Block::default().borders(Borders::ALL).title("Memory review")), area);
     }
     if let Some(q) = &app.question {
-        let area = centered(f.area(), 70, 9);
+        // a file write shows its diff, as much as fits on the screen
+        let diff: Vec<&str> = q.detail.lines().take(f.area().height.saturating_sub(12) as usize).collect();
+        let area = centered(f.area(), 70, 9 + diff.len() as u16 + u16::from(!diff.is_empty()));
         f.render_widget(Clear, area);
-        let text = vec![
+        let mut text = vec![
             Line::from(Span::styled(if q.tool == "model_call" { "Spending check".to_string() } else { format!("{} wants to use {}", q.worker, q.tool) }, Style::new().bold())),
             Line::raw(""),
             Line::raw(clip(&q.what, 200)),
             Line::from(format!("Why it asks: {}", q.reason)),
-            Line::raw(""),
-            Line::from(Span::styled("y = allow    n = refuse", Style::new().fg(Color::Yellow).bold())),
         ];
+        if !diff.is_empty() {
+            text.push(Line::raw(""));
+            for l in diff {
+                let colour = if l.starts_with('+') { Color::Green } else if l.starts_with('-') { Color::Red } else { Color::Reset };
+                text.push(Line::from(Span::styled(l.to_string(), Style::new().fg(colour))));
+            }
+        }
+        text.push(Line::raw(""));
+        text.push(Line::from(Span::styled("y = allow    n = refuse", Style::new().fg(Color::Yellow).bold())));
         f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }).block(Block::default().borders(Borders::ALL).title("Permission needed")), area);
     }
 }
@@ -216,7 +225,7 @@ mod tests {
     #[test]
     fn a_question_is_drawn_over_the_chat() {
         let mut a = App::new("m");
-        a.apply(ServerEvent::Ask { id: "a1".into(), tool: "write_file".into(), what: "Write(\"/p/x\")".into(), reason: "changes files in the project".into(), worker: "assistant".into() });
+        a.apply(ServerEvent::Ask { id: "a1".into(), tool: "write_file".into(), what: "Write(\"/p/x\")".into(), reason: "changes files in the project".into(), worker: "assistant".into(), detail: String::new() });
         let s = screen(&a, 80, 20);
         assert!(s.contains("Permission needed") && s.contains("assistant wants to use write_file") && s.contains("y = allow"), "{s}");
     }

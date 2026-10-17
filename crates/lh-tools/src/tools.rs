@@ -83,6 +83,7 @@ pub enum Tool {
     OpenNote,
     Remember,
     Forget,
+    CodeLookup,
 }
 
 impl Tool {
@@ -101,6 +102,7 @@ impl Tool {
             Tool::OpenNote => "open_note",
             Tool::Remember => "remember",
             Tool::Forget => "forget",
+            Tool::CodeLookup => "code_lookup",
         }
     }
 
@@ -143,6 +145,10 @@ impl Tool {
                 "Save something about the user to their memory, when they ask you to remember it. The user is asked to confirm.",
                 json!({"type":"object","properties":{"text":{"type":"string"},"title":{"type":"string"},"layer":{"type":"string","enum":["preferences","facts","projects"]}},"required":["text"]}),
             ),
+            Tool::CodeLookup => (
+                "Ask the language server about code: where a name is defined, where it is used, what it is (hover), the names in a file, or its errors. Line and column count from 1.",
+                json!({"type":"object","properties":{"what":{"type":"string","enum":["definition","references","hover","symbols","diagnostics"]},"path":{"type":"string"},"line":{"type":"integer"},"column":{"type":"integer"}},"required":["what","path"]}),
+            ),
             Tool::Forget => ("Remove one note from the user's memory, when they ask you to forget it. Use recall first to find its id. The user is asked to confirm.", json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]})),
         };
         ToolDef { name: self.name().into(), description: description.into(), parameters }
@@ -155,7 +161,7 @@ impl Tool {
             Ok(root.join(p))
         };
         Ok(match self {
-            Tool::ReadFile | Tool::ListDir => Action::Read(path(args)?),
+            Tool::ReadFile | Tool::ListDir | Tool::CodeLookup => Action::Read(path(args)?),
             Tool::WriteFile => Action::Write(path(args)?),
             Tool::WebFetch => Action::Fetch(args["url"].as_str().ok_or_else(|| ToolError::Args("`url` must be a string".into()))?.to_string()),
             Tool::WebSearch => Action::Fetch(format!("search: {}", args["query"].as_str().ok_or_else(|| ToolError::Args("`query` must be a string".into()))?)),
@@ -234,6 +240,11 @@ impl Tool {
                 }
                 Ok(ToolOutput { text: format!("wrote {} bytes to {}", content.len(), p.strip_prefix(root).unwrap_or(&p).display()), undo })
             }
+            Tool::CodeLookup => {
+                let Action::Read(p) = self.action(args, root)? else { unreachable!() };
+                let (line, column) = (args["line"].as_u64().unwrap_or(1), args["column"].as_u64().unwrap_or(1));
+                set.lsp.lookup(root, args["what"].as_str().unwrap_or(""), &p, line, column).await.map(Into::into).map_err(ToolError::Failed)
+            }
             Tool::ListDir => {
                 let Action::Read(p) = self.action(args, root)? else { unreachable!() };
                 let mut rd = tokio::fs::read_dir(&p).await.map_err(|e| ToolError::Failed(format!("cannot list {}: {e}", p.display())))?;
@@ -248,7 +259,16 @@ impl Tool {
             Tool::RunCommand => {
                 let Action::Run(cmd) = self.action(args, root)? else { unreachable!() };
                 let secs = args["timeout_secs"].as_u64().unwrap_or(60).clamp(1, 600);
-                let mut child = tokio::process::Command::new("sh")
+                let bwrap = if set.sandbox { find_bwrap() } else { None };
+                let mut command = match &bwrap {
+                    Some(b) => {
+                        let mut c = tokio::process::Command::new(b);
+                        c.args(sandbox_args(root)).arg("sh");
+                        c
+                    }
+                    None => tokio::process::Command::new("sh"),
+                };
+                let mut child = command
                     .arg("-c")
                     .arg(&cmd)
                     .current_dir(root)
@@ -287,6 +307,21 @@ impl Tool {
             }
         }
     }
+}
+
+/// bubblewrap, if it is on this machine.
+fn find_bwrap() -> Option<std::path::PathBuf> {
+    ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"].iter().map(std::path::PathBuf::from).find(|p| p.is_file())
+}
+
+/// The sandbox: the whole system read-only, the chat's folder writable, a private /tmp, its own /dev and /proc.
+/// The network stays on, since builds and package tools need it; web access by the model goes through the web
+/// tools and their own rules. The process dies with the core.
+pub fn sandbox_args(root: &std::path::Path) -> Vec<std::ffi::OsString> {
+    let mut a: Vec<std::ffi::OsString> = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"].iter().map(Into::into).collect();
+    a.extend(["--bind".into(), root.as_os_str().to_owned(), root.as_os_str().to_owned()]);
+    a.extend(["--die-with-parent".into(), "--chdir".into(), root.as_os_str().to_owned()]);
+    a
 }
 
 /// What a command may see of the environment. The core's own variables can hold tokens and keys (a
@@ -367,11 +402,25 @@ pub struct ToolSet {
     memory: Option<std::sync::Arc<crate::MemoryHandle>>,
     skills: Option<std::sync::Arc<lh_learn::Learn>>,
     extras: Vec<std::sync::Arc<dyn ExtraTool>>,
+    pub(crate) hooks: Option<std::sync::Arc<crate::Hooks>>,
+    sandbox: bool,
+    /// Language servers started for this chat (see `lsp`).
+    pub(crate) lsp: std::sync::Arc<crate::lsp::Lsp>,
 }
 
 impl ToolSet {
+    /// Run commands under bubblewrap when it is installed (see `sandbox_args`).
+    pub fn with_sandbox(mut self, on: bool) -> Self {
+        self.sandbox = on;
+        self
+    }
+    /// Commands to run before and after tool calls (see `hooks`).
+    pub fn with_hooks(mut self, hooks: std::sync::Arc<crate::Hooks>) -> Self {
+        self.hooks = (!hooks.is_empty()).then_some(hooks);
+        self
+    }
     pub fn new(tools: impl IntoIterator<Item = Tool>) -> Self {
-        Self { guard: OutboundGuard::default(), tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None, extras: vec![] }
+        Self { guard: OutboundGuard::default(), tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None, extras: vec![], hooks: None, sandbox: false, lsp: Default::default() }
     }
     /// Check what web, image and MCP tools send out against this function before they run.
     pub fn with_outbound_guard(mut self, g: GuardFn) -> Self {
@@ -466,7 +515,12 @@ impl ToolSet {
 }
 
 pub fn default_tools() -> ToolSet {
-    ToolSet::new([Tool::ReadFile, Tool::WriteFile, Tool::ListDir, Tool::RunCommand, Tool::WebFetch, Tool::WebSearch])
+    let mut t = vec![Tool::ReadFile, Tool::WriteFile, Tool::ListDir, Tool::RunCommand, Tool::WebFetch, Tool::WebSearch];
+    // offered only when a language server is installed, so the model is never told about a tool that cannot work
+    if crate::lsp::any_server() {
+        t.push(Tool::CodeLookup);
+    }
+    ToolSet::new(t)
 }
 
 /// File name stem for a generated image: the first words of the prompt, lower case, letters and digits.
@@ -534,5 +588,27 @@ mod tests {
         assert_eq!(image_stem("../../etc/passwd"), "etc-passwd");
         assert_eq!(image_stem("مرحبا"), "image");
         assert_eq!(image_stem(&"word ".repeat(30)).len(), 39);
+    }
+}
+
+#[cfg(test)]
+mod sandbox_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn a_sandboxed_command_can_write_only_in_its_folder() {
+        if find_bwrap().is_none() {
+            return; // nothing to test without bubblewrap
+        }
+        // not under /tmp: the sandbox gives commands a private /tmp, which would hide a write there
+        let outer = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let root = outer.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        let set = ToolSet::new([Tool::RunCommand]).with_sandbox(true);
+        let out = Tool::RunCommand.run(&json!({"command": "touch inside && touch /tmp/t && touch ../outside; echo done"}), &root, &set).await.unwrap();
+        assert!(root.join("inside").exists(), "{}", out.text);
+        assert!(!outer.path().join("outside").exists(), "{}", out.text);
+        assert!(out.text.contains("Read-only file system"), "{}", out.text);
     }
 }

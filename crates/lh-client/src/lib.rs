@@ -15,7 +15,8 @@ pub enum ServerEvent {
     Text(String),
     ToolStart { id: String, name: String, arguments: String },
     ToolResult { id: String, text: String },
-    Ask { id: String, tool: String, what: String, reason: String, worker: String },
+    /// `detail`: more to look at before answering, such as the diff of a file write; often empty.
+    Ask { id: String, tool: String, what: String, reason: String, worker: String, detail: String },
     Usage { prompt_tokens: u64, completion_tokens: u64, cached_tokens: u64 },
     Finish(String),
     Done { empty: bool },
@@ -41,7 +42,7 @@ impl ServerEvent {
             "text" => Self::Text(s("text")),
             "tool_start" => Self::ToolStart { id: s("id"), name: s("name"), arguments: s("arguments") },
             "tool_result" => Self::ToolResult { id: s("id"), text: s("text") },
-            "ask" => Self::Ask { id: s("id"), tool: s("tool"), what: s("what"), reason: s("reason"), worker: s("worker") },
+            "ask" => Self::Ask { id: s("id"), tool: s("tool"), what: s("what"), reason: s("reason"), worker: s("worker"), detail: s("detail") },
             "usage" => Self::Usage { prompt_tokens: n("prompt_tokens"), completion_tokens: n("completion_tokens"), cached_tokens: n("cached_tokens") },
             "finish" => Self::Finish(s("reason")),
             "done" => Self::Done { empty: v["empty"].as_bool().unwrap_or(false) },

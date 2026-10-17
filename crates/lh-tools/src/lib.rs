@@ -13,7 +13,11 @@ mod web;
 
 pub use base_prompt::{base_prompt, display_name, estimate_tokens as estimate_text_tokens, format_params, identity_line, today, ymd, BaseContext, Identity, SessionKind, CAP_TOKENS, TARGET_TOKENS};
 pub use command::{classify, Class};
-pub use memory_tools::MemoryHandle;
+pub use memory_tools::{MemoryHandle, PrivacyJudge};
+pub mod diff;
+pub mod hooks;
+pub mod lsp;
+pub use hooks::Hooks;
 pub use compact::{compact_if_needed, SUMMARY_MARKER, estimate_tokens, CompactError, CompactOptions, Compacted};
 pub use perm::{Action, Answer, AskRequest, Asker, Decision, LivePerms, Mode, Permissions};
 pub use runner::{run_turn, Gate, Meter, MeterVerdict, Model, NoMeter, Outcome, TurnEnd, TurnEvent, TurnOptions};

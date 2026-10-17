@@ -23,6 +23,8 @@ pub enum Command {
     Direction(Direction),
     /// A chat width, from the built-in numbers or a preset.
     Width(ColumnWidth),
+    /// Put back the files the last turn of the open chat wrote.
+    UndoTurn,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +58,8 @@ pub struct Snapshot {
     /// The chat width in use, and the presets the person saved.
     pub column: ColumnWidth,
     pub presets: Vec<Preset>,
+    /// The open chat's last turn wrote files.
+    pub can_undo_turn: bool,
 }
 
 fn entry(command: Command, group: &'static str, title: impl Into<String>, hint: impl Into<String>) -> Entry {
@@ -72,6 +76,9 @@ pub fn entries(s: &Snapshot) -> Vec<Entry> {
         entry(Command::Settings, g_do, if ar { "الإعدادات" } else { "Settings" }, "Ctrl+Shift+S"),
         entry(Command::ToggleChatList, g_do, if ar { "إظهار قائمة المحادثات أو إخفاؤها" } else { "Show or hide the chat list" }, "Ctrl+B"),
     ];
+    if s.can_undo_turn {
+        v.push(entry(Command::UndoTurn, g_do, if ar { "التراجع عن تغييرات الملفات في آخر دور" } else { "Undo the file changes of the last turn" }, ""));
+    }
     for p in DOCK_TABS {
         let hint = match p {
             Panel::Content => "Ctrl+Shift+O",
@@ -212,7 +219,17 @@ mod tests {
             direction: Direction::Auto,
             column: ColumnWidth::Px(860.),
             presets: vec![Preset { name: "Reading".into(), width: ColumnWidth::Px(1010.) }, Preset { name: "Whole screen".into(), width: ColumnWidth::Full }],
+            can_undo_turn: false,
         }
+    }
+
+    #[test]
+    fn undo_turn_is_offered_only_after_a_turn_that_wrote() {
+        let has = |s: &Snapshot| entries(s).iter().any(|e| e.command == Command::UndoTurn);
+        let mut s = snap();
+        assert!(!has(&s));
+        s.can_undo_turn = true;
+        assert!(has(&s));
     }
 
     fn titles(e: &[Entry], idx: &[usize]) -> Vec<String> {

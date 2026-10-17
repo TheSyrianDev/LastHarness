@@ -62,11 +62,27 @@ pub fn summary(kind: &str, d: &Value) -> String {
             let cost = d["cost_micro_usd"].as_i64().map(|c| format!(", cost {}", dollars(c))).unwrap_or_default();
             format!("Sent a request to {} ({}){cost}", pick(&["provider"]).unwrap_or_default(), pick(&["model"]).unwrap_or_default())
         }
-        "setting_changed" => format!("Changed {}", pick(&["key", "setting"]).unwrap_or_else(|| "a setting".into())),
+        "setting_changed" => match pick(&["key", "setting"]) {
+            Some(k) => {
+                // the settings screen's own name for it; team settings are logged without their "team." part
+                let full = if crate::setting_names::info(&k).is_none() && crate::setting_names::info(&format!("team.{k}")).is_some() { format!("team.{k}") } else { k.clone() };
+                let name = crate::setting_names::info(&full).map_or(k.clone(), |i| format!("\"{}\"", i.title));
+                match pick(&["value"]).filter(|v| !v.is_empty()) {
+                    Some(v) => format!("Changed {name} to {}", short(&crate::setting_names::value_text(&full, &v), 60)),
+                    None => format!("Changed {name}"),
+                }
+            }
+            None => "Changed a setting".into(),
+        },
         "undo" => format!("Undid the change to {}", pick(&["path"]).unwrap_or_else(|| "a file".into())),
         "mcp_server" => format!("MCP server: {}", pick(&["op"]).unwrap_or_default()),
         "folder_trust" => format!("Folder decision: {}", pick(&["decision"]).unwrap_or_default()),
         "device" => format!("Device: {}", pick(&["op"]).unwrap_or_default()),
+        "startup" => "The core started".into(),
+        "schedule_ran" => format!("Scheduled task \"{}\" ran: {}", pick(&["name"]).unwrap_or_default(), pick(&["result"]).unwrap_or_default()),
+        "schedule_added" => format!("Added the scheduled task \"{}\"", pick(&["name"]).unwrap_or_default()),
+        "schedule_removed" => "Removed a scheduled task".into(),
+        "hooks_problem" => format!("hooks.toml could not be read: {}", pick(&["error"]).unwrap_or_default()),
         _ => match d {
             Value::Null => String::new(),
             Value::Object(m) if m.is_empty() => String::new(),
@@ -166,7 +182,12 @@ mod tests {
     #[test]
     fn each_kind_reads_in_words() {
         assert_eq!(summary("request_sent", &json!({"provider": "openai", "model": "gpt-4o", "cost_micro_usd": 12_500})), "Sent a request to openai (gpt-4o), cost $0.01");
-        assert_eq!(summary("setting_changed", &json!({"key": "web.listen"})), "Changed web.listen");
+        assert_eq!(summary("setting_changed", &json!({"key": "web.listen"})), "Changed \"Address for the browser and phone\"");
+        assert_eq!(summary("setting_changed", &json!({"key": "parallel", "value": "2"})), "Changed \"Workers at the same time\" to 2 workers");
+        assert_eq!(summary("setting_changed", &json!({"key": "unavailable", "value": "stop"})), "Changed \"When a model is missing\" to Stop and tell me");
+        assert_eq!(summary("startup", &json!({"provider": "x"})), "The core started");
+        assert_eq!(summary("schedule_ran", &json!({"name": "news", "result": "ok"})), "Scheduled task \"news\" ran: ok");
+        assert_eq!(summary("setting_changed", &json!({"key": "made.up"})), "Changed made.up");
         assert_eq!(summary("tool_call", &json!({"tool": "bash", "incognito": true})), "Used bash (private chat, details not kept)");
         assert_eq!(summary("undo", &json!({"path": "/a/b.txt"})), "Undid the change to /a/b.txt");
         assert_eq!(summary("mystery", &Value::Null), "");

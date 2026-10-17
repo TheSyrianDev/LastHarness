@@ -10,6 +10,7 @@
 //! POST   /v1/sessions/{id}/model            {model}  switch model (the prompt is rebuilt; a cold read follows)
 //! POST   /v1/sessions/{id}/answers/{ask}    {answer: "yes"|"no"}
 //! POST   /v1/sessions/{id}/cancel
+//! POST   /v1/sessions/{id}/undo_turn          -> {files: [{seq, path, result: restored|removed|refused, message?}]}
 //! GET    /v1/activity?limit=&kind=          -> {entries: [...]}  newest first
 //! GET    /v1/events                         -> SSE: app-wide news (`title` when a chat is named)
 //! POST   /v1/activity/{seq}/undo            -> {result: restored|removed|refused, message}
@@ -26,6 +27,7 @@
 pub mod auth;
 pub mod idle;
 pub mod channels;
+pub mod schedules_api;
 mod chats_api;
 mod export_api;
 pub mod kv_cache;
@@ -123,6 +125,10 @@ pub struct Live {
     pub recall: lh_memory::RecallConfig,
     pub tree_summarize: String,
     pub title_model: String,
+    /// `memory.check_model`: the local model that looks for notes that disagree when the app is idle. Empty: off.
+    pub check_model: String,
+    /// `tools.sandbox`: run commands under bubblewrap.
+    pub sandbox: bool,
     pub web: lh_tools::WebConfig,
     pub image_model: Option<String>,
 }
@@ -144,6 +150,8 @@ pub struct AppState<M> {
     pub secrets: std::sync::OnceLock<Arc<dyn lh_secrets::SecretStore>>,
     /// News for every open client that is not tied to one turn, such as a chat getting its title. See `/v1/events`.
     pub events: tokio::sync::broadcast::Sender<Value>,
+    /// Pairs of note versions already shown to the contradiction check in this run.
+    pub(crate) checked_pairs: Mutex<std::collections::HashSet<(String, i64, String, i64)>>,
 }
 
 impl<M: Model + 'static> AppState<M> {
@@ -241,6 +249,12 @@ impl<M: Model + 'static> AppState<M> {
                     l.recall.budget_chars = cfg.get_num("memory.recall_chars").unwrap_or(l.recall.budget_chars);
                 }
             }
+            if touched("memory.check_model") {
+                l.check_model = cfg.get("memory.check_model");
+            }
+            if touched("tools.sandbox") {
+                l.sandbox = cfg.get("tools.sandbox") != "false";
+            }
             if touched("tree.") {
                 l.tree_summarize = cfg.get("tree.summarize");
             }
@@ -272,7 +286,7 @@ impl<M: Model + 'static> AppState<M> {
     pub fn new(model: M, settings: Settings) -> Arc<Self> {
         let model = Arc::new(model);
         let idle = idle::Idle::new(settings.idle_after);
-        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), web: settings.web.clone(), image_model: settings.image_model.clone() };
+        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, web: settings.web.clone(), image_model: settings.image_model.clone() };
         let perms = Arc::new(lh_tools::LivePerms::new(settings.bypass, settings.ask_all, settings.sudo_enabled));
         {
             let (model, store) = (model.clone(), settings.store.clone());
@@ -299,7 +313,23 @@ impl<M: Model + 'static> AppState<M> {
         }
         tokio::spawn(idle.clone().run());
         let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
-        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms, secrets: std::sync::OnceLock::new(), events: tokio::sync::broadcast::channel(64).0 })
+        let st = Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms, secrets: std::sync::OnceLock::new(), events: tokio::sync::broadcast::channel(64).0, checked_pairs: Default::default() });
+        // when idle, look for notes that disagree, if a local model is set for it
+        let weak = Arc::downgrade(&st);
+        st.idle.on_change(move |going_idle| {
+            let Some(st) = weak.upgrade().filter(|_| going_idle) else { return };
+            let model = st.live().check_model.clone();
+            if model.is_empty() {
+                return;
+            }
+            tokio::spawn(async move {
+                let found = memory_api::check_contradictions(&st, &model).await;
+                if !found.is_empty() {
+                    let _ = st.settings.store.log("memory_contradictions", "-", "maintenance", &json!({"pairs": found.len()}));
+                }
+            });
+        });
+        st
     }
 
     pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
@@ -323,6 +353,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/sessions/{id}/model", post(switch_model::<M>))
         .route("/v1/sessions/{id}/answers/{ask}", post(answer::<M>))
         .route("/v1/sessions/{id}/cancel", post(cancel::<M>))
+        .route("/v1/sessions/{id}/undo_turn", post(undo_turn::<M>))
         .route("/v1/status", get(status::<M>))
         .merge(memory_api::routes::<M>())
         .merge(learn_api::routes::<M>())
@@ -332,6 +363,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(provider_api::routes::<M>())
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
+        .merge(schedules_api::routes::<M>())
         .merge(chats_api::routes::<M>())
         .merge(tree_api::routes::<M>())
 }
@@ -471,7 +503,7 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         if b.channel {
             d.trust = lh_memory::Trust::AnyCloud; // a chat service can read everything sent through it
         }
-        let _ = rt.memory.scan(); // pick up pages edited by hand
+        let _ = rt.memory.scan_if_changed(); // pick up pages edited by hand
         let (text, refs) = rt.memory.about_you(&d, &live.recall).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         if !text.is_empty() {
             let pages: Vec<Value> = refs.iter().map(|r| json!({"page": r.id, "version": r.version})).collect();
@@ -482,7 +514,23 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         let _ = rt.memory.set_conversation_meta(&id, &model_name, mode_name);
         conv = Some(id.clone());
         if tools_on {
-            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: live.recall.clone(), layers: None }));
+            // on a model on this machine, that model also judges what remember saves, as the review does
+            let judge: Option<lh_tools::PrivacyJudge> = (d.trust == lh_memory::Trust::Local).then(|| {
+                let (model, name) = (st.model.clone(), model_name.clone());
+                let judge: lh_tools::PrivacyJudge = Arc::new(move |note: String| {
+                    let (model, name) = (model.clone(), name.clone());
+                    Box::pin(async move {
+                        let mut req = ChatRequest { model: name, messages: vec![Message::user(format!("{}{note}", lh_memory::JUDGE_PROMPT))], max_tokens: Some(1500), ..Default::default() };
+                        req.sampling.extra.insert("chat_template_kwargs".into(), json!({"enable_thinking": false}));
+                        match model.complete(&req, &mut |_| {}).await {
+                            Ok(r) => lh_memory::parse_judgement(&r.text),
+                            Err(_) => lh_memory::Judgement::Unsure,
+                        }
+                    })
+                });
+                judge
+            });
+            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: live.recall.clone(), layers: None, judge }));
         }
         dest = Some(d);
         let (m, e) = (rt.memory.clone(), rt.embedder.clone());
@@ -633,9 +681,18 @@ fn session_tools(s: &Settings, live: &Live, tools_on: bool) -> lh_tools::ToolSet
     if !tools_on {
         return lh_tools::ToolSet::default(); // plain chat: the model is told about no tools
     }
-    let mut t = default_tools().with_web(live.web.clone());
+    let mut t = default_tools().with_web(live.web.clone()).with_sandbox(live.sandbox);
     if let Some(g) = outbound_guard(s) {
         t = t.with_outbound_guard(g);
+    }
+    // hooks.toml beside the settings file, read for each new chat so an edit counts from the next chat on
+    if let Some(cfg) = &s.config {
+        match lh_tools::Hooks::load(&cfg.with_file_name("hooks.toml")) {
+            Ok(h) => t = t.with_hooks(Arc::new(h)),
+            Err(e) => {
+                let _ = s.store.log("hooks_problem", "-", "lhd", &json!({"error": e}));
+            }
+        }
     }
     match &live.image_model {
         Some(m) => t.with_images(m.clone()),
@@ -783,6 +840,7 @@ async fn start_turn<M: Model + 'static>(
     if !s.try_start() {
         return Err(ApiError(StatusCode::CONFLICT, "a turn is already running in this session".into()));
     }
+    s.turn_start.store(st.settings.store.last_seq().unwrap_or(0), Ordering::SeqCst);
     let (tx, rx) = mpsc::unbounded_channel::<(String, Value)>();
     let task = {
         let live = st.live();
@@ -815,6 +873,8 @@ async fn start_turn<M: Model + 'static>(
             }
             let mut user_text = b.text.clone();
             if let (Some(rt), Some(dest), false) = (&st2.settings.memory, &s.dest, s.incognito) {
+                // pages edited by hand since the last message count from this one on
+                let _ = rt.memory.scan_if_changed();
                 // notes that match this message, from the keyword search and, if set up, the embedding search
                 let semantic = if rt.embedder.is_on() { rt.memory.semantic_search(&*rt.embedder, &b.text, 10).await.unwrap_or_default() } else { vec![] };
                 let already = s.injected.lock().unwrap().clone();
@@ -956,6 +1016,28 @@ async fn cancel<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
     // Dropping the client's stream does the work; this only frees questions that are waiting.
     st.session(&id)?.finish_turn();
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Put back every file the last turn of this chat wrote. Files changed by someone else since are left alone and
+/// listed, so nothing the user did is lost.
+async fn undo_turn<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+    let s = st.session(&id)?;
+    if !s.try_start() {
+        return Err(ApiError(StatusCode::CONFLICT, "a turn is running in this session".into()));
+    }
+    let r = st.settings.store.undo_since(&id, s.turn_start.load(Ordering::SeqCst));
+    s.finish_turn();
+    use lh_store::UndoResult::*;
+    let files: Vec<Value> = r
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .into_iter()
+        .map(|(seq, path, r)| match r {
+            Restored => json!({"seq": seq, "path": path, "result": "restored"}),
+            Removed => json!({"seq": seq, "path": path, "result": "removed"}),
+            Refused(m) => json!({"seq": seq, "path": path, "result": "refused", "message": m}),
+        })
+        .collect();
+    Ok(Json(json!({"files": files})))
 }
 
 #[derive(Deserialize)]
