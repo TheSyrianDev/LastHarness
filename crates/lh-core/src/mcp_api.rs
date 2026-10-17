@@ -196,12 +196,21 @@ async fn remove<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(nam
 
 #[derive(Deserialize)]
 struct FolderQuery {
-    folder: String,
+    /// Left out, the answer is the list of every folder that has a decision.
+    folder: Option<String>,
 }
 
 async fn get_trust<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Query(q): Query<FolderQuery>) -> Result<Json<Value>, ApiError> {
     let r = rt(&st)?;
-    let folder = std::fs::canonicalize(&q.folder).map(|p| p.to_string_lossy().to_string()).unwrap_or(q.folder);
+    let Some(asked) = q.folder else {
+        let saved: Vec<String> = r.saved.lock().unwrap().trust.keys().cloned().collect();
+        let folders: Vec<Value> = saved
+            .into_iter()
+            .map(|f| json!({"folder": f, "decision": r.decision(&f), "exists": FsPath::new(&f).is_dir(), "mcp": folder_servers(&f).iter().map(|(n, t)| json!({"name": n, "runs": t.display()})).collect::<Vec<_>>()}))
+            .collect();
+        return Ok(Json(json!({"folders": folders})));
+    };
+    let folder = std::fs::canonicalize(&asked).map(|p| p.to_string_lossy().to_string()).unwrap_or(asked);
     let servers = folder_servers(&folder);
     Ok(Json(json!({"folder": folder, "decision": r.decision(&folder), "mcp": servers.iter().map(|(n, t)| json!({"name": n, "runs": t.display()})).collect::<Vec<_>>()})))
 }
@@ -215,7 +224,12 @@ struct SetTrust {
 
 async fn set_trust<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<SetTrust>) -> Result<Json<Value>, ApiError> {
     let r = rt(&st)?;
-    let folder = std::fs::canonicalize(&b.folder).map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("{}: {e}", b.folder)))?.to_string_lossy().to_string();
+    // a folder that is gone can still be forgotten, by the name it was saved under
+    let folder = match std::fs::canonicalize(&b.folder) {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(_) if b.decision == "forget" => b.folder.clone(),
+        Err(e) => return Err(ApiError(StatusCode::BAD_REQUEST, format!("{}: {e}", b.folder))),
+    };
     match b.decision.as_str() {
         "trust" | "own" => {
             let h = folder_hash(&folder);

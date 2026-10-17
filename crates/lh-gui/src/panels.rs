@@ -567,11 +567,29 @@ impl App {
         if show_appearance {
             col = col.child(self.appearance_block(cx));
         }
+        if !searching {
+            if let Some(body) = self.pg_page(page, window, cx) {
+                return col.child(body).into_any_element();
+            }
+        }
+        // Models and keys, Learning and Departments draw their own editors; the cards they replace are left out
+        if !searching && self.connected {
+            if let Some(extra) = self.extra_page(page, window, cx) {
+                col = col.child(extra);
+                shown.retain(|&i| !matches!(page, Category::Models) || !self.panels.settings[i].key.starts_with("provider."));
+                if page == Category::Departments {
+                    shown.clear();
+                }
+            }
+        }
         if !self.connected && !show_appearance {
             return col.child(self.note("The core is not running, so these settings cannot be shown.")).into_any_element();
         }
         for i in shown.iter().copied() {
             col = col.child(self.setting_card(i, window, cx));
+        }
+        if !searching && page == Category::Web {
+            col = col.child(self.pg_devices(window, cx));
         }
         if searching && !show_appearance && shown.is_empty() {
             col = col.child(self.note("No setting matches. Try fewer or different words."));

@@ -197,12 +197,18 @@ fn role_json(r: &Role) -> Value {
         Target::Type(t) => ("type", t.clone()),
         Target::Model(m) => ("model", m.clone()),
     };
-    json!({"name": r.name, "description": r.description, "target": {"kind": kind, "value": value}, "tools": r.tools, "max_steps": r.max_steps, "thinking": r.thinking, "text": r.render()})
+    let memory = match &r.memory {
+        MemorySlice::None => "none".to_string(),
+        MemorySlice::All => "all".to_string(),
+        MemorySlice::Layers(l) => l.iter().map(|x| x.as_str()).collect::<Vec<_>>().join(" "),
+    };
+    let sm = &r.sampling;
+    json!({"name": r.name, "description": r.description, "target": {"kind": kind, "value": value}, "tools": r.tools, "memory": memory, "sampling": {"temperature": sm.temperature, "top_p": sm.top_p, "top_k": sm.top_k, "min_p": sm.min_p, "repeat_penalty": sm.repeat_penalty}, "instructions": r.instructions, "max_steps": r.max_steps, "thinking": r.thinking, "text": r.render()})
 }
 
 fn dept_json(d: &Department) -> Value {
     let members: Vec<String> = d.members.iter().map(|m| match m { Member::Role(r) => r.clone(), Member::Dept(x) => format!("dept:{x}") }).collect();
-    json!({"name": d.name, "description": d.description, "lead": d.lead, "members": members, "parallel": d.parallel, "attempts": d.attempts, "text": d.render()})
+    json!({"name": d.name, "description": d.description, "lead": d.lead, "members": members, "parallel": d.parallel, "attempts": d.attempts, "instructions": d.instructions, "text": d.render()})
 }
 
 fn type_json(t: &ModelType) -> Value {

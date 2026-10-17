@@ -14,6 +14,8 @@ pub mod layout;
 pub mod model;
 pub mod motion;
 pub mod models;
+pub mod pages;
+pub mod pages_logic;
 pub mod palette;
 pub mod permissions;
 pub mod prefs;

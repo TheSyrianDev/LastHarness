@@ -174,10 +174,14 @@ pub struct App {
     pub setting_list: Option<String>,
     /// The web page drawn inside the Opened tab, while it is shown.
     pub page: Option<crate::page_ui::PageState>,
+    /// The extra Settings pages (tools, channels, devices, data, activity): what they loaded and their forms.
+    pub pg: crate::extra_ui::PgState,
     /// The page shown in Settings, the box that searches all pages, and keyboard focus for the list of pages.
     pub settings_page: lh_gui::setting_names::Category,
     pub settings_search: Entity<InputState>,
     pub settings_nav_focus: FocusHandle,
+    /// The Models and keys, Learning and Departments pages of Settings.
+    pub sp: crate::pages_ui::PageState,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -421,9 +425,11 @@ impl App {
             setting_inputs: HashMap::new(),
             setting_list: None,
             page: None,
+            pg: Default::default(),
             settings_page,
             settings_search,
             settings_nav_focus: cx.focus_handle(),
+            sp: Default::default(),
         }
     }
 
@@ -841,6 +847,7 @@ impl App {
                 self.pending = None;
                 self.persist();
             }
+            Ev::Reply { tag, result } if tag.starts_with("pg|") || tag.starts_with("pg-do|") => self.on_page_reply(&tag, result),
             Ev::Reply { tag, result } => self.on_reply(&tag, result),
             Ev::RunStarted { run, department, goal } => {
                 if !self.panels.run_order.contains(&run) {
@@ -865,6 +872,7 @@ impl App {
     // ---- side panels --------------------------------------------------------------------------
 
     pub fn load_panels(&mut self) {
+        self.pg_reload();
         for (tag, path) in [("departments", "/v1/team/departments"), ("memory", "/v1/memory/pages"), ("proposals", "/v1/memory/proposals"), ("settings", "/v1/settings"), ("runs", "/v1/team/runs")] {
             self.backend.send(Cmd::Call { tag: tag.into(), method: "GET".into(), path: path.into(), body: None });
         }
@@ -909,6 +917,7 @@ impl App {
             }
             ("run", Err(e)) => p.goal_note = Some(e),
             (t, r) if t.starts_with("tree") => self.on_tree_reply(t, r),
+            (t, r) if t.starts_with("pg:") || t.starts_with("pg-act:") => self.on_pg_reply(t, r),
             (t, Ok(_)) if t.starts_with("setting:") => {
                 p.settings_error = None;
                 p.setting_errors.remove(&t["setting:".len()..]);
@@ -1051,6 +1060,7 @@ impl App {
         self.palette = None;
         self.model_menu = false;
         self.settings_open = true;
+        self.pg.last_page = None;
         if self.connected {
             self.load_panels();
         }

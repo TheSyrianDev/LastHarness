@@ -238,6 +238,11 @@ async fn the_activity_log_records_tool_calls_and_a_write_can_be_undone() {
     assert_eq!(log["entries"][1]["detail"]["outcome"], "allowed_by_user");
 
     let seq = call_entry["seq"].as_i64().unwrap();
+    assert_eq!(call_entry["undoable"], true);
+    assert_eq!(log["entries"][1]["undoable"], false);
+    let spent: Value = s.get("/v1/spend").send().await.unwrap().json().await.unwrap();
+    assert_eq!(spent["today"]["micro_usd"], 0);
+    assert!(spent["providers"].is_array());
     let r: Value = s.post(&format!("/v1/activity/{seq}/undo"), json!({})).send().await.unwrap().json().await.unwrap();
     assert_eq!(r["result"], "restored");
     assert_eq!(std::fs::read_to_string(d.path().join("n.txt")).unwrap(), "v1");

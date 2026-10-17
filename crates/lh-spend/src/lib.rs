@@ -8,7 +8,7 @@ mod meter;
 mod policy;
 
 pub use config::{Config, Mode, Price};
-pub use meter::SpendMeter;
+pub use meter::{SpendMeter, Summary};
 pub use policy::{decide, Totals, Verdict};
 
 /// Format micro-USD for people: `$0.42`, or four decimals under a cent.

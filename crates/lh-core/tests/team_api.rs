@@ -125,6 +125,9 @@ async fn starter_roles_types_and_settings_can_be_read_and_changed() {
     assert!(names.contains(&"planner") && names.contains(&"coder"));
     let coder = s.get("/v1/team/roles/coder").await;
     assert_eq!(coder["target"]["kind"], "type");
+    // the form fields the settings screen needs come with the role
+    assert!(coder["instructions"].as_str().unwrap().starts_with("You write and change code"));
+    assert_eq!((coder["memory"].as_str(), coder["sampling"]["temperature"].as_f64().map(|t| (t * 10.).round() as i64), coder["sampling"]["top_k"].is_null()), (Some("preferences projects"), Some(2), true));
     // edit through the file text, then roll back
     let text = coder["text"].as_str().unwrap().replace("Writes, changes and tests code.", "Writes and tests code carefully.");
     let (code, saved) = s.put("/v1/team/roles/coder", json!({"text": text})).await;

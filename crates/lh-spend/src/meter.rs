@@ -24,6 +24,19 @@ pub struct SpendMeter {
     session: String,
 }
 
+/// What was spent, for the Activity page. Money is in micro-USD.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Summary {
+    pub today: i64,
+    pub today_calls: i64,
+    pub this_month: i64,
+    pub month_calls: i64,
+    /// Calls this month with no known price.
+    pub unpriced: i64,
+    /// This month: provider, micro-USD, calls. Most expensive first.
+    pub by_provider: Vec<(String, i64, i64)>,
+}
+
 /// Fewer bytes per token than English text really has, so the estimate errs high.
 const BYTES_PER_TOKEN: usize = 3;
 /// Used when the request sets no output limit.
@@ -65,6 +78,27 @@ impl SpendMeter {
                 .unwrap_or(0)
         };
         Totals { today: sum(day), this_month: sum(month) }
+    }
+
+    /// Spending today and this month (UTC), and this month per provider, for people to read. `unpriced` counts
+    /// calls whose cost is unknown because the model has no price.
+    pub fn summary(&self) -> Summary {
+        let t = now();
+        let (day, month) = (t - t.rem_euclid(86_400), month_start(t));
+        let sum = |since: i64| self.shared.store.with(|c| c.query_row("select coalesce(sum(cost_micro_usd), 0), count(*) from spend where at >= ?1", [since], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))).unwrap_or((0, 0));
+        let unpriced = self.shared.store.with(|c| c.query_row("select count(*) from spend where at >= ?1 and cost_micro_usd is null", [month], |r| r.get::<_, i64>(0))).unwrap_or(0);
+        let by_provider = self
+            .shared
+            .store
+            .with(|c| {
+                let mut q = c.prepare("select provider, coalesce(sum(cost_micro_usd), 0), count(*) from spend where at >= ?1 group by provider order by 2 desc, 1")?;
+                let rows = q.query_map([month], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)))?.collect::<Result<Vec<_>, _>>();
+                rows
+            })
+            .unwrap_or_default();
+        let (today, today_calls) = sum(day);
+        let (this_month, month_calls) = sum(month);
+        Summary { today, today_calls, this_month, month_calls, unpriced, by_provider }
     }
 
     /// Worst-case cost of this request in micro-USD, or `None` if the model has no known price.
@@ -200,6 +234,19 @@ mod tests {
         assert_eq!(month_start(1791590400 + 4000), 1790812800); // 2026-10-10 -> 2026-10-01
         assert_eq!(month_start(1790812800 - 1), 1788220800); // 2026-09-30 -> 2026-09-01
         assert_eq!(month_start(1709164800 + 5), 1706745600); // leap day
+    }
+
+    #[tokio::test]
+    async fn the_summary_adds_up_per_provider() {
+        let m = meter(gpt_cfg(Mode::None), false);
+        m.after(&req("gpt-4o", 100), Some(Usage { prompt_tokens: 0, completion_tokens: 1000, cached_tokens: 0 })).await;
+        m.after(&req("mystery", 100), Some(Usage::default())).await;
+        let s = m.summary();
+        assert_eq!(s.today, 10_000);
+        assert_eq!(s.this_month, 10_000);
+        assert_eq!((s.today_calls, s.month_calls, s.unpriced), (2, 2, 1));
+        assert_eq!(s.by_provider, vec![("test".to_string(), 10_000, 2)]);
+        assert_eq!(meter(Config::default(), true).summary(), Summary::default());
     }
 
     #[test]

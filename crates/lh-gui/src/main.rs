@@ -2,6 +2,8 @@
 
 mod app;
 mod page_ui;
+mod extra_ui;
+mod pages_ui;
 mod panels;
 mod style;
 mod tray;

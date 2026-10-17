@@ -12,25 +12,37 @@ pub enum Category {
     Models,
     Chats,
     Memory,
+    /// Rules, the style text and skills. No core setting lives here; the page is built from its own calls.
+    Learning,
     Departments,
     Permissions,
     Spending,
     Web,
+    /// MCP servers and folder trust. Not core settings; the page is drawn by the app.
+    Tools,
+    Channels,
+    Data,
+    Activity,
     Updates,
     /// Settings the core has that this table does not name yet.
     Other,
 }
 
 impl Category {
-    pub const ALL: [Category; 10] = [
+    pub const ALL: [Category; 15] = [
         Category::Appearance,
         Category::Models,
         Category::Chats,
         Category::Memory,
+        Category::Learning,
         Category::Departments,
         Category::Permissions,
         Category::Spending,
         Category::Web,
+        Category::Tools,
+        Category::Channels,
+        Category::Data,
+        Category::Activity,
         Category::Updates,
         Category::Other,
     ];
@@ -42,10 +54,15 @@ impl Category {
             Category::Models => "models",
             Category::Chats => "chats",
             Category::Memory => "memory",
+            Category::Learning => "learning",
             Category::Departments => "departments",
             Category::Permissions => "permissions",
             Category::Spending => "spending",
             Category::Web => "web",
+            Category::Tools => "tools",
+            Category::Channels => "channels",
+            Category::Data => "data",
+            Category::Activity => "activity",
             Category::Updates => "updates",
             Category::Other => "other",
         }
@@ -59,13 +76,18 @@ impl Category {
     pub fn title(self) -> &'static str {
         match self {
             Category::Appearance => "Appearance",
-            Category::Models => "Models",
+            Category::Models => "Models and keys",
             Category::Chats => "Chats and speed",
             Category::Memory => "Memory and learning",
+            Category::Learning => "Learning",
             Category::Departments => "Departments",
             Category::Permissions => "Permissions",
             Category::Spending => "Spending",
             Category::Web => "Web and phone",
+            Category::Tools => "Tools and MCP",
+            Category::Channels => "Channels",
+            Category::Data => "Your data",
+            Category::Activity => "Activity",
             Category::Updates => "Updates and reports",
             Category::Other => "More",
         }
@@ -75,13 +97,18 @@ impl Category {
     pub fn blurb(self) -> &'static str {
         match self {
             Category::Appearance => "How the window looks and how wide the chat is.",
-            Category::Models => "Where your models come from.",
+            Category::Models => "Where your models come from, and the key to reach them.",
             Category::Chats => "How chats are kept, shortened and resumed.",
             Category::Memory => "What the app remembers and what it learns from you.",
-            Category::Departments => "How departments work on a big goal.",
+            Category::Learning => "Rules, how I talk to you, and skills, with a way back for each change.",
+            Category::Departments => "Departments, their roles and model types, and how they work on a big goal.",
             Category::Permissions => "What agents may do without asking. Take care here.",
             Category::Spending => "What happens when a model service costs money.",
             Category::Web => "Web search, and reaching the app from a browser or a phone.",
+            Category::Tools => "Servers that give the assistant more tools, and folders that may bring their own.",
+            Category::Channels => "Talk to the assistant from Telegram, Matrix, Signal or Slack. All are off until you switch them on.",
+            Category::Data => "Take your memory, rules and roles with you, and start with the computer.",
+            Category::Activity => "What the assistant did, newest first, and what it cost.",
             Category::Updates => "Updates and crash reports.",
             Category::Other => "Settings that have no page of their own yet.",
         }
@@ -275,11 +302,18 @@ pub fn appearance_matches(query: &str) -> bool {
     query.split_whitespace().all(|w| APPEARANCE_WORDS.contains(&w.to_lowercase()))
 }
 
-/// The pages to list in the sidebar: Appearance always, then every other page that has at least one setting, in
-/// the usual order. `keys` are the keys the core listed.
+impl Category {
+    /// Pages the app draws itself, listed even when the core has no setting for them.
+    pub fn always_listed(self) -> bool {
+        matches!(self, Category::Appearance | Category::Tools | Category::Channels | Category::Data | Category::Activity)
+    }
+}
+
+/// The pages to list in the sidebar: the pages the app draws itself, then every other page that has at least one
+/// setting, in the usual order. Learning has no settings of its own and shows whenever the core is there. `keys` are the keys the core listed.
 pub fn pages<'a>(keys: impl IntoIterator<Item = &'a str>) -> Vec<Category> {
     let used: Vec<Category> = keys.into_iter().map(|k| describe(k, "").category).collect();
-    Category::ALL.into_iter().filter(|c| *c == Category::Appearance || used.contains(c)).collect()
+    Category::ALL.into_iter().filter(|c| c.always_listed() || used.contains(c) || (*c == Category::Learning && !used.is_empty())).collect()
 }
 
 /// The page above or below this one in the sidebar, stopping at the ends.
@@ -425,9 +459,9 @@ mod tests {
         let keys: Vec<&str> = lh_config::SCHEMA.iter().map(|d| d.key).collect();
         let p = pages(keys.iter().copied());
         assert_eq!(p[0], Category::Appearance);
-        assert_eq!(p.len(), 9, "nine pages, and More only when something is unnamed: {p:?}");
+        assert_eq!(p.len(), 14, "nine pages with settings, Learning, four the app draws, and More only when something is unnamed: {p:?}");
         assert!(!p.contains(&Category::Other));
-        assert_eq!(pages(std::iter::empty()), vec![Category::Appearance], "with the core away only Appearance shows");
+        assert_eq!(pages(std::iter::empty()), vec![Category::Appearance, Category::Tools, Category::Channels, Category::Data, Category::Activity], "with the core away only the pages the app draws show");
         assert_eq!(neighbour(&p, Category::Appearance, false), Category::Appearance, "stops at the top");
         assert_eq!(neighbour(&p, Category::Appearance, true), p[1]);
         assert_eq!(neighbour(&p, *p.last().unwrap(), true), *p.last().unwrap(), "stops at the bottom");

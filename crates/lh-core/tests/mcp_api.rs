@@ -185,4 +185,18 @@ async fn a_folders_own_servers_load_only_after_the_user_trusts_the_folder() {
     one_turn(&s, third["id"].as_str().unwrap(), "no").await;
     assert!(!tool_names(&s, 3).iter().any(|n| n.starts_with("mcp__")));
     assert_eq!(s.call(reqwest::Method::POST, "/v1/trust", json!({"folder": proj, "decision": "maybe"})).await.0, 400);
+
+    // every decision can be listed, and revoked even after the folder is gone
+    let all = s.get("/v1/trust").await;
+    assert_eq!(all["folders"].as_array().unwrap().len(), 1, "{all}");
+    assert_eq!(all["folders"][0]["decision"], "own");
+    assert_eq!(all["folders"][0]["exists"], true);
+    let gone = s.dir.path().join("gone");
+    std::fs::create_dir_all(&gone).unwrap();
+    s.call(reqwest::Method::POST, "/v1/trust", json!({"folder": gone, "decision": "trust"})).await;
+    let gone_real = std::fs::canonicalize(&gone).unwrap();
+    std::fs::remove_dir(&gone).unwrap();
+    assert_eq!(s.get("/v1/trust").await["folders"].as_array().unwrap().len(), 2);
+    assert_eq!(s.call(reqwest::Method::POST, "/v1/trust", json!({"folder": gone_real, "decision": "forget"})).await.0, 200);
+    assert_eq!(s.get("/v1/trust").await["folders"].as_array().unwrap().len(), 1);
 }

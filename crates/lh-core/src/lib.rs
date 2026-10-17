@@ -31,6 +31,7 @@ pub mod kv_cache;
 mod learn_api;
 mod mcp_api;
 mod memory_api;
+pub mod provider_api;
 mod session;
 pub mod web;
 mod settings_api;
@@ -138,6 +139,8 @@ pub struct AppState<M> {
     live: std::sync::RwLock<Arc<Live>>,
     /// Permission settings shared with every chat and worker, read at each tool call.
     perms: Arc<lh_tools::LivePerms>,
+    /// Where API keys are kept: the system secret store unless a test sets another.
+    pub secrets: std::sync::OnceLock<Arc<dyn lh_secrets::SecretStore>>,
 }
 
 impl<M: Model + 'static> AppState<M> {
@@ -293,7 +296,7 @@ impl<M: Model + 'static> AppState<M> {
         }
         tokio::spawn(idle.clone().run());
         let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
-        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms })
+        Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms, secrets: std::sync::OnceLock::new() })
     }
 
     pub(crate) fn session(&self, id: &str) -> Result<Arc<Session>, ApiError> {
@@ -309,6 +312,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/capabilities", get(capabilities::<M>))
         .route("/v1/activity", get(activity::<M>))
         .route("/v1/activity/{seq}/undo", post(undo::<M>))
+        .route("/v1/spend", get(spend::<M>))
         .route("/v1/sessions", post(create_session::<M>))
         .route("/v1/sessions/{id}", get(get_session::<M>).delete(delete_session::<M>))
         .route("/v1/sessions/{id}/turns", post(start_turn::<M>))
@@ -321,6 +325,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(team_api::routes::<M>())
         .merge(mcp_api::routes::<M>())
         .merge(settings_api::routes::<M>())
+        .merge(provider_api::routes::<M>())
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
         .merge(chats_api::routes::<M>())
@@ -955,8 +960,20 @@ struct ActivityQuery {
 
 async fn activity<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Query(q): Query<ActivityQuery>) -> Result<Json<Value>, ApiError> {
     let rows = st.settings.store.recent(q.limit.unwrap_or(50).min(500), q.kind.as_deref()).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let entries: Vec<Value> = rows.iter().map(|e| json!({"seq": e.seq, "at": e.at, "kind": e.kind, "session": e.session, "actor": e.actor, "detail": e.detail})).collect();
+    let undoable = st.settings.store.undoable(&rows.iter().map(|e| e.seq).collect::<Vec<_>>()).unwrap_or_default();
+    let entries: Vec<Value> = rows.iter().map(|e| json!({"seq": e.seq, "at": e.at, "kind": e.kind, "session": e.session, "actor": e.actor, "detail": e.detail, "undoable": undoable.contains(&e.seq)})).collect();
     Ok(Json(json!({"entries": entries})))
+}
+
+/// Spending today, this month and per provider this month, from the spend ledger.
+async fn spend<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<Value> {
+    let s = st.settings.spend.summary();
+    Json(json!({
+        "today": {"micro_usd": s.today, "calls": s.today_calls, "text": lh_spend::dollars(s.today)},
+        "this_month": {"micro_usd": s.this_month, "calls": s.month_calls, "text": lh_spend::dollars(s.this_month)},
+        "unpriced_calls": s.unpriced,
+        "providers": s.by_provider.iter().map(|(p, c, n)| json!({"provider": p, "micro_usd": c, "calls": n, "text": lh_spend::dollars(*c)})).collect::<Vec<_>>(),
+    }))
 }
 
 async fn undo<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(seq): Path<i64>) -> Result<Json<Value>, ApiError> {

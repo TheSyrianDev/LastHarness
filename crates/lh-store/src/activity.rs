@@ -128,6 +128,20 @@ impl Store {
         })
     }
 
+    /// Which of these entries still have an undo waiting (a file write not yet undone).
+    pub fn undoable(&self, seqs: &[i64]) -> Result<Vec<i64>> {
+        self.with(|c| {
+            let mut q = c.prepare("select 1 from undo where seq = ?1 and undone_at is null")?;
+            let mut out = vec![];
+            for s in seqs {
+                if q.exists([s])? {
+                    out.push(*s);
+                }
+            }
+            Ok(out)
+        })
+    }
+
     /// Put the file written by activity `seq` back. Refuses if anything edited it since.
     pub fn undo(&self, seq: i64, session: &str) -> Result<UndoResult> {
         let row = self.with(|c| {
@@ -212,7 +226,9 @@ mod tests {
         let (s, d) = (Store::open_memory().unwrap(), tempfile::tempdir().unwrap());
         let p = d.path().join("a.txt");
         let seq = logged_write(&s, &p, Some(b"old"), b"new");
+        assert_eq!(s.undoable(&[seq, seq + 100]).unwrap(), vec![seq]);
         assert_eq!(s.undo(seq, "s1").unwrap(), UndoResult::Restored);
+        assert!(s.undoable(&[seq]).unwrap().is_empty(), "once undone it is not offered again");
         assert_eq!(std::fs::read(&p).unwrap(), b"old");
         assert!(matches!(s.undo(seq, "s1").unwrap(), UndoResult::Refused(m) if m.contains("already")));
         assert_eq!(s.recent(1, Some("undo")).unwrap().len(), 1);
