@@ -20,3 +20,6 @@
 *.gguf
 *.onnx
 *.safetensors
+
+# Agent worktrees and local tool state
+/.claude/
