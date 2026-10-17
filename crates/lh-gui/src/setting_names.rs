@@ -192,6 +192,37 @@ pub const INFO: &[Info] = &[
     i("updates.enabled", Updates, "Check for updates", "Looks for signed updates.", Show::OnOff, false),
 ];
 
+/// Is the setting at a value that opens a way in, skips a safety question or stops the limits? Only then is it
+/// marked in red. The same setting at its safe value is just a setting.
+pub fn is_risky(key: &str, value: &str) -> bool {
+    let v = value.trim();
+    match key {
+        "permissions.bypass" | "permissions.sudo" | "web.use_proxy" => v == "true",
+        "spending.mode" => v == "none",
+        "web.listen" => !v.is_empty() && !is_local_address(v),
+        _ => false,
+    }
+}
+
+/// An address that only this computer can reach: localhost or a loopback number, with or without a port.
+pub fn is_local_address(addr: &str) -> bool {
+    let a = addr.trim().trim_start_matches("https://").trim_start_matches("http://");
+    let host = if let Some(rest) = a.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else if a.matches(':').count() > 1 {
+        a
+    } else {
+        a.split(':').next().unwrap_or("")
+    };
+    let host = host.trim_end_matches('/');
+    host.eq_ignore_ascii_case("localhost") || host == "::1" || (host.starts_with("127.") && host.split('.').count() == 4 && host.split('.').all(|p| p.parse::<u8>().is_ok()))
+}
+
+/// Does any setting in this page sit at a risky value right now? `settings` are (key, value).
+pub fn page_is_risky<'a>(page: Category, settings: impl IntoIterator<Item = (&'a str, &'a str)>) -> bool {
+    settings.into_iter().any(|(k, v)| describe(k, "").category == page && is_risky(k, v))
+}
+
 pub fn info(key: &str) -> Option<&'static Info> {
     INFO.iter().find(|i| i.key == key)
 }
@@ -469,6 +500,37 @@ mod tests {
         assert_eq!(neighbour(&[], Category::Models, true), Category::Appearance);
         // permissions are no more than a few steps from the top
         assert!(p.iter().position(|c| *c == Category::Permissions).unwrap() <= 6);
+    }
+
+    #[test]
+    fn only_a_risky_value_is_marked() {
+        assert!(is_risky("permissions.bypass", "true") && !is_risky("permissions.bypass", "false"));
+        assert!(is_risky("permissions.sudo", "true") && !is_risky("permissions.sudo", "false"));
+        assert!(is_risky("web.use_proxy", "true") && !is_risky("web.use_proxy", "false"));
+        assert!(is_risky("spending.mode", "none") && !is_risky("spending.mode", "caps") && !is_risky("spending.mode", "estimate"));
+        assert!(!is_risky("web.listen", "") && !is_risky("web.listen", "127.0.0.1:7843") && !is_risky("web.listen", "localhost:7843") && !is_risky("web.listen", "[::1]:7843"));
+        assert!(is_risky("web.listen", "0.0.0.0:7843") && is_risky("web.listen", "192.168.1.5:7843") && is_risky("web.listen", "myhost.local:1"));
+        assert!(!is_risky("spending.daily_cap_usd", "100"), "a careful setting is not risky by itself");
+        assert!(!is_risky("provider.url", "anything"));
+    }
+
+    #[test]
+    fn local_addresses_are_recognised() {
+        for a in ["127.0.0.1", "127.0.0.1:80", "127.5.5.5:1", "localhost", "LOCALHOST:9", "[::1]:7843", "::1", "https://127.0.0.1:7843"] {
+            assert!(is_local_address(a), "{a}");
+        }
+        for a in ["0.0.0.0:1", "127.0.0.1.evil.com:1", "10.0.0.2", "[::]:1", "127.1"] {
+            assert!(!is_local_address(a), "{a}");
+        }
+    }
+
+    #[test]
+    fn a_page_shows_its_dot_only_while_a_risky_value_is_on() {
+        let safe = [("permissions.bypass", "false"), ("permissions.sudo", "false"), ("spending.mode", "estimate")];
+        assert!(!page_is_risky(Category::Permissions, safe) && !page_is_risky(Category::Spending, safe));
+        let risky = [("permissions.sudo", "true"), ("spending.mode", "none"), ("web.listen", "0.0.0.0:1")];
+        assert!(page_is_risky(Category::Permissions, risky) && page_is_risky(Category::Spending, risky) && page_is_risky(Category::Web, risky));
+        assert!(!page_is_risky(Category::Models, risky));
     }
 
     #[test]

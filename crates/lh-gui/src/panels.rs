@@ -487,6 +487,8 @@ impl App {
         let aria = format!("{}: {}", d.title, words);
         let wide = control_kind.wide();
         let differs = !settings::is_default(&s.value, &s.default);
+        // red only while the value is a risky one; the same setting at a safe value is a plain card
+        let risky = d.careful && lh_gui::setting_names::is_risky(&s.key, &s.value);
         let title = div()
             .flex_1()
             .min_w(px(180.))
@@ -500,7 +502,7 @@ impl App {
             head = head.child(div().flex_none().max_w_full().children(control.take()));
         }
         let mut card = div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).overflow_hidden()
-            .when(d.careful, |c| c.border_1().border_color(p.danger.opacity(0.55)))
+            .when(risky, |c| c.border_1().border_color(p.danger.opacity(0.55)))
             .id(SharedString::from(format!("setting-{}", s.key))).role(Role::Group).aria_label(aria).aria_description(d.about.clone())
             .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx))
             .child(head)
@@ -523,7 +525,7 @@ impl App {
             card = card.child(div().id(SharedString::from(format!("reset-tip-{}", s.key))).flex().when(rtl, |r| r.flex_row_reverse()).tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(reset_tip.clone()).build(window, cx)).child(reset));
         }
         card = card
-            .when(d.careful, |c| c.child(div().text_xs().text_color(p.danger).child(if rtl { "إعداد حساس، غيّره بحذر." } else { "Take care with this one." })))
+            .when(d.careful, |c| c.child(div().text_xs().text_color(if risky { p.danger } else { p.muted }).child(if rtl { "إعداد حساس، غيّره بحذر." } else { "Take care with this one." })))
             .when(!s.kind.editable(), |c| c.child(div().text_xs().text_color(p.muted).child("The app does not know this kind of setting yet. Use lh settings in a terminal.")));
         card.into_any_element()
     }
@@ -634,7 +636,7 @@ impl App {
             }));
         for c in list {
             let on = c == self.settings_page && !searching;
-            let danger = matches!(c, lh_gui::setting_names::Category::Permissions | lh_gui::setting_names::Category::Spending);
+            let danger = lh_gui::setting_names::page_is_risky(c, self.panels.settings.iter().map(|s| (s.key.as_str(), s.value.as_str())));
             nav = nav.child(
                 div()
                     .id(SharedString::from(format!("settings-page-{}", c.id())))
