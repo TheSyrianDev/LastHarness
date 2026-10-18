@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Layout</title>
+<style>
+ body { font-family: sans-serif; margin: 24px; background: #f4f7fb; color: #1b2a3a; }
+ h1 { margin: 0 0 12px; font-size: 24px; }
+ .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+ .card { background: white; border-radius: 12px; padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+ .card b { display: block; margin-bottom: 6px; color: #1174a1; }
+ .wide { grid-column: span 2; background: linear-gradient(135deg, #1174a1, #6b60c4); color: white; }
+ .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+ .pill { flex: 1; text-align: center; padding: 10px; border-radius: 999px; background: #dff1ff; border: 1px solid #9fcdee; }
+ .pill:nth-child(2) { flex: 2; background: #e6f7e3; border-color: #9fd59a; }
+ .row2 { display: flex; flex-wrap: wrap; gap: 8px; }
+ .tag { padding: 4px 10px; border-radius: 6px; background: #1b2a3a; color: #fff; font-size: 13px; }
+ a { color: #1174a1; }
+</style></head><body>
+<h1>Grid and flex</h1>
+<div class="grid">
+  <div class="card"><b>One</b>Small card with text that wraps onto a few lines to show the grid cell width.</div>
+  <div class="card"><b>Two</b>Another card, same row.</div>
+  <div class="card"><b>Three</b>Third card.</div>
+  <div class="card wide"><b style="color:#fff">Wide card</b>Spans two columns, gradient background.</div>
+  <div class="card"><b>Four</b>Back to one column.</div>
+</div>
+<div class="row"><div class="pill">flex 1</div><div class="pill">flex 2 (wider)</div><div class="pill">flex 1</div></div>
+<p></p>
+<div class="row2"><span class="tag">wrap</span><span class="tag">flex-wrap</span><span class="tag">gap</span><span class="tag">rounded</span><span class="tag">tags</span><span class="tag">that</span><span class="tag">go</span><span class="tag">to</span><span class="tag">the</span><span class="tag">next</span><span class="tag">line</span><span class="tag">when</span><span class="tag">full</span><span class="tag">of</span><span class="tag">them</span></div>
+<p>A <a href="https://example.com/outside">link to the web</a> and a <a href="#end">link inside the page</a>.</p>
+<p id="end">The end of the page.</p>
+</body></html>

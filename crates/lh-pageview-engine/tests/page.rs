@@ -1,6 +1,6 @@
 //! The page viewer against real pages: it draws them, it asks the network for nothing, it falls back when the
 //! engine cannot cope, and clicks, scrolling and right-to-left behave. Pages are the ones from the spike
-//! (`spikes/html-render/pages`).
+//! (`tests/pages`, copied from the html-render spike).
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -12,7 +12,7 @@ fn opts() -> Options {
 }
 
 fn page(name: &str) -> String {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../spikes/html-render/pages").join(name);
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/pages").join(name);
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
 }
 
