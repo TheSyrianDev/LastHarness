@@ -19,7 +19,9 @@ accent_text = "#1F1410"
 button = "#3A3935"
 button_hover = "#46453F"
 border = "#43423D"
-danger = "#E0685A"
+danger = "#EE7E6F"
+focus_ring = "#E08868"
+warn = "#E3B261"
 
 [background]
 kind = "solid"

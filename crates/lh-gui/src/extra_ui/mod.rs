@@ -5,6 +5,7 @@
 mod activity;
 mod channels;
 mod data;
+mod hooks;
 mod tools;
 mod web;
 
@@ -47,6 +48,8 @@ pub struct PgState {
     pub service: Option<model::service::Status>,
     /// The file the service step would write, shown before the person agrees.
     pub service_preview: Option<String>,
+    /// hooks.toml as last read or written.
+    pub hooks: Option<Result<model::hooks::Hooks, String>>,
 }
 
 impl App {
@@ -74,6 +77,11 @@ impl App {
                 self.pg_fetch("trust", "/v1/trust");
             }
             Category::Channels => self.pg_fetch("channels", "/v1/channels"),
+            Category::Schedules => {
+                self.pg_fetch("schedules", "/v1/schedules");
+                self.pg_fetch("sch-files", model::activity::path("schedule_changed_files", 5));
+            }
+            Category::Hooks => self.pg.hooks = None,
             Category::Web => {
                 self.pg_fetch("devices", "/v1/devices");
                 self.pg_fetch("pending", "/v1/devices/pending");
@@ -89,18 +97,20 @@ impl App {
 
     /// The body of a page this file draws, or `None` for a page the settings list draws.
     pub fn pg_page(&mut self, page: Category, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !matches!(page, Category::Tools | Category::Channels | Category::Data | Category::Activity) {
+        if !matches!(page, Category::Tools | Category::Channels | Category::Data | Category::Activity | Category::Hooks | Category::Schedules) {
             return None;
         }
         self.pg_opened(page);
         // the Data page works without the core for its last part, so it decides for itself
-        if !self.connected && page != Category::Data {
+        if !self.connected && !matches!(page, Category::Data | Category::Hooks) {
             return Some(self.pg_note_line("The core is not running, so this page cannot be shown."));
         }
         Some(match page {
             Category::Tools => self.pg_tools(window, cx),
             Category::Channels => self.pg_channels(window, cx),
             Category::Data => self.pg_data(window, cx),
+            Category::Hooks => self.pg_hooks(window, cx),
+            Category::Schedules => self.pg_schedules(window, cx),
             _ => self.pg_activity(window, cx),
         })
     }
@@ -132,6 +142,7 @@ impl App {
             "channels" => Category::Channels,
             "web" => Category::Web,
             "data" => Category::Data,
+            "schedules" => Category::Schedules,
             _ => Category::Activity,
         };
         match result {
@@ -182,6 +193,8 @@ impl App {
                 format!("Brought in. {done}")
             }
             "undo" => model::activity::undo_note(v),
+            "sch-add" => "Added. It runs at the next time it is due.".to_string(),
+            "sch-remove" => "Deleted.".to_string(),
             _ => String::new(),
         };
         if !note.is_empty() {
@@ -198,11 +211,11 @@ impl App {
     /// A raised box for one thing: a server, a channel, a device.
     fn xp_card(&self, children: Vec<AnyElement>) -> Div {
         let p = &self.pal;
-        div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).min_w_0().children(children)
+        div().flex().flex_col().gap_1p5().p_3().rounded(p.inner).bg(p.sunken).text_color(p.text).min_w_0().children(children)
     }
 
     fn pg_title(&self, t: impl Into<SharedString>) -> AnyElement {
-        div().text_color(self.pal.text).child(t.into()).into_any_element()
+        div().text_color(self.pal.text).font_weight(gpui::FontWeight::MEDIUM).child(t.into()).into_any_element()
     }
 
     fn pg_muted(&self, t: impl Into<SharedString>) -> AnyElement {

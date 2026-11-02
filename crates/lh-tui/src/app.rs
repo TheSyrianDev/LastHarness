@@ -164,8 +164,12 @@ impl App {
             // the terminal has no side panel: what the assistant opened is printed here, an image as its path
             ServerEvent::Show { title, kind, content, path } => self.entries.push(Entry::Notice(match (kind.as_str(), path) {
                 ("image", Some(p)) => format!("[{title}] image file: {p}"),
+                ("table", _) => format!("[{title}]\n{}", table_text(&content)),
+                ("chart", _) => format!("[{title}] chart\n{}", chart_text(&content)),
+                ("app", _) => format!("[{title}] a small app; open this chat in the desktop app or browser to use it"),
                 _ => format!("[{title}]\n{content}"),
             })),
+            ServerEvent::Diff { path, diff, .. } => self.entries.push(Entry::Notice(format!("Changes to {path}:\n{diff}"))),
             ServerEvent::Other => {}
         }
         if matches!(self.entries.last(), Some(Entry::Assistant(_))) {
@@ -178,6 +182,30 @@ impl App {
         self.question = None;
         self.entries.push(Entry::Notice("Cancelled.".into()));
     }
+}
+
+fn plain(v: &serde_json::Value) -> String {
+    v.as_str().map(str::to_string).unwrap_or_else(|| if v.is_null() { String::new() } else { v.to_string() })
+}
+
+/// A table from the `show` tool as aligned text columns.
+pub fn table_text(json: &str) -> String {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return json.to_string() };
+    let mut rows: Vec<Vec<String>> = vec![v["columns"].as_array().map(|a| a.iter().map(plain).collect()).unwrap_or_default()];
+    rows.extend(v["rows"].as_array().into_iter().flatten().map(|r| r.as_array().map(|a| a.iter().map(plain).collect()).unwrap_or_default()));
+    let n = rows.iter().map(Vec::len).max().unwrap_or(0);
+    let w: Vec<usize> = (0..n).map(|i| rows.iter().filter_map(|r| r.get(i)).map(|c| c.chars().count()).max().unwrap_or(0)).collect();
+    rows.iter().map(|r| r.iter().enumerate().map(|(i, c)| format!("{c:<width$}", width = w[i])).collect::<Vec<_>>().join("  ").trim_end().to_string()).collect::<Vec<_>>().join("\n")
+}
+
+/// A chart from the `show` tool as one line per label with its values.
+pub fn chart_text(json: &str) -> String {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return json.to_string() };
+    let series = v["series"].as_array().cloned().unwrap_or_default();
+    v["labels"].as_array().into_iter().flatten().enumerate().map(|(i, l)| {
+        let vals: Vec<String> = series.iter().map(|s| { let x = plain(&s["values"][i]); match s["name"].as_str() { Some(n) => format!("{n} {x}"), None => x } }).collect();
+        format!("{}: {}", plain(l), vals.join(", "))
+    }).collect::<Vec<_>>().join("\n")
 }
 
 #[cfg(test)]
@@ -243,5 +271,16 @@ mod tests {
         a.show_branch(&[], None);
         assert_eq!(a.input, "q2", "no new words leaves what is typed alone");
         assert!(a.entries.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod show_text_tests {
+    #[test]
+    fn tables_and_charts_print_as_text() {
+        let t = super::table_text(r#"{"columns":["Name","Cores"],"rows":[["Laptop A",8],["B",16]]}"#);
+        assert_eq!(t, "Name      Cores\nLaptop A  8\nB         16");
+        let c = super::chart_text(r#"{"type":"bar","labels":["Jan","Feb"],"series":[{"name":"Sales","values":[3,5]}]}"#);
+        assert_eq!(c, "Jan: Sales 3\nFeb: Sales 5");
     }
 }

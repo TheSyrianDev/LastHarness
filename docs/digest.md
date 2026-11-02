@@ -25,7 +25,7 @@ An AI harness, like Claude Code, Codex or Pi, but **department-led**, **local-fi
 
 ## Stack and timeline
 
-Rust core with a local API. Thin front ends: terminal first, then browser, then a native desktop GUI (no Electron), then phone apps. Development is Linux-only (through Milestone 9) and private, with macOS and Windows built in Milestone 10; the first public release ships on Linux, macOS, Windows, Android and iOS together.
+Rust core with a local API. Thin front ends: terminal first, then browser, then a native desktop app (GPUI, web pages and small apps in a Servo viewer), then phone apps. Development is Linux-only (through Milestone 9) and private, with macOS and Windows built in Milestone 10; the first public release ships on Linux, macOS, Windows, Android and iOS together.
 
 | Milestone | Weeks |
 |---|---|

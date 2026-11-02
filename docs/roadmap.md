@@ -159,6 +159,8 @@ Throwaway code that answers the questions the design depends on.
 - [x] The GUI on the same local API: `crates/lh-gui` (see `docs/milestone-8-report.md`): three-part window, chats with streaming, stop, model per chat, stored chats and resume with a warning, departments, memory, settings, opened content with pop-out, eight themes with live reload, right-to-left mirroring, keyboard shortcuts, tray, screen-reader tree.
 - [x] Target: noticeably lighter than an Electron app: about 115 MB idle, 0.0 to 0.4% CPU idle, 64 MiB binary.
 - [ ] Left for later: automatic opening of agent content, the KV cache per chat, Orca check with real speech, drawing the app's own window frame, Servo as an optional add-on.
+- [ ] Redo (decided 2026-10-30): stay on GPUI (Tauri 2 tried and dropped, 276 MB vs 136 MB); generative answers drawn natively, small apps in the Servo page viewer. Redesign in the "Quiet desk" direction.
+- [ ] Generative answers: tables and charts in the `show` tool, and sandboxed small apps with one checked follow-up.
 
 ## Harness milestone (before mobile)
 

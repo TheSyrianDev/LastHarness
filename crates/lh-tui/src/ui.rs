@@ -92,6 +92,17 @@ fn draw_tree(f: &mut Frame, screen: &crate::tree_ui::TreeScreen) {
     f.render_widget(Paragraph::new(vec![first_line, Line::from(Span::styled(second, dim))]), footer);
 }
 
+/// The status colours of the LastHarness brand (Grove palette in brand/motion-kit/source/tokens.json).
+pub fn slot_colour(asking: bool, busy: bool) -> Color {
+    if asking {
+        Color::Rgb(0xd0, 0x78, 0x4f)
+    } else if busy {
+        Color::Rgb(0xe0, 0xa0, 0x50)
+    } else {
+        Color::Rgb(0x6f, 0xcf, 0x9f)
+    }
+}
+
 pub fn draw(f: &mut Frame, app: &App) {
     if let Some(t) = &app.tree {
         draw_tree(f, t);
@@ -110,7 +121,10 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     let usage = app.usage.map(|(p, c, k)| format!("  tokens: {p} in ({k} cached), {c} out")).unwrap_or_default();
     let hint = "Ctrl-T thinking  PgUp/PgDn scroll  Ctrl-D quit";
-    f.render_widget(Paragraph::new(format!(" {}{usage}   {hint}", app.model)).style(Style::new().add_modifier(Modifier::DIM)), rows[2]);
+    // the brand's slot colour as a status dot: busy while a turn runs, needs you while a question waits, ready otherwise
+    let dot = Span::styled(" ●", Style::new().fg(slot_colour(app.question.is_some(), app.busy)));
+    let status = Line::from(vec![dot, Span::styled(format!(" {}{usage}   {hint}", app.model), Style::new().add_modifier(Modifier::DIM))]);
+    f.render_widget(Paragraph::new(status), rows[2]);
 
     if let Some(sg) = app.review.first() {
         let area = centered(f.area(), 80, 16);

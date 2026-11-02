@@ -212,6 +212,7 @@ impl<M: Model + 'static> AppState<M> {
         let s = &self.settings;
         if touched("permissions.") {
             self.perms.set(s.bypass || cfg.get_bool("permissions.bypass"), s.ask_all || cfg.get("permissions.mode") == "ask-all", s.sudo_enabled || cfg.get_bool("permissions.sudo"));
+            self.perms.set_show_diff(lh_tools::ShowDiff::parse(&cfg.get("permissions.show_diff")).unwrap_or_default());
         }
         if touched("spending.") {
             s.spend.reconfigure(|c| {
@@ -422,8 +423,9 @@ async fn status<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<
 }
 
 async fn list_models<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
-    let models = st.model.models().await.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, e.explain()))?;
-    Ok(Json(json!({"models": models})))
+    let details = st.model.model_details().await.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, e.explain()))?;
+    let models: Vec<&str> = details.iter().filter_map(|d| d["id"].as_str()).collect();
+    Ok(Json(json!({"models": models, "details": details})))
 }
 
 #[derive(Deserialize)]
@@ -773,6 +775,7 @@ fn describe(ev: &TurnEvent) -> Option<(String, Value)> {
         }
         TurnEvent::ToolStart { id, name, arguments } => ("tool_start".into(), json!({"type":"tool_start","id":id,"name":name,"arguments":arguments})),
         TurnEvent::ToolResult { id, text, .. } => ("tool_result".into(), json!({"type":"tool_result","id":id,"text":text})),
+        TurnEvent::Diff { id, path, diff } => ("diff".into(), json!({"type":"diff","id":id,"path":path,"diff":diff})),
         TurnEvent::Decision { .. } => return None,
     })
 }
@@ -841,7 +844,7 @@ impl Recorder {
                     (Err(e), _) => Err(e),
                 }
             }
-            TurnEvent::Model(_) => Ok(()),
+            TurnEvent::Model(_) | TurnEvent::Diff { .. } => Ok(()),
         };
         if let Err(e) = r {
             eprintln!("lhd: could not write to the activity log: {e}");

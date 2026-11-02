@@ -8,13 +8,15 @@ background = "#f5f5f3"
 surface = "#ffffff"       # panels and bubbles
 sunken = "#ecece9"          # input fields
 text = "#1d1d1b"
-muted = "#6d6d68"
+muted = "#63635e"
 accent = "#3b6fd4"
 accent_text = "#ffffff"
 button = "#e8e8e4"
 button_hover = "#dcdcd6"
 border = "#dadad5"
 danger = "#c0392b"
+focus_ring = "#3b6fd4"
+warn = "#8a5a00"
 
 [background]
 kind = "solid"             # solid, gradient or image

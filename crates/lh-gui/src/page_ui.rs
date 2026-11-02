@@ -27,11 +27,20 @@ struct Want {
     scroll_to: Option<f32>,
     render: bool,
     link: Option<(f32, f32)>,
+    /// Pointer and keys for the page, in order: (action, x, y) or a key and its text.
+    input: Vec<Input>,
+    /// What the app fetched for the page from allowed sites, to hand over: (request, status, type, body).
+    deliver: Vec<(u32, lh_gui::page_fetch::Fetched)>,
+}
+
+enum Input {
+    Pointer(u8, f32, f32),
+    Key(String, String),
 }
 
 impl Want {
     fn any(&self) -> bool {
-        self.resize.is_some() || self.scroll_to.is_some() || self.render || self.link.is_some()
+        self.resize.is_some() || self.scroll_to.is_some() || self.render || self.link.is_some() || !self.input.is_empty() || !self.deliver.is_empty()
     }
 }
 
@@ -52,10 +61,19 @@ struct Answers {
     link: Option<Option<Link>>,
     refused: u32,
     failed: Option<Fallback>,
+    /// Pointer or keys were passed on: the page's scripts may still be changing it.
+    had_input: bool,
+    follow_up: Option<String>,
+    fetches: Vec<(u32, String)>,
 }
 
 pub struct PageState {
     key: u64,
+    /// The page's source, and where it is on screen: "panel", or the chat message it belongs to.
+    html: String,
+    pub place: String,
+    /// The pointer is held down inside the page, so moves are passed on (a slider being dragged).
+    pressed: bool,
     view: Option<PageView>,
     opening: bool,
     busy: bool,
@@ -71,6 +89,8 @@ pub struct PageState {
     /// The address of the link that was clicked last, shown in the bar under the page.
     link: Option<Link>,
     refused: u32,
+    /// A follow-up the page offered, shown as a chip under it until it is clicked or dismissed.
+    follow_up: Option<String>,
 }
 
 /// A number that says which content this is, so a different page starts a new view and the same one keeps its own.
@@ -118,25 +138,70 @@ impl App {
         }
     }
 
-    /// The panel is not showing a web page now (another tab, hidden, or no page): nothing is kept.
+    /// The page is not on screen now (another tab, another chat, hidden): its helper ends. An app in the chat
+    /// keeps a still picture and waits for a Run click.
     pub fn page_release_if_hidden(&mut self, showing: bool, window: &mut Window) {
         if !showing && self.page.is_some() {
-            self.page_close(window);
+            self.page_park(window);
         }
     }
 
-    /// The viewer for a web page, or `None` for the card (the card says why).
-    pub fn page_element(&mut self, item: &Content, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// End the helper. For an app in the chat, keep its last picture as a still and mark it stopped.
+    pub fn page_park(&mut self, window: &mut Window) {
+        let Some(mut st) = self.page.take() else { return };
+        if st.place == "panel" {
+            self.page = Some(st);
+            return self.page_close(window);
+        }
+        if let Some(img) = st.image.take() {
+            let h = st.measured.lock().map(|m| m.h).unwrap_or(0.);
+            if let Some(i) = self.page_stills.iter().position(|s| s.0 == st.place) {
+                let old = self.page_stills.remove(i);
+                let _ = window.drop_image(old.1);
+            }
+            self.page_stills.push((st.place.clone(), img, h));
+            while self.page_stills.len() > 3 {
+                let old = self.page_stills.remove(0);
+                let _ = window.drop_image(old.1);
+            }
+        }
+        self.page_parked.insert(st.place.clone());
+        // the view drops here: its helper process ends and its memory goes back
+    }
+
+    /// The still picture of a stopped app, and its height.
+    pub fn page_still(&self, place: &str) -> Option<(std::sync::Arc<RenderImage>, f32)> {
+        self.page_stills.iter().find(|s| s.0 == place).map(|s| (s.1.clone(), s.2))
+    }
+
+    /// Is this page the one running now, at this place?
+    pub fn page_live_at(&self, item: &Content, place: &str) -> bool {
+        self.page.as_ref().is_some_and(|p| p.key == key_of(item) && p.place == place)
+    }
+
+    /// The viewer for a web page, or `None` for the card (the card says why). `place` says where it is drawn; only
+    /// one page runs at a time, so drawing it somewhere else moves it there. In the chat the box takes the page's
+    /// own height (within limits), so a small app sits in the conversation like any answer.
+    pub fn page_element(&mut self, item: &Content, place: &str, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.pages_inside(item) {
             return None;
         }
         let key = key_of(item);
-        if self.page.as_ref().is_none_or(|p| p.key != key) {
-            self.page_close(window);
-            self.page = Some(PageState { key, view: None, opening: false, busy: false, want: Want::default(), debounce: Debounce::default(), measured: Arc::new(Mutex::new(Measured::default())), scale: window.scale_factor(), image: None, info: None, focus: cx.focus_handle(), fallback: None, link: None, refused: 0 });
+        if self.page.as_ref().is_none_or(|p| p.key != key || p.place != place) {
+            self.page_park(window);
+            self.page_parked.remove(place);
+            self.page = Some(PageState { key, html: item.body.clone(), place: place.to_string(), pressed: false, view: None, opening: false, busy: false, want: Want::default(), debounce: Debounce::default(), measured: Arc::new(Mutex::new(Measured::default())), scale: window.scale_factor(), image: None, info: None, focus: cx.focus_handle(), fallback: None, link: None, refused: 0, follow_up: None });
         }
         let win_h: f32 = window.viewport_size().height.into();
-        let height = (win_h - 300.).clamp(240., 1600.);
+        let in_chat = place != "panel";
+        // an app scrolled more than a screen away stops; its still picture stands in until Run is clicked
+        let m = self.page.as_ref().filter(|p| p.place == place).and_then(|p| p.measured.lock().ok().map(|m| *m)).unwrap_or_default();
+        if in_chat && m.h > 0. && (m.y > win_h * 2. || m.y + m.h < -win_h) {
+            self.page_park(window);
+            return None;
+        }
+        let own = self.page.as_ref().filter(|p| p.key == key).and_then(|p| p.info.as_ref()).map(|i| i.content_height).filter(|h| *h > 0.);
+        let height = if in_chat { own.unwrap_or(320.).clamp(120., (win_h - 220.).clamp(240., 640.)) } else { (win_h - 300.).clamp(240., 1600.) };
         let p = self.pal.clone();
         let rtl = self.rtl;
         let st = self.page.as_mut()?;
@@ -163,7 +228,7 @@ impl App {
         let picture = st.image.clone().map(|i| img(i).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Fill));
         let waiting = st.image.is_none().then(|| div().absolute().top_0().left_0().size_full().flex().items_center().justify_center().text_sm().text_color(gpui::hsla(0., 0., 0.35, 1.)).child("Drawing the page…"));
         let area = div()
-            .id("page-view")
+            .id(SharedString::from(format!("page-view-{place}")))
             .role(Role::Document)
             .aria_label(title)
             .track_focus(&focus)
@@ -184,19 +249,60 @@ impl App {
             .children(waiting)
             .on_scroll_wheel(cx.listener(|a, ev: &ScrollWheelEvent, w, cx| {
                 let dy: f32 = ev.delta.pixel_delta(px(24.)).y.into();
-                // the wheel reports "up" as positive; the page goes down when the offset grows
-                a.page_step(Step::Pixels(-dy), w, cx);
-                cx.stop_propagation();
-            }))
-            .on_key_down(cx.listener(|a, ev: &KeyDownEvent, w, cx| {
-                if let Some(step) = scroll::key_step(ev.keystroke.key.as_str(), ev.keystroke.modifiers.shift) {
-                    a.page_step(step, w, cx);
+                // a page that fits its box leaves the wheel to the chat around it
+                if a.page_can_scroll() {
+                    // the wheel reports "up" as positive; the page goes down when the offset grows
+                    a.page_step(Step::Pixels(-dy), w, cx);
                     cx.stop_propagation();
                 }
             }))
-            .on_mouse_down(MouseButton::Left, cx.listener(|a, ev: &MouseDownEvent, w, cx| a.page_click(ev.position, w, cx)));
+            .on_key_down(cx.listener(|a, ev: &KeyDownEvent, w, cx| {
+                let k = &ev.keystroke;
+                if k.modifiers.control || k.modifiers.alt || k.modifiers.platform {
+                    return; // the app's own shortcuts still work
+                }
+                if matches!(k.key.as_str(), "pageup" | "pagedown") {
+                    if let Some(step) = scroll::key_step(k.key.as_str(), k.modifiers.shift) {
+                        a.page_step(step, w, cx);
+                    }
+                } else {
+                    // typing goes to the page: text fields, sliders and buttons there take keys as in a browser
+                    a.page_input(Input::Key(k.key.clone(), k.key_char.clone().unwrap_or_default()), w, cx);
+                }
+                cx.stop_propagation();
+            }))
+            .on_mouse_down(MouseButton::Left, cx.listener(|a, ev: &MouseDownEvent, w, cx| a.page_click(ev.position, w, cx)))
+            .on_mouse_move(cx.listener(|a, ev: &MouseMoveEvent, w, cx| a.page_pointer(0, ev.position, w, cx)))
+            .on_mouse_up(MouseButton::Left, cx.listener(|a, ev: &MouseUpEvent, w, cx| a.page_pointer(2, ev.position, w, cx)));
         let bar = self.page_link_bar(rtl, cx);
-        Some(div().flex().flex_col().gap_2().child(area).children(bar).into_any_element())
+        let chip = self.page_follow_up_chip(rtl, cx);
+        Some(div().flex().flex_col().gap_2().child(area).children(bar).children(chip).into_any_element())
+    }
+
+    /// The follow-up the page offered, as a chip under it. Nothing is sent until it is clicked.
+    fn page_follow_up_chip(&mut self, rtl: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let text = self.page.as_ref()?.follow_up.clone()?;
+        let p = self.pal.clone();
+        let send_text = text.clone();
+        let chip = div().id("page-follow-up").role(Role::Button).aria_label(SharedString::from(format!("{}: {text}", if rtl { "أرسل" } else { "Send" })))
+            .flex_1().min_w_0().px_3().py_1p5().rounded(p.inner).border_1().border_color(p.accent.opacity(0.45)).bg(p.accent.opacity(0.08))
+            .text_sm().text_color(p.text).cursor_pointer().hover(|s| s.bg(p.accent.opacity(0.16)))
+            .on_click(cx.listener(move |a, _, w, cx| {
+                if let Some(st) = a.page.as_mut() {
+                    st.follow_up = None;
+                }
+                let t = send_text.clone();
+                a.composer.update(cx, |s, cx| s.set_value(t, w, cx));
+                a.send(w, cx);
+            }))
+            .child(text);
+        let dismiss = self.icon_button("page-follow-up-dismiss", crate::ui::icons::close(), if rtl { "تجاهل الاقتراح" } else { "Dismiss suggestion" }, cx, |a, _, cx| {
+            if let Some(st) = a.page.as_mut() {
+                st.follow_up = None;
+            }
+            cx.notify();
+        });
+        Some(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(chip).child(dismiss).into_any_element())
     }
 
     /// The bar under the page that names a clicked link and offers to open it. Never shown for a link inside the page.
@@ -258,8 +364,45 @@ impl App {
         if x < 0. || y < 0. || x > m.w || y > m.h {
             return;
         }
+        st.pressed = true;
+        st.want.input.push(Input::Pointer(1, x * st.scale, y * st.scale));
         st.want.link = Some((x * st.scale, y * st.scale));
+        st.want.render = true;
         self.page_pump(window, cx);
+    }
+
+    /// The pointer moved (passed on only while held, to drag a slider) or was let go.
+    fn page_pointer(&mut self, action: u8, at: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(st) = self.page.as_mut() else { return };
+        if !st.pressed {
+            return;
+        }
+        let m = st.measured.lock().map(|m| *m).unwrap_or_default();
+        let (x, y) = ((f32::from(at.x) - m.x).clamp(0., m.w) * st.scale, (f32::from(at.y) - m.y).clamp(0., m.h) * st.scale);
+        if action == 2 {
+            st.pressed = false;
+        }
+        // while the helper is busy, only the latest move is worth sending
+        if action == 0 && matches!(st.want.input.last(), Some(Input::Pointer(0, ..))) {
+            st.want.input.pop();
+        }
+        st.want.input.push(Input::Pointer(action, x, y));
+        st.want.render = true;
+        self.page_pump(window, cx);
+    }
+
+    fn page_input(&mut self, i: Input, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(st) = self.page.as_mut() else { return };
+        st.want.input.push(i);
+        st.want.render = true;
+        self.page_pump(window, cx);
+    }
+
+    /// Is the page taller than its box?
+    fn page_can_scroll(&self) -> bool {
+        let Some(st) = self.page.as_ref() else { return false };
+        let h = st.measured.lock().map(|m| m.h).unwrap_or(0.);
+        st.info.as_ref().is_some_and(|i| i.content_height > h + 1.)
     }
 
     /// The wheel, an arrow, a Page key, Home or End: move the view, inside the page.
@@ -296,12 +439,9 @@ impl App {
 
     /// Start whatever is wanted, if the helper is free.
     fn page_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (title_html, key) = {
-            let (Some(st), Some(item)) = (self.page.as_ref(), self.content.get(self.content_index.min(self.content.len().saturating_sub(1)))) else { return };
-            (item.body.clone(), st.key)
-        };
         let Some(st) = self.page.as_mut() else { return };
-        if st.key != key || st.busy || st.opening || st.fallback.is_some() {
+        let (title_html, key) = (st.html.clone(), st.key);
+        if st.busy || st.opening || st.fallback.is_some() {
             return;
         }
         if st.view.is_none() {
@@ -331,10 +471,19 @@ impl App {
             let (view, ans) = cx
                 .background_executor()
                 .spawn(async move {
-                    let mut ans = Answers::default();
+                    let mut ans = Answers { had_input: !want.input.is_empty(), ..Answers::default() };
                     let run = |view: &mut PageView, ans: &mut Answers| -> Result<(), Fallback> {
                         if let Some((w, h, s)) = want.resize {
                             view.resize(w, h, s)?;
+                        }
+                        for (id, (status, ctype, body)) in want.deliver {
+                            view.deliver(id, status, &ctype, body)?;
+                        }
+                        for i in &want.input {
+                            match i {
+                                Input::Pointer(a, x, y) => view.pointer(*a, *x, *y)?,
+                                Input::Key(k, t) => view.key(k, t)?,
+                            }
                         }
                         if let Some(y) = want.scroll_to {
                             view.scroll_to(y)?;
@@ -351,6 +500,8 @@ impl App {
                         ans.failed = Some(f);
                     }
                     ans.info = Some(view.info().clone());
+                    ans.follow_up = view.take_follow_up();
+                    ans.fetches = view.take_fetches();
                     ans.refused = view.net().refused;
                     (view, ans)
                 })
@@ -360,15 +511,34 @@ impl App {
         .detach();
     }
 
+    /// Fetch what the page asked of allowed sites, off the UI thread, then hand it over and draw again.
+    fn page_fetch(&mut self, key: u64, urls: Vec<(u32, String)>, window: &mut Window, cx: &mut Context<Self>) {
+        for (id, url) in urls {
+            cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| {
+                let got = cx.background_executor().spawn(async move { lh_gui::page_fetch::fetch(&url) }).await;
+                let _ = this.update_in(cx, |app, window, cx| {
+                    if let Some(st) = app.page.as_mut().filter(|p| p.key == key) {
+                        st.want.deliver.push((id, got));
+                        st.want.render = true;
+                    }
+                    app.page_pump(window, cx);
+                });
+            })
+            .detach();
+        }
+    }
+
     fn page_opened(&mut self, key: u64, opened: Result<PageView, Fallback>, window: &mut Window, cx: &mut Context<Self>) {
         let Some(st) = self.page.as_mut().filter(|p| p.key == key) else { return }; // replaced meanwhile: the new page is dropped
         st.opening = false;
         match opened {
-            Ok(view) => {
+            Ok(mut view) => {
+                let fetches = view.take_fetches();
                 st.info = Some(view.info().clone());
                 st.refused = view.net().refused;
                 st.view = Some(view);
                 st.want.render = true;
+                self.page_fetch(key, fetches, window, cx);
                 self.page_pump(window, cx);
             }
             Err(f) => st.fallback = Some(f),
@@ -383,6 +553,9 @@ impl App {
             st.info = Some(i);
         }
         st.refused = ans.refused;
+        if ans.follow_up.is_some() {
+            st.follow_up = ans.follow_up;
+        }
         if let Some(f) = ans.failed {
             st.fallback = Some(f);
             if let Some(old) = st.image.take() {
@@ -400,10 +573,26 @@ impl App {
                 }
             }
         }
+        if ans.had_input {
+            // scripts answer input a moment later (an `input` handler, a timer): draw again shortly to catch it
+            cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| {
+                for wait in [120u64, 400] {
+                    cx.background_executor().timer(std::time::Duration::from_millis(wait)).await;
+                    let _ = this.update_in(cx, |app, window, cx| {
+                        if let Some(st) = app.page.as_mut().filter(|p| p.key == key) {
+                            st.want.render = true;
+                        }
+                        app.page_pump(window, cx);
+                    });
+                }
+            })
+            .detach();
+        }
         if let Some(l) = ans.link {
             // a link inside the page needs nothing; any other is named in the bar and waits for a button
             st.link = l.filter(|l| !l.same_page);
         }
+        self.page_fetch(key, ans.fetches, window, cx);
         self.page_pump(window, cx);
         cx.notify();
     }

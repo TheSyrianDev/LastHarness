@@ -202,7 +202,7 @@ impl WgpuContext {
         any(test, feature = "bench-support", feature = "test-support")
     ))]
     fn create_headless() -> anyhow::Result<(Self, wgpu::TextureFormat)> {
-        let instance = Self::instance(None);
+        let instance = Self::instance(|| None);
         let device_id_filter = Self::device_id_filter();
         let (adapter, device, queue, dual_source_blending, color_texture_format, target_format) =
             gpui::block_on(async {
@@ -468,15 +468,45 @@ impl WgpuContext {
         ))
     }
 
+    /// Create the wgpu instance. Vulkan (or whatever `WGPU_BACKEND` names, minus GL) is
+    /// tried first. GL is only tried when that finds no adapter, and inside `catch_unwind`,
+    /// because a broken EGL driver can make wgpu's GL backend panic during `Instance::new`.
     #[cfg(not(target_family = "wasm"))]
-    pub fn instance(display: Option<Box<dyn wgpu::wgt::WgpuHasDisplayHandle>>) -> wgpu::Instance {
-        wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
-            flags: wgpu::InstanceFlags::default(),
-            backend_options: wgpu::BackendOptions::default(),
-            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
-            display,
-        })
+    pub fn instance(
+        display: impl Fn() -> Option<Box<dyn wgpu::wgt::WgpuHasDisplayHandle>>,
+    ) -> wgpu::Instance {
+        let requested = wgpu::Backends::from_env().unwrap_or(wgpu::Backends::VULKAN | wgpu::Backends::GL);
+        let (primary, gl_fallback) = split_backends(requested);
+        let make = |backends: wgpu::Backends| {
+            wgpu::Instance::new(wgpu::InstanceDescriptor {
+                backends,
+                flags: wgpu::InstanceFlags::default(),
+                backend_options: wgpu::BackendOptions::default(),
+                memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+                display: display(),
+            })
+        };
+
+        let primary_instance = (!primary.is_empty()).then(|| make(primary));
+        if let Some(instance) = &primary_instance {
+            let has_adapter =
+                !gpui::block_on(instance.enumerate_adapters(primary)).is_empty();
+            if has_adapter || !gl_fallback {
+                return primary_instance.unwrap();
+            }
+            log::warn!("No {primary:?} adapter found; trying the GL backend");
+        }
+
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| make(wgpu::Backends::GL))) {
+            Ok(instance) => instance,
+            Err(_) => {
+                log::error!(
+                    "The GL/EGL backend panicked while starting (broken EGL driver?); \
+                     continuing without GL"
+                );
+                primary_instance.unwrap_or_else(|| make(wgpu::Backends::VULKAN))
+            }
+        }
     }
 
     pub fn check_compatible_with_surface(&self, surface: &wgpu::Surface<'_>) -> anyhow::Result<()> {
@@ -825,5 +855,24 @@ mod tests {
             parse_pci_id(&format!("{:#x}", 0x1234)).unwrap(),
             parse_pci_id(&format!("{:#X}", 0x1234)).unwrap(),
         );
+    }
+}
+
+/// Split the requested backends into the ones tried first and whether GL is a fallback.
+#[cfg(not(target_family = "wasm"))]
+fn split_backends(requested: wgpu::Backends) -> (wgpu::Backends, bool) {
+    (requested - wgpu::Backends::GL, requested.contains(wgpu::Backends::GL))
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod backend_tests {
+    use super::split_backends;
+    use wgpu::Backends;
+
+    #[test]
+    fn gl_is_only_a_fallback() {
+        assert_eq!(split_backends(Backends::VULKAN | Backends::GL), (Backends::VULKAN, true));
+        assert_eq!(split_backends(Backends::VULKAN), (Backends::VULKAN, false));
+        assert_eq!(split_backends(Backends::GL), (Backends::empty(), true));
     }
 }

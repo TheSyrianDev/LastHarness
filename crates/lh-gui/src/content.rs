@@ -17,16 +17,134 @@ pub enum ContentKind {
     Text,
     /// `body` is a file path.
     Image,
-    /// A web page: `body` is its source. It is not run here; `path` is the file to open in a browser.
+    /// A web page or a small app: `body` is its source; `path` is the file to open in a browser, if any.
     Html,
+    /// Columns and rows: `body` is the JSON the core checked (see `Table::parse`).
+    Table,
+    /// Numbers to draw: `body` is the JSON the core checked (see `Chart::parse`).
+    Chart,
+}
+
+/// A table the assistant made: plain values only, so every front end can draw it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Table {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub caption: Option<String>,
+    /// For each column: are all its values numbers? Those are lined up on the right.
+    pub numeric: Vec<bool>,
+}
+
+fn plain(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
+impl Table {
+    pub fn parse(body: &str) -> Option<Table> {
+        let v: serde_json::Value = serde_json::from_str(body).ok()?;
+        let columns: Vec<String> = v["columns"].as_array()?.iter().map(plain).collect();
+        let raw = v["rows"].as_array()?;
+        let rows: Vec<Vec<String>> = raw.iter().filter_map(|r| r.as_array().map(|r| r.iter().map(plain).collect())).collect();
+        let numeric = (0..columns.len()).map(|c| !raw.is_empty() && raw.iter().all(|r| r.get(c).is_some_and(|x| x.is_number() || x.is_null()))).collect();
+        Some(Table { columns, rows, caption: v["caption"].as_str().map(str::to_string), numeric })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChartKind {
+    Bar,
+    Line,
+    Pie,
+}
+
+/// A chart the assistant made: labels, and one or more series of numbers, one per label.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Chart {
+    pub kind: ChartKind,
+    pub labels: Vec<String>,
+    pub series: Vec<(String, Vec<f64>)>,
+    pub caption: Option<String>,
+}
+
+impl Chart {
+    pub fn parse(body: &str) -> Option<Chart> {
+        let v: serde_json::Value = serde_json::from_str(body).ok()?;
+        let kind = match v["type"].as_str()? {
+            "bar" => ChartKind::Bar,
+            "line" => ChartKind::Line,
+            "pie" => ChartKind::Pie,
+            _ => return None,
+        };
+        let labels: Vec<String> = v["labels"].as_array()?.iter().map(plain).collect();
+        let series = v["series"].as_array()?.iter().enumerate().map(|(i, s)| {
+            let name = s["name"].as_str().map(str::to_string).unwrap_or_else(|| format!("Series {}", i + 1));
+            (name, s["values"].as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.)).collect()).unwrap_or_default())
+        }).collect();
+        Some(Chart { kind, labels, series, caption: v["caption"].as_str().map(str::to_string) })
+    }
+
+    /// The value axis: from zero (or the lowest value, if below zero) to a round top, and the step between ticks.
+    pub fn axis(&self) -> (f64, f64, f64) {
+        let all = self.series.iter().flat_map(|s| s.1.iter().copied());
+        let (lo, hi) = all.fold((0f64, 0f64), |(a, b), v| (a.min(v), b.max(v)));
+        let span = (hi - lo).max(1e-9);
+        let raw = span / 4.;
+        let mag = 10f64.powf(raw.log10().floor());
+        let step = [1., 2., 2.5, 5., 10.].iter().map(|m| m * mag).find(|s| *s >= raw).unwrap_or(10. * mag);
+        ((lo / step).floor() * step, (hi / step).ceil() * step, step)
+    }
+
+    /// Where a value sits between the bottom (0) and the top (1) of the plot.
+    pub fn level(&self, v: f64) -> f32 {
+        let (lo, hi, _) = self.axis();
+        (((v - lo) / (hi - lo).max(1e-9)) as f32).clamp(0., 1.)
+    }
+
+    /// For a pie: each slice's start and end angle, in turns (0 to 1), clockwise from the top.
+    pub fn slices(&self) -> Vec<(f32, f32)> {
+        let vals: Vec<f64> = self.series.first().map(|s| s.1.iter().map(|v| v.max(0.)).collect()).unwrap_or_default();
+        let total: f64 = vals.iter().sum();
+        let mut at = 0f32;
+        vals.iter().map(|v| {
+            let w = if total > 0. { (*v / total) as f32 } else { 0. };
+            let s = (at, at + w);
+            at += w;
+            s
+        }).collect()
+    }
+}
+
+/// A number as a person reads it on an axis or in a table: no trailing zeros, thousands grouped.
+pub fn short_number(v: f64) -> String {
+    if v.abs() >= 1e6 {
+        return format!("{}M", trim((v / 1e6 * 10.).round() / 10.));
+    }
+    if v.abs() >= 1e4 {
+        return format!("{}k", trim((v / 1e3 * 10.).round() / 10.));
+    }
+    trim((v * 100.).round() / 100.)
+}
+
+fn trim(v: f64) -> String {
+    let s = format!("{v:.2}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
 impl Content {
     /// What the assistant's `show` tool sent: the kind it named, the text, or for an image a path.
     pub fn from_show(title: &str, kind: &str, content: &str, path: Option<&str>) -> Content {
+        // a file's own extension wins over what the model called it: a .md file shown as "text" still reads formatted
+        let named = path.unwrap_or(title).to_lowercase();
+        let kind = if named.ends_with(".md") || named.ends_with(".markdown") { "markdown" } else if (named.ends_with(".html") || named.ends_with(".htm")) && kind != "image" { "html" } else { kind };
         match (kind, path) {
             ("image", Some(p)) => Content { title: title.into(), kind: ContentKind::Image, body: p.into(), path: None },
-            ("html", _) => Content { title: title.into(), kind: ContentKind::Html, body: content.into(), path: path.map(str::to_string) },
+            ("table", _) => Content { title: title.into(), kind: ContentKind::Table, body: content.into(), path: None },
+            ("chart", _) => Content { title: title.into(), kind: ContentKind::Chart, body: content.into(), path: None },
+            ("html" | "app", _) => Content { title: title.into(), kind: ContentKind::Html, body: content.into(), path: path.map(str::to_string) },
             ("code", _) => Content { title: title.into(), kind: ContentKind::Code, body: content.into(), path: None },
             ("text", _) => Content { title: title.into(), kind: ContentKind::Text, body: content.into(), path: None },
             ("markdown", _) => Content { title: title.into(), kind: ContentKind::Markdown, body: content.into(), path: None },
@@ -136,6 +254,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_file_extension_wins_over_the_kind() {
+        assert_eq!(Content::from_show("digest.md", "text", "# Hi", None).kind, ContentKind::Markdown);
+        assert_eq!(Content::from_show("x", "text", "# Hi", Some("/a/b/notes.markdown")).kind, ContentKind::Markdown);
+        assert_eq!(Content::from_show("page.html", "text", "<p>x</p>", None).kind, ContentKind::Html);
+        assert_eq!(Content::from_show("plain", "text", "# Hi", None).kind, ContentKind::Text);
+    }
+
+    #[test]
     fn single_line_breaks_are_kept() {
         assert_eq!(keep_line_breaks("one\ntwo\nthree"), "one  \ntwo  \nthree");
         assert_eq!(keep_line_breaks("para\n\nnext"), "para\n\nnext", "blank lines stay paragraph breaks");
@@ -218,5 +344,22 @@ mod tests {
         other.kind = ContentKind::Code;
         assert_eq!(other.browser_target(), None);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn tables_and_charts_are_read_from_the_checked_json() {
+        let t = Table::parse(r#"{"columns":["Plan","Price"],"rows":[["Starter",10],["Pro",30.5]],"caption":"per month"}"#).unwrap();
+        assert_eq!(t.rows[1], vec!["Pro".to_string(), "30.5".into()]);
+        assert_eq!(t.numeric, vec![false, true]);
+        assert_eq!(Content::from_show("T", "table", "{}", None).kind, ContentKind::Table);
+        assert_eq!(Content::from_show("A", "app", "<p>", None).kind, ContentKind::Html);
+        let c = Chart::parse(r#"{"type":"bar","labels":["a","b"],"series":[{"name":"x","values":[2.4,5]}]}"#).unwrap();
+        assert_eq!(c.axis(), (0., 6., 2.));
+        assert_eq!(c.level(6.), 1.);
+        assert_eq!(c.level(0.), 0.);
+        let pie = Chart::parse(r#"{"type":"pie","labels":["a","b"],"series":[{"values":[1,3]}]}"#).unwrap();
+        assert_eq!(pie.slices(), vec![(0., 0.25), (0.25, 1.)]);
+        assert_eq!(pie.series[0].0, "Series 1");
+        assert_eq!((short_number(2.40), short_number(12500.), short_number(3.0)), ("2.4".into(), "12.5k".into(), "3".into()));
     }
 }

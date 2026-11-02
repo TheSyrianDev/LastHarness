@@ -405,9 +405,13 @@ First front end, and the first thing worth showing to anyone.
 
 Served by the core at the machine's local network address. Responsive, so it also works in a phone browser over the local network or the user's VPN. Behind the same pairing as every other device (§12). Accessible by default.
 
-### 11.3 Native desktop GUI — Decided (approach)
+### 11.3 Desktop app — Decided (2026-10-29)
 
-No Electron. Test Slint, egui, iced and GPUI against RAM use, right-to-left and Arabic text shaping (translations are planned), and screen-reader support (Orca on Linux, VoiceOver on macOS, Narrator or NVDA on Windows). Fall back to a Tauri-style wrapper only if none passes.
+No Electron and no web-view shell. The desktop app is native, drawn with GPUI (`crates/lh-gui`); a Tauri 2 window was tried on 2026-10-29 and dropped on 2026-10-30 (276 MB idle against 136 MB, and themes did not work properly). Web pages and small generative apps open in the sandboxed Servo page viewer.
+
+### 11.3.1 Generative answers — Decided (2026-10-29)
+
+Besides text, the assistant can answer with a typed table or chart, drawn by each front end (as text in the terminal and chat channels), or with a small app it writes (CSS, HTML and JS) shown in a sandboxed frame with no network and no access to the rest of the page. The app may send back one checked follow-up, which starts a new turn only when the user clicks it. Idea from CopilotKit's OpenIntelligentUI; none of its code or stack is used.
 
 ### 11.4 Mobile app — Decided
 

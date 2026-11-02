@@ -96,3 +96,24 @@ fn free_meter() -> lh_spend::SpendMeter {
 }
 
 const COMPACT_AT: u64 = 0;
+
+#[tokio::test]
+async fn headless_says_no_unless_bypass_permissions() {
+    let write = || ToolCall { id: "c1".into(), name: "write_file".into(), arguments: r#"{"path":"out.txt","content":"hi"}"#.into(), repaired: false };
+    for bypass in [false, true] {
+        let c = start(vec![reply("", vec![write()]), reply("ok", vec![])]).await;
+        let dir = tempfile::tempdir().unwrap();
+        let id = c.create_session("alpha", dir.path(), false, false).await.unwrap();
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let end = lh_tui::headless::run(&c, &id, "write", false, bypass, &mut out, &mut err).await;
+        let err = String::from_utf8(err).unwrap();
+        if bypass {
+            assert_eq!(end.code(), 0, "{err}");
+            assert_eq!(std::fs::read_to_string(dir.path().join("out.txt")).unwrap(), "hi");
+            assert!(err.contains("said yes"), "{err}");
+        } else {
+            assert_eq!(end.code(), 3, "{err}");
+            assert!(!dir.path().join("out.txt").exists());
+        }
+    }
+}

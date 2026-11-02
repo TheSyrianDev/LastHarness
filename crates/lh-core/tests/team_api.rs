@@ -211,6 +211,22 @@ async fn the_user_can_reject_a_plan_and_away_mode_decides_for_them_and_says_so()
 }
 
 #[tokio::test]
+async fn a_run_started_for_a_chat_is_listed_with_that_chat_only() {
+    let s = start(vec![text(PLAN)], &["only-this-one"]);
+    s.put("/v1/team/departments/pets", json!({"text": "---\nname: pets\ndescription: x\nlead: planner\nmembers: researcher\n---\n"})).await;
+    let (_, mine) = s.post("/v1/team/runs", json!({"department": "pets", "goal": "go", "session": "s7"})).await;
+    let (_, other) = s.post("/v1/team/runs", json!({"department": "pets", "goal": "go"})).await;
+    let all = s.get("/v1/team/runs").await;
+    assert_eq!(all["runs"].as_array().unwrap().len(), 2);
+    let ours = s.get("/v1/team/runs?session=s7").await;
+    let ours = ours["runs"].as_array().unwrap();
+    assert_eq!(ours.len(), 1);
+    assert_eq!((&ours[0]["id"], &ours[0]["session"]), (&mine["id"], &json!("s7")));
+    let one = s.get(&format!("/v1/team/runs/{}", other["id"].as_str().unwrap())).await;
+    assert!(one["session"].is_null(), "a run started from the Departments page belongs to no chat");
+}
+
+#[tokio::test]
 async fn a_model_that_is_not_served_stops_the_run_with_a_message() {
     let s = start(vec![text(PLAN)], &["only-this-one"]);
     s.put("/v1/team/types/frontier", json!({"model": "big-one"})).await;

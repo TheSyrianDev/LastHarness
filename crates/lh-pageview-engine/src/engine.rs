@@ -43,7 +43,7 @@ impl Engine {
 
     pub fn info(&self) -> Info {
         let title = self.doc.find_title_node().map(|n| n.text_content()).map(|t| t.split_whitespace().collect::<Vec<_>>().join(" ")).unwrap_or_default();
-        Info { title, content_height: self.doc.root_element().final_layout().size.height, scroll_y: self.doc.viewport_scroll().y as f32 }
+        Info { title, content_height: self.doc.root_element().final_layout().size.height, scroll_y: self.doc.viewport_scroll().y as f32, follow_up: String::new() }
     }
 
     fn view_css_height(&self) -> f32 {

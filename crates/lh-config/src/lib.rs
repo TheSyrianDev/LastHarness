@@ -79,6 +79,7 @@ pub const SCHEMA: &[Def] = &[
     d("spending.monthly_cap_usd", Kind::OptFloat, "", true, "Refuse past this per month (US dollars). Empty for no limit"),
     d("permissions.mode", Kind::Choice(&["tiered", "ask-all"]), "tiered", true, "tiered: reads are free, writes ask once, risky things always ask. ask-all: ask for everything"),
     d("permissions.bypass", Kind::Bool, "false", true, "Skip every permission question. You accept the risk; the project is not responsible for the outcome"),
+    d("permissions.show_diff", Kind::Choice(&["always", "untrusted", "trusted", "never"]), "always", true, "When a file change shows what it changes. always: every time. untrusted: only in chats that still ask before writing. trusted: only in chats set to always allow writes. never: no diff"),
     d("permissions.sudo", Kind::Bool, "false", true, "Let agents use sudo (it still asks like any other command)"),
     d("tree.summarize", Kind::Choice(&["ask", "always", "never"]), "ask", true, "When you leave a branch of a chat for another, write a short summary of it where you come back. ask: you are asked each time"),
     d("kvcache.enabled", Kind::Bool, "true", true, "Save the model's work on a local chat, so a stored chat goes on quickly instead of being read again. Needs kvcache.dir; never for private chats or cloud models"),

@@ -23,13 +23,17 @@ pub enum Category {
     Channels,
     Data,
     Activity,
+    /// Commands before and after tool calls, from hooks.toml.
+    Hooks,
+    /// Tasks that run on a timetable.
+    Schedules,
     Updates,
     /// Settings the core has that this table does not name yet.
     Other,
 }
 
 impl Category {
-    pub const ALL: [Category; 15] = [
+    pub const ALL: [Category; 17] = [
         Category::Appearance,
         Category::Models,
         Category::Chats,
@@ -43,6 +47,8 @@ impl Category {
         Category::Channels,
         Category::Data,
         Category::Activity,
+        Category::Hooks,
+        Category::Schedules,
         Category::Updates,
         Category::Other,
     ];
@@ -63,6 +69,8 @@ impl Category {
             Category::Channels => "channels",
             Category::Data => "data",
             Category::Activity => "activity",
+            Category::Hooks => "hooks",
+            Category::Schedules => "schedules",
             Category::Updates => "updates",
             Category::Other => "other",
         }
@@ -88,6 +96,8 @@ impl Category {
             Category::Channels => "Channels",
             Category::Data => "Your data",
             Category::Activity => "Activity",
+            Category::Hooks => "Hooks",
+            Category::Schedules => "Scheduled tasks",
             Category::Updates => "Updates and reports",
             Category::Other => "More",
         }
@@ -96,21 +106,23 @@ impl Category {
     /// One line under the page title.
     pub fn blurb(self) -> &'static str {
         match self {
-            Category::Appearance => "How the window looks and how wide the chat is.",
-            Category::Models => "Where your models come from, and the key to reach them.",
-            Category::Chats => "How chats are kept, shortened and resumed.",
-            Category::Memory => "What the app remembers about you, and how much of it goes with a message.",
-            Category::Learning => "Rules, how I talk to you, and skills, with a way back for each change.",
-            Category::Departments => "Departments, their roles and model types, and how they work on a big goal.",
+            Category::Appearance => "How the window looks and how wide the chat is",
+            Category::Models => "Where your models come from, and the key to reach them",
+            Category::Chats => "How chats are kept, shortened and resumed",
+            Category::Memory => "What the app remembers about you, and how much of it goes with a message",
+            Category::Learning => "Rules, how I talk to you, and skills, with a way back for each change",
+            Category::Departments => "Departments, their roles and model types, and how they work on a big goal",
             Category::Permissions => "What agents may do without asking. Take care here.",
-            Category::Spending => "What happens when a model service costs money.",
-            Category::Web => "Web search, and reaching the app from a browser or a phone.",
-            Category::Tools => "Servers that give the assistant more tools, and folders that may bring their own.",
+            Category::Spending => "What happens when a model service costs money",
+            Category::Web => "Web search, and reaching the app from a browser or a phone",
+            Category::Tools => "Servers that give the assistant more tools, and folders that may bring their own",
             Category::Channels => "Talk to the assistant from Telegram, Matrix, Signal or Slack. All are off until you switch them on.",
-            Category::Data => "Take your memory, rules and roles with you, and start with the computer.",
-            Category::Activity => "What the assistant did, newest first, and what it cost.",
-            Category::Updates => "Updates and crash reports.",
-            Category::Other => "Settings that have no page of their own yet.",
+            Category::Data => "Take your memory, rules and roles with you, and start with the computer",
+            Category::Activity => "What the assistant did, newest first, and what it cost",
+            Category::Hooks => "Your own commands, run before or after the assistant uses a tool",
+            Category::Schedules => "Tasks the assistant starts on its own, on a timetable",
+            Category::Updates => "Updates and crash reports",
+            Category::Other => "Settings that have no page of their own yet",
         }
     }
 }
@@ -182,6 +194,7 @@ pub const INFO: &[Info] = &[
     i("spending.monthly_cap_usd", Spending, "Most per month", "Refuses further calls once a month's spending passes this.", Show::Money, true),
     i("permissions.mode", Permissions, "When to ask permission", "Reads are free, writes ask once, and risky things always ask. Or ask for everything.", Show::Words(&[("tiered", "Ask for risky things"), ("ask-all", "Ask for everything")]), true),
     i("permissions.bypass", Permissions, "Skip all permission questions", "Turns every permission question off. You accept the risk, and the project is not responsible for the outcome.", Show::OnOff, true),
+    i("permissions.show_diff", Permissions, "Show the changes of a file write", "When a write is allowed without asking, the chat shows what changed. Choose where that happens.", Show::Words(&[("always", "Always"), ("untrusted", "In folders I have not trusted"), ("trusted", "In trusted folders"), ("never", "Never")]), false),
     i("permissions.sudo", Permissions, "Allow sudo", "Lets agents run commands with sudo. It still asks like any other command.", Show::OnOff, true),
     i("tree.summarize", Chats, "Summary when you leave a branch", "When you move to another branch of a chat, a short summary of the branch you left can be written where you come back.", Show::Words(&[("ask", "Ask each time"), ("always", "Always"), ("never", "Never")]), false),
     i("kvcache.enabled", Chats, "Saved chat memory for faster resume", "Saves the local model's work on a chat so a stored chat goes on quickly instead of being read again. It needs the folder below, and is never used for private chats or cloud models.", Show::OnOff, false),
@@ -340,7 +353,7 @@ pub fn appearance_matches(query: &str) -> bool {
 impl Category {
     /// Pages the app draws itself, listed even when the core has no setting for them.
     pub fn always_listed(self) -> bool {
-        matches!(self, Category::Appearance | Category::Tools | Category::Channels | Category::Data | Category::Activity)
+        matches!(self, Category::Appearance | Category::Tools | Category::Channels | Category::Data | Category::Activity | Category::Hooks | Category::Schedules)
     }
 }
 
@@ -494,9 +507,9 @@ mod tests {
         let keys: Vec<&str> = lh_config::SCHEMA.iter().map(|d| d.key).collect();
         let p = pages(keys.iter().copied());
         assert_eq!(p[0], Category::Appearance);
-        assert_eq!(p.len(), 14, "nine pages with settings, Learning, four the app draws, and More only when something is unnamed: {p:?}");
+        assert_eq!(p.len(), 16, "nine pages with settings, Learning, six the app draws, and More only when something is unnamed: {p:?}");
         assert!(!p.contains(&Category::Other));
-        assert_eq!(pages(std::iter::empty()), vec![Category::Appearance, Category::Tools, Category::Channels, Category::Data, Category::Activity], "with the core away only the pages the app draws show");
+        assert_eq!(pages(std::iter::empty()), vec![Category::Appearance, Category::Tools, Category::Channels, Category::Data, Category::Activity, Category::Hooks, Category::Schedules], "with the core away only the pages the app draws show");
         assert_eq!(neighbour(&p, Category::Appearance, false), Category::Appearance, "stops at the top");
         assert_eq!(neighbour(&p, Category::Appearance, true), p[1]);
         assert_eq!(neighbour(&p, *p.last().unwrap(), true), *p.last().unwrap(), "stops at the bottom");

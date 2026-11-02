@@ -27,6 +27,46 @@ pub enum Mode {
     Bypass,
 }
 
+/// When a file write shows its diff (`permissions.show_diff`). Trusted means the chat said
+/// "always allow writes", so its writes no longer ask.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum ShowDiff {
+    #[default]
+    Always,
+    /// Only in chats that still ask before writing.
+    Untrusted,
+    /// Only in chats set to always allow writes.
+    Trusted,
+    Never,
+}
+
+impl ShowDiff {
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "always" => Self::Always,
+            "untrusted" => Self::Untrusted,
+            "trusted" => Self::Trusted,
+            "never" => Self::Never,
+            _ => return None,
+        })
+    }
+    /// Should a write in a chat that is (or is not) trusted show its diff?
+    pub fn shows(self, trusted: bool) -> bool {
+        match self {
+            Self::Always => true,
+            Self::Untrusted => !trusted,
+            Self::Trusted => trusted,
+            Self::Never => false,
+        }
+    }
+    fn code(self) -> u8 {
+        self as u8
+    }
+    fn from_code(c: u8) -> Self {
+        [Self::Always, Self::Untrusted, Self::Trusted, Self::Never].get(c as usize).copied().unwrap_or_default()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Decision {
     Allow,
@@ -71,6 +111,8 @@ pub struct Permissions {
     /// A project worker is locked to its folder: allow rules no longer cover commands that reach outside
     /// it, so those requests go up the chain instead of being waved through.
     pub locked: bool,
+    /// When write diffs are shown. With `live` set, the live setting wins.
+    pub show_diff: ShowDiff,
     root: PathBuf,
     session_writes: AtomicBool,
 }
@@ -81,11 +123,18 @@ pub struct LivePerms {
     bypass: AtomicBool,
     ask_all: AtomicBool,
     sudo: AtomicBool,
+    show_diff: std::sync::atomic::AtomicU8,
 }
 
 impl LivePerms {
     pub fn new(bypass: bool, ask_all: bool, sudo: bool) -> Self {
-        Self { bypass: AtomicBool::new(bypass), ask_all: AtomicBool::new(ask_all), sudo: AtomicBool::new(sudo) }
+        Self { bypass: AtomicBool::new(bypass), ask_all: AtomicBool::new(ask_all), sudo: AtomicBool::new(sudo), show_diff: Default::default() }
+    }
+    pub fn set_show_diff(&self, v: ShowDiff) {
+        self.show_diff.store(v.code(), Ordering::SeqCst);
+    }
+    pub fn show_diff(&self) -> ShowDiff {
+        ShowDiff::from_code(self.show_diff.load(Ordering::SeqCst))
     }
     pub fn set(&self, bypass: bool, ask_all: bool, sudo: bool) {
         self.bypass.store(bypass, Ordering::SeqCst);
@@ -123,6 +172,7 @@ impl Permissions {
             sudo_enabled: false,
             allow_rules: vec![],
             locked: false,
+            show_diff: ShowDiff::Always,
             root: project_root.canonicalize()?,
             session_writes: AtomicBool::new(false),
         })
@@ -130,6 +180,16 @@ impl Permissions {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The diff setting in force right now.
+    pub fn show_diff(&self) -> ShowDiff {
+        self.live.as_ref().map_or(self.show_diff, |l| l.show_diff())
+    }
+
+    /// Has this chat said "always allow writes"?
+    pub fn writes_trusted(&self) -> bool {
+        self.session_writes.load(Ordering::SeqCst)
     }
 
     /// Called after the user says yes to a prompt that offered a session grant.

@@ -18,6 +18,20 @@ pub fn canvas<T>(
     }
 }
 
+/// A liquid glass layer that fills its parent (give the parent `.relative()`).
+/// Put it as the first child so the parent's other children draw over it.
+pub fn glass(corner_radius: impl Into<Pixels>, params: crate::GlassParams) -> Canvas<()> {
+    let corner_radius = corner_radius.into();
+    canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| window.paint_glass(bounds, corner_radius, params),
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+}
+
 /// A canvas element, meant for accessing the low level paint API without defining a whole
 /// custom element
 pub struct Canvas<T> {

@@ -30,7 +30,7 @@ fn limit_myself() {
 }
 
 fn report(e: &Engine) -> NetReport {
-    NetReport { refused: e.stats.refused() as u32, data_served: e.stats.data_served() as u32, urls: e.stats.refused_urls() }
+    NetReport { refused: e.stats.refused() as u32, data_served: e.stats.data_served() as u32, urls: e.stats.refused_urls(), fetch: vec![] }
 }
 
 fn hang() -> ! {
@@ -84,6 +84,8 @@ fn run() {
                     })
                 }
                 Request::LinkAt { x, y } => engine.as_ref().map(|e| Reply::Link(e.link_at(x, y))),
+                // Blitz runs no scripts, so input has nothing to drive: answer with the page as it is
+                Request::Pointer { .. } | Request::Key { .. } | Request::Deliver { .. } => engine.as_mut().map(|e| Reply::Info(e.scroll_to(e.info().scroll_y), report(e))),
             }
         }));
         let reply = match result {

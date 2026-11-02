@@ -49,7 +49,8 @@ pub struct Snapshot {
     pub chats: Vec<(u64, String)>,
     pub current_chat: Option<u64>,
     /// Model names, and the one the chat uses.
-    pub models: Vec<String>,
+    /// (choice sent to the core, name shown)
+    pub models: Vec<(String, String)>,
     pub current_model: String,
     /// The families of looks (Calm, Matte…), and the one in use.
     pub looks: Vec<String>,
@@ -93,17 +94,17 @@ pub fn entries(s: &Snapshot) -> Vec<Entry> {
     for p in DOCK_TABS {
         let hint = match p {
             Panel::Content => "Ctrl+Shift+O",
-            Panel::Departments => "Ctrl+Shift+D",
-            Panel::Memory => "Ctrl+Shift+M",
-            _ => "Ctrl+Shift+T",
+            Panel::Work => "Ctrl+Shift+W",
+            Panel::Tree => "Ctrl+Shift+T",
+            _ => "",
         };
         v.push(entry(Command::OpenTab(p), g_tab, if ar { format!("افتح {}", panel_label(p, true)) } else { format!("Open {}", panel_label(p, false)) }, hint));
     }
     for (key, title) in &s.chats {
         v.push(entry(Command::SwitchChat(*key), g_chat, title.clone(), if s.current_chat == Some(*key) { current } else { "" }));
     }
-    for m in &s.models {
-        v.push(entry(Command::Model(m.clone()), g_model, m.clone(), if *m == s.current_model { current } else { "" }));
+    for (m, label) in &s.models {
+        v.push(entry(Command::Model(m.clone()), g_model, label.clone(), if *m == s.current_model { current } else { "" }));
     }
     for (i, l) in s.looks.iter().enumerate() {
         v.push(entry(Command::Look(i), g_look, l.clone(), if i == s.current_look { current } else { "" }));
@@ -220,7 +221,7 @@ mod tests {
             rtl: false,
             chats: vec![(1, "Plan the Berlin trip".into()), (2, "Fix the failing export test".into()), (3, "رسالة إلى المالك".into())],
             current_chat: Some(1),
-            models: vec!["Qwen3.6 35B".into(), "Tiel Coder".into()],
+            models: vec![("Qwen3.6 35B".into(), "Qwen3.6 35B".into()), ("Tiel Coder".into(), "Tiel Coder".into())],
             current_model: "Qwen3.6 35B".into(),
             looks: vec!["Calm".into(), "Matte".into(), "Glass".into()],
             current_look: 1,

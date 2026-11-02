@@ -129,7 +129,8 @@ pub fn chevron(open: bool, rtl: bool) -> Vec<Vec<(f32, f32)>> {
 }
 
 /// The tabs along the top of the side panel, in order. Settings is not one: it opens as a window over everything.
-pub const DOCK_TABS: [Panel; 4] = [Panel::Content, Panel::Departments, Panel::Memory, Panel::Tree];
+/// The side panel is about the chat that is open. Departments and the full memory are pages of their own.
+pub const DOCK_TABS: [Panel; 4] = [Panel::Content, Panel::Work, Panel::Memory, Panel::Tree];
 
 /// The name of a side panel, for its tab and for a screen reader.
 pub fn panel_label(p: Panel, rtl: bool) -> &'static str {
@@ -138,10 +139,12 @@ pub fn panel_label(p: Panel, rtl: bool) -> &'static str {
         (Panel::Content, true) => "المفتوح",
         (Panel::Departments, false) => "Departments",
         (Panel::Departments, true) => "الأقسام",
-        (Panel::Memory, false) => "Memory",
-        (Panel::Memory, true) => "الذاكرة",
-        (Panel::Tree, false) => "Tree",
-        (Panel::Tree, true) => "الشجرة",
+        (Panel::Memory, false) => "Memory used",
+        (Panel::Memory, true) => "الذاكرة المستخدمة",
+        (Panel::Tree, false) => "Branches",
+        (Panel::Tree, true) => "الفروع",
+        (Panel::Work, false) => "Work",
+        (Panel::Work, true) => "العمل",
     }
 }
 
@@ -217,6 +220,18 @@ impl TitleInfo {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_sidebar_button_folds_when_wide_and_opens_when_folded_with_theme_icons() {
+        let wide = super::SidebarToggle::new(false, false);
+        let folded = super::SidebarToggle::new(true, false);
+        assert_eq!((wide.icon, folded.icon), ("sidebar-collapse", "sidebar-expand"));
+        assert!(wide.aria.starts_with("Hide") && folded.aria.starts_with("Show"));
+        for t in [wide, folded, super::SidebarToggle::new(true, true), super::SidebarToggle::new(false, true)] {
+            assert!(crate::icons::NAMES.contains(&t.icon));
+            assert!(t.aria.contains("Ctrl+B"));
+        }
+    }
+
     use super::*;
 
     #[test]
@@ -281,14 +296,8 @@ mod tests {
             names.sort();
             names.dedup();
             assert_eq!(names.len(), 4);
-            // the rail and the tabs call the same panel the same thing
-            for item in RailItem::ALL {
-                if let Some(p) = item.panel() {
-                    assert_eq!(item.label(rtl), panel_label(p, rtl));
-                }
-            }
         }
-        for p in [Panel::Departments, Panel::Memory, Panel::Content, Panel::Tree] {
+        for p in [Panel::Work, Panel::Memory, Panel::Content, Panel::Tree] {
             assert!(DOCK_TABS.contains(&p), "{p:?} has a tab");
         }
     }
@@ -329,5 +338,99 @@ mod tests {
         let ar = TitleInfo::chat("رسالة", "m", Some(1500), Some((3, Some(1))), true);
         assert_eq!((ar.branch.as_deref(), ar.context.as_deref()), (Some("الفرع 1 من 3"), Some("1,500 رمز")));
         assert_eq!(TitleInfo::page("Weekly review"), TitleInfo { title: "Weekly review".into(), branch: None, context: None, model: None });
+    }
+}
+
+/// The button at the top of the left sidebar: it folds the sidebar when it is wide and opens it when it is folded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SidebarToggle {
+    /// The theme icon it shows (the folded sidebar shows the mark until the pointer is over it).
+    pub icon: &'static str,
+    /// What a screen reader says.
+    pub aria: &'static str,
+}
+
+impl SidebarToggle {
+    pub fn new(compact: bool, rtl: bool) -> SidebarToggle {
+        match (compact, rtl) {
+            (true, false) => SidebarToggle { icon: "sidebar-expand", aria: "Show the sidebar (Ctrl+B)" },
+            (true, true) => SidebarToggle { icon: "sidebar-expand", aria: "إظهار الشريط (Ctrl+B)" },
+            (false, false) => SidebarToggle { icon: "sidebar-collapse", aria: "Hide the sidebar (Ctrl+B)" },
+            (false, true) => SidebarToggle { icon: "sidebar-collapse", aria: "إخفاء الشريط (Ctrl+B)" },
+        }
+    }
+}
+
+/// The theme icon name of a rail item.
+pub fn rail_icon_name(i: RailItem) -> &'static str {
+    match i {
+        RailItem::Chats => "chats",
+        RailItem::Departments => "departments",
+        RailItem::Memory => "memory",
+        RailItem::Settings => "settings",
+    }
+}
+
+/// The theme icon name of a page of Settings. Chats, Memory and Departments share the rail's icon and name.
+pub fn category_icon_name(c: crate::setting_names::Category) -> &'static str {
+    use crate::setting_names::Category as C;
+    match c {
+        C::Appearance => "appearance",
+        C::Models => "models",
+        C::Chats => "chats",
+        C::Memory => "memory",
+        C::Learning => "learning",
+        C::Departments => "departments",
+        C::Permissions => "permissions",
+        C::Spending => "spending",
+        C::Web => "web",
+        C::Tools => "tools",
+        C::Channels => "channels",
+        C::Data => "data",
+        C::Activity => "activity",
+        C::Hooks => "hooks",
+        C::Schedules => "schedules",
+        C::Updates => "updates",
+        C::Other => "other",
+    }
+}
+
+/// An outline icon for each page of Settings, on the same 24 by 24 grid as the rail.
+pub fn category_icon(c: crate::setting_names::Category) -> Vec<Vec<(f32, f32)>> {
+    use crate::setting_names::Category as C;
+    let ellipse = |cx: f32, cy: f32, rx: f32, ry: f32| -> Vec<(f32, f32)> {
+        (0..=16).map(|k| { let a = k as f32 * std::f32::consts::TAU / 16.; (cx + rx * a.cos(), cy + ry * a.sin()) }).collect()
+    };
+    match c {
+        // a circle split down the middle: light and dark
+        C::Appearance => vec![circle(12., 12., 8.), vec![(12., 4.), (12., 20.)]],
+        // a chip with pins
+        C::Models => vec![vec![(7., 7.), (17., 7.), (17., 17.), (7., 17.), (7., 7.)], vec![(10., 4.), (10., 7.)], vec![(14., 4.), (14., 7.)], vec![(10., 17.), (10., 20.)], vec![(14., 17.), (14., 20.)], vec![(4., 10.), (7., 10.)], vec![(4., 14.), (7., 14.)], vec![(17., 10.), (20., 10.)], vec![(17., 14.), (20., 14.)]],
+        C::Chats => RailItem::Chats.icon(),
+        C::Memory => RailItem::Memory.icon(),
+        // a light bulb
+        C::Learning => vec![circle(12., 10., 6.), vec![(9.5, 16.), (9.5, 19.), (14.5, 19.), (14.5, 16.)], vec![(10.5, 21.), (13.5, 21.)]],
+        C::Departments => RailItem::Departments.icon(),
+        // a shield
+        C::Permissions => vec![vec![(12., 3.5), (19., 6.), (19., 12.), (12., 20.5), (5., 12.), (5., 6.), (12., 3.5)]],
+        // a coin
+        C::Spending => vec![circle(12., 12., 8.), vec![(12., 7.), (12., 17.)], vec![(9.5, 9.5), (14.5, 9.5)], vec![(9.5, 14.5), (14.5, 14.5)]],
+        // a globe
+        C::Web => vec![circle(12., 12., 8.), ellipse(12., 12., 3.5, 8.), vec![(4., 12.), (20., 12.)]],
+        // a plug
+        C::Tools => vec![vec![(8., 10.), (16., 10.), (16., 14.), (12., 18.), (8., 14.), (8., 10.)], vec![(10., 5.), (10., 10.)], vec![(14., 5.), (14., 10.)], vec![(12., 18.), (12., 21.)]],
+        // a paper plane
+        C::Channels => vec![vec![(4., 11.), (20., 4.), (14., 20.), (11., 13.), (4., 11.)], vec![(11., 13.), (20., 4.)]],
+        // a stack of disks
+        C::Data => vec![ellipse(12., 6., 7., 2.5), vec![(5., 6.), (5., 18.)], vec![(19., 6.), (19., 18.)], (0..=8).map(|k| { let a = k as f32 * std::f32::consts::PI / 8.; (12. + 7. * a.cos(), 18. + 2.5 * a.sin()) }).collect(), (0..=8).map(|k| { let a = k as f32 * std::f32::consts::PI / 8.; (12. + 7. * a.cos(), 12. + 2.5 * a.sin()) }).collect()],
+        // a pulse
+        C::Activity => vec![vec![(3., 12.), (8., 12.), (10., 6.), (14., 18.), (16., 12.), (21., 12.)]],
+        // an arrow into a tray
+        C::Updates => vec![vec![(12., 4.), (12., 14.)], vec![(8., 10.), (12., 14.), (16., 10.)], vec![(4., 15.), (4., 19.), (20., 19.), (20., 15.)]],
+        // a fishhook: an eye, the shank, the bend and a barb
+        C::Hooks => vec![circle(14., 5., 2.), vec![(14., 7.), (14., 15.), (12.5, 18.5), (9.5, 19.5), (7., 17.5), (6.5, 13.5)], vec![(6.5, 13.5), (9.5, 15.5)]],
+        // a clock
+        C::Schedules => vec![circle(12., 12., 8.), vec![(12., 7.), (12., 12.), (15.5, 14.)]],
+        C::Other => vec![circle(6., 12., 1.2), circle(12., 12., 1.2), circle(18., 12., 1.2)],
     }
 }

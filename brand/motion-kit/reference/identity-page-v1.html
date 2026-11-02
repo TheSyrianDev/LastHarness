@@ -1,0 +1,631 @@
+<title>LastHarness Identity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Readex+Pro:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#eef0ea;--surface:#f8f9f4;--fg:#16201a;--muted:#59635b;--line:#d6dbd0;--accent:#5f7d48;
+  --forest:#15251c;--moss:#5f7d48;--lichen:#b2c27c;--cream:#f2ead6;--gold:#e0a050;--mint:#6fcf9f;--clay:#d0784f;
+  --stage:#1a1b26;--stage-fg:#c0caf5;
+  --f-ui:"Instrument Sans",system-ui,sans-serif;--f-mono:"JetBrains Mono",ui-monospace,monospace;--f-ar:"Readex Pro",system-ui,sans-serif;--f-shell:var(--f-ui);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1611;--surface:#16201a;--fg:#ece9de;--muted:#9aa59b;--line:#2a352c;--accent:#b2c27c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1611;--surface:#16201a;--fg:#ece9de;--muted:#9aa59b;--line:#2a352c;--accent:#b2c27c;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 var(--f-ui);padding:24px 16px 80px}
+.wrap{max-width:1160px;margin:0 auto;display:grid;gap:64px}
+h1,h2,h3{margin:0;text-wrap:balance}p{margin:0}
+.tag{font:600 12px var(--f-mono);letter-spacing:.06em;color:var(--accent);text-transform:uppercase}
+.part{display:flex;gap:14px;align-items:baseline;border-top:2px solid var(--fg);padding-top:10px;font:700 13px var(--f-mono);letter-spacing:.1em}
+.part i{font-style:normal;color:var(--muted)}
+section{display:grid;gap:18px}
+.head{display:grid;gap:8px;max-width:78ch}.head h2{font:600 28px/1.2 var(--f-ui);letter-spacing:-.015em}.head p{color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:12px;align-content:start;min-width:0}
+.card h3{font:600 17px var(--f-ui)} .card p,.card li{font-size:14.5px;color:var(--muted)} .card ul{margin:0;padding-left:18px;display:grid;gap:6px}
+.two>*,.tiles>*{min-width:0}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.three{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.tile{border-radius:14px;display:grid;place-items:center;padding:16px;gap:8px;min-height:170px;align-content:center;justify-items:center;text-align:center;min-width:0}
+.tile small{font:11px/1.45 var(--f-mono);opacity:.8}
+.tile b{font:600 14px var(--f-ui)}
+.t-d{background:var(--forest);color:var(--cream)}.t-l{background:var(--cream);color:var(--forest)}.t-w{background:#fff;color:#16201a}.t-m{background:var(--moss);color:var(--cream)}.t-s{background:#1a1b26;color:#c0caf5}
+.wide{grid-column:span 2}
+@media(max-width:560px){.wide{grid-column:auto}}
+.sizes{display:flex;gap:14px;align-items:end;flex-wrap:wrap;justify-content:center}
+.blur{filter:blur(2px)}
+/* cover */
+.cover{background:var(--forest);color:var(--cream);border-radius:24px;padding:40px 32px;display:grid;gap:28px;overflow:hidden}
+.cover .eyebrow{font:600 12px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:#a8b39a}
+.cover-main{display:grid;grid-template-columns:auto 1fr;gap:36px;align-items:center}
+@media(max-width:720px){.cover-main{grid-template-columns:1fr}}
+.cover-mark{width:min(240px,60vw);height:auto;overflow:visible}
+.markcol{display:grid;gap:10px;justify-items:center}
+.cover h1{font:600 clamp(28px,4.4vw,46px)/1.1 var(--f-ui);letter-spacing:-.025em;max-width:20ch}
+.cover p{color:#cfd1c0;max-width:62ch}
+.cover .ar{font:500 20px/1.6 var(--f-ar);color:#d9d5c2;direction:rtl}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.facts div{background:#ffffff0d;border-radius:12px;padding:12px 14px;display:grid;gap:2px}
+.facts b{font:600 14px var(--f-ui)} .facts span{font-size:13px;color:#b9bca9}
+/* grid plate */
+.plate{background:#fbf8ee;border-radius:12px;padding:12px}
+.plate svg{width:100%;height:auto;display:block}
+/* colour */
+.sw{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.sw div{border-radius:12px;padding:14px;min-height:118px;display:grid;align-content:end;gap:2px;font:12px var(--f-mono)}
+.sw b{font:600 15px var(--f-ui)}
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.states figure{margin:0;background:var(--forest);color:var(--cream);border-radius:12px;padding:14px 10px;display:grid;gap:6px;justify-items:center;text-align:center}
+.states svg{width:84px;height:84px} .states b{font:600 14px var(--f-ui)} .states span{font-size:12px;color:#b9bca9;line-height:1.4}
+/* omarchy themes */
+.themes{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px}
+.themes figure{margin:0;border-radius:12px;padding:14px;display:grid;gap:8px;justify-items:center;font:12px var(--f-mono)}
+.themes svg{width:76px;height:76px}
+/* motion */
+.motion{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.motion figure{margin:0;background:var(--forest);color:var(--cream);border-radius:14px;padding:18px;display:grid;gap:10px;justify-items:center;text-align:center}
+.motion svg{width:130px;height:130px;overflow:visible} .motion b{font:600 15px var(--f-ui)} .motion span{font-size:13px;color:#b9bca9}
+.prog{display:flex;gap:8px;align-items:center}
+.prog svg{width:44px;height:44px}
+.prog i{width:14px;height:14px;border-radius:50%;background:var(--dot);display:block;transition:background .3s}
+.prog i.on{background:var(--mint)} .prog i.now{background:var(--gold)}
+/* type */
+.type{display:grid;gap:14px}
+.type .row{display:grid;grid-template-columns:170px 1fr;gap:16px;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:12px}
+@media(max-width:620px){.type .row{grid-template-columns:1fr}}
+.type small{font:12px var(--f-mono);color:var(--muted)}
+/* crew */
+.crew{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.crew{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.crew{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.mate{margin:0;border-radius:14px;padding:16px 10px 12px;display:grid;gap:8px;justify-items:center;background:var(--stage);color:var(--stage-fg);min-width:0;text-align:center}
+.mate svg{width:100%;max-width:110px;height:auto;aspect-ratio:1;overflow:visible}
+.mate b{font:600 14px var(--f-ui)} .mate span{font:11.5px/1.4 var(--f-ui);color:#9aa3c7}
+.anim [class^="act-"],.anim .needle{transform-box:fill-box;transform-origin:center}
+.anim .act-lead .needle{animation:spin 6s ease-in-out infinite;animation-delay:var(--d,0s)}
+@keyframes spin{0%,22%{transform:rotate(0)}52%{transform:rotate(380deg)}58%,100%{transform:rotate(360deg)}}
+.anim .act-research{animation:scan 6s ease-in-out infinite;animation-delay:var(--d,0s)}
+@keyframes scan{0%,22%{transform:none}30%{transform:translate(-2px,1.5px)}40%{transform:translate(1.5px,-1px)}50%{transform:translate(-1px,-1.5px)}60%,100%{transform:none}}
+.anim .act-writer{animation:write 6s ease-in-out infinite;animation-delay:var(--d,0s)}
+@keyframes write{0%,20%{transform:none}26%{transform:translate(-1.5px,1px) rotate(-6deg)}32%{transform:translate(1px,-.5px) rotate(4deg)}38%{transform:translate(-1.5px,1px) rotate(-6deg)}44%{transform:translate(1px,-.5px) rotate(4deg)}50%,100%{transform:none}}
+.anim .act-coder{animation:type 6s ease-in-out infinite;animation-delay:var(--d,0s)}
+@keyframes type{0%,24%,32%,40%,48%,100%{transform:none}28%,36%,44%{transform:translateY(.8px)}}
+.anim .act-designer{animation:dab 6s ease-in-out infinite;animation-delay:var(--d,0s)}
+@keyframes dab{0%,22%{transform:none}30%{transform:rotate(-14deg)}38%{transform:rotate(6deg)}46%{transform:rotate(-14deg)}54%,100%{transform:none}}
+.anim .act-planner .tick{stroke-dasharray:16;animation:tick 6s ease-in-out infinite;animation-delay:var(--d,0s)}
+@keyframes tick{0%,22%{stroke-dashoffset:16}40%,100%{stroke-dashoffset:0}}
+.anim .act-coder .cursor{animation:blinkc 1s steps(1) infinite}
+@keyframes blinkc{50%{opacity:0}}
+/* applications */
+.term{background:#11181a;border-radius:12px;overflow:hidden;font:13px/1.65 var(--f-mono);color:#d7dccf;border:1px solid #233028}
+.term .bar{display:flex;gap:6px;padding:9px 12px;background:#1a2420}.term .bar i{width:10px;height:10px;border-radius:50%;background:#3a4a40;display:block}
+.term .body{padding:14px 16px;display:grid;gap:2px}
+.term .hello{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;margin:6px 0 10px}
+.term .hello svg{width:58px;height:58px}
+.term .dim{color:#7d8a80} .term .ok{color:#6fcf9f} .term .busy{color:#e0a050} .term .acc{color:#b2c27c}
+.term .w{display:grid;grid-template-columns:18px 110px 1fr;gap:8px;align-items:center}
+.term .w svg{width:16px;height:16px}
+.waybar{background:#1a1b26;color:#c0caf5;border-radius:10px;display:flex;align-items:center;gap:14px;padding:6px 14px;font:12.5px var(--f-mono)}
+.waybar .ws{display:flex;gap:6px}.waybar .ws span{width:20px;text-align:center;opacity:.55}.waybar .ws span.on{opacity:1;color:#7aa2f7}
+.waybar .sp{flex:1}.waybar .lh{display:flex;gap:6px;align-items:center}.waybar svg{width:16px;height:16px}
+.notif{background:var(--forest2);color:#e8e6da;border-radius:14px;padding:14px;display:grid;grid-template-columns:44px 1fr;gap:12px;max-width:380px;box-shadow:0 8px 24px #0004}
+.notif svg{width:44px;height:44px}.notif b{font:600 14px var(--f-ui)}.notif p{font-size:13px;color:#b9bca9}
+.notif .btns{display:flex;gap:8px;margin-top:8px}.notif .btns span{font:600 12px var(--f-ui);padding:6px 12px;border-radius:999px;background:var(--forest3)}.notif .btns span.p{background:var(--lichen);color:var(--forest)}
+.phone{width:230px;height:440px;border-radius:34px;background:var(--forest0);border:6px solid var(--forest3);padding:14px 12px;display:grid;grid-template-rows:auto 1fr auto;gap:10px;color:#e8e6da;margin:auto}
+.phone .top{display:flex;gap:8px;align-items:center;font:600 14px var(--f-ui)} .phone .top svg{width:28px;height:28px}
+.phone .msgs{display:grid;gap:8px;align-content:start;font-size:12.5px}
+.phone .m{background:var(--forest2);border-radius:14px 14px 14px 4px;padding:8px 10px;max-width:85%}
+.phone .u{background:var(--lichen);color:var(--forest);border-radius:14px 14px 4px 14px;justify-self:end}
+.phone .in{background:var(--forest2);border-radius:999px;padding:8px 12px;font-size:12px;color:#7d8a80}
+.pin{display:grid;gap:12px;justify-items:center;text-align:center;align-content:center}
+.pin svg{width:72px;height:72px}.pin .code{font:700 30px var(--f-mono);letter-spacing:.18em;color:var(--lichen)}
+.browser{overflow:hidden;background:#fbf8ee;border-radius:12px;overflow:hidden;border:1px solid #d9d3c0;color:#16201a}
+.browser .chrome{display:flex;gap:8px;align-items:center;padding:8px 12px;background:#ece6d3;font:12px var(--f-mono);color:#59635b}
+.browser .chrome svg{width:14px;height:14px}
+.browser .tabt{background:#fbf8ee;border-radius:8px 8px 0 0;padding:4px 10px;display:flex;gap:6px;align-items:center}
+.browser .app{display:grid;grid-template-columns:150px 1fr;min-height:260px}
+.browser nav{background:#f1ecdc;padding:12px;display:grid;gap:8px;align-content:start;font-size:13px}
+.browser nav .lk svg{height:22px;width:auto}
+.browser nav span{padding:5px 8px;border-radius:8px}.browser nav span.on{background:#dfe6c9}
+.browser .flow{padding:14px;display:grid;place-items:center}
+.browser .flow svg{width:100%;max-width:520px;height:auto}
+.social{border-radius:14px;overflow:hidden;aspect-ratio:1200/630;background:var(--forest);display:grid;place-items:center;position:relative}
+.social svg{width:100%;height:100%}
+.avatars{display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center}
+.avatars figure{margin:0;display:grid;gap:6px;justify-items:center;font:11px var(--f-mono)}
+.avatars .av{width:64px;height:64px;border-radius:50%;overflow:hidden}
+/* don'ts */
+.dont{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.dont figure{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:8px;justify-items:center;text-align:center}
+.dont .pl{background:var(--cream);border-radius:10px;width:100%;display:grid;place-items:center;padding:12px;position:relative}
+.dont .pl::after{content:"";position:absolute;inset:8px;background:linear-gradient(to top right,transparent calc(50% - 1px),#c0392b99 50%,transparent calc(50% + 1px))}
+.dont svg{width:90px;height:90px}.dont span{font-size:13px;color:var(--muted)}
+.kit{background:var(--surface);border:2px solid var(--accent);border-radius:18px;padding:22px;display:grid;gap:12px}
+.kit h2{font:600 24px var(--f-ui)} .kit p,.kit li{color:var(--muted)} .kit ul{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14.5px}
+.kit code{font:13px var(--f-mono);background:var(--bg);padding:1px 6px;border-radius:6px}
+/* theme switcher */
+.switch{position:sticky;top:0;z-index:20;background:var(--bg);padding:10px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line);margin:-24px 0 0}
+.switch .lbl{font:600 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+.switch .sep{width:1px;height:22px;background:var(--line);margin:0 6px}
+.switch button{font:600 13px var(--f-ui);padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.switch button:hover{border-color:var(--accent)}
+.switch button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.switch button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.switch i{display:inline-flex;width:16px;height:16px;border-radius:50%;overflow:hidden;flex:none}
+.switch i b{flex:1}
+.replay{justify-self:center;font:600 12px var(--f-ui);padding:6px 12px;border-radius:999px;border:1px solid #ffffff33;background:transparent;color:var(--cream);cursor:pointer}
+.replay:focus-visible{outline:2px solid var(--lichen);outline-offset:2px}
+/* animation classes for the mark */
+.boot-face{animation:bootF 6s cubic-bezier(.3,1.3,.5,1) infinite}
+@keyframes bootF{0%{transform:scale(.4);opacity:0}10%{transform:scale(1);opacity:1}92%{transform:scale(1);opacity:1}100%{transform:scale(.4);opacity:0}}
+.boot-slot{animation:bootS 6s cubic-bezier(.3,1.6,.5,1) infinite}
+@keyframes bootS{0%,14%{transform:scale(0)}24%{transform:scale(1)}92%{transform:scale(1)}100%{transform:scale(0)}}
+.boot-eyes{animation:bootE 6s ease-in-out infinite}
+@keyframes bootE{0%,8%{transform:scaleY(.1);opacity:0}12%{transform:none;opacity:1}30%{transform:none}38%,74%{transform:translate(2.4px,-2px) rotate(-8deg)}82%{transform:none}86%{transform:scaleY(.12)}88%,100%{transform:none}}
+.look{animation:look 2.4s ease-in-out infinite}
+@keyframes look{0%,15%{transform:none}35%,65%{transform:translate(2.4px,-2px) rotate(-8deg)}85%,100%{transform:none}}
+.pulse{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.72);opacity:.65}}
+.breathe{animation:breathe 4s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03,.97)}}
+.dim-slot{animation:dimslot 4s ease-in-out infinite}
+@keyframes dimslot{0%,100%{opacity:.35}50%{opacity:.6}}
+.hop{animation:hop 1.6s cubic-bezier(.3,1.5,.5,1) infinite}
+@keyframes hop{0%,40%{transform:none}55%{transform:translateY(-3px)}70%,100%{transform:none}}
+.statuscycle{animation:sc 8s steps(1) infinite}
+@keyframes sc{0%{fill:var(--lichen)}25%{fill:var(--gold)}50%{fill:var(--mint)}75%{fill:var(--clay)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><radialGradient id="ballShade" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".24"/></radialGradient></defs></svg>
+
+<div class="wrap">
+<div class="switch" id="switch" role="group" aria-label="Page theme"></div>
+
+<section class="cover" aria-label="LastHarness identity">
+  <span class="eyebrow">LastHarness · brand identity · version 1</span>
+  <div class="cover-main">
+    <div class="markcol"><svg class="cover-mark live-mark" id="coverMark" viewBox="0 0 64 64" role="img" aria-label="The LastHarness mark, animated: it appears looking at you, a slot appears and it glances at it, the slot disappears and it looks back at you"></svg><button class="replay" id="replay" type="button">Replay</button></div>
+    <div style="display:grid;gap:16px">
+      <h1>The last harness you'll need.</h1>
+      <p>A worker that looks at the slot where its tool goes. That is the whole mark: a face, a glance, and a place for the work. It came from Round 8 as Glance + Slot, and it is used here exactly as it was drawn, fitted inside a circle.</p>
+      <p class="ar" lang="ar">لاست هارنس</p>
+      <svg id="coverLock" viewBox="0 0 362 64" style="width:min(420px,100%);height:auto" role="img" aria-label="LastHarness lockup"></svg>
+    </div>
+  </div>
+  <div class="facts">
+    <div><b>Face</b><span>The worker. A rounded square, softer than a window, firmer than a ball.</span></div>
+    <div><b>Glance</b><span>Attention. The eyes turn up and right, toward the work.</span></div>
+    <div><b>Slot</b><span>The tool, or the task. Empty in the logo; filled by each worker. It doubles as the status light.</span></div>
+    <div><b id="palName">Grove</b><span id="palText">Forest, moss, lichen and cream, with gold and mint for status.</span></div>
+  </div>
+</section>
+
+<div class="part">01 <i>THE MARK</i></div>
+<section>
+  <div class="head"><span class="tag">Construction</span><h2>Built on a 64 grid, inside a circle</h2><p>Every part is a whole number or a simple half, so the mark can be redrawn from these numbers alone.</p></div>
+  <div class="two">
+    <div class="card"><div class="plate"><svg id="grid" viewBox="-3 -3 70 70" role="img" aria-label="Construction grid"></svg></div></div>
+    <div class="card"><h3>The rules</h3><ul>
+      <li><b>Circle:</b> radius 30 around the centre of the 64 grid. The slot touches it; the face sits inside it with room to spare.</li>
+      <li><b>Face:</b> a 38 × 38 square with corners of radius 15, from (8, 18) to (46, 56).</li>
+      <li><b>Slot:</b> a circle of radius 6 at (49, 15). Its gap to the face's corner is 4.5.</li>
+      <li><b>Eyes:</b> two pills. The near eye is 6 × 11, the far eye is 4.6 × 10.2, because it is turned away from us.</li>
+      <li><b>Glance:</b> both eyes move 2.4 right and 2 up, and tilt 8° toward the slot, around the centre of the face.</li>
+      <li><b>Clear space:</b> the slot's diameter (12) on every side. Nothing else enters that space.</li>
+    </ul></div>
+  </div>
+</section>
+<section>
+  <div class="head"><span class="tag">Sizes</span><h2>From a poster to a 16-pixel tray icon</h2><p>Above 32 pixels the mark is drawn as it is. From 32 down to 20 the distance version opens the eyes and grows the slot, so they survive. At 16 pixels a hand-placed pixel version takes over, with every pixel on the grid.</p></div>
+  <div class="tiles" id="sizes"></div>
+</section>
+
+<div class="part">02 <i>WORDMARK AND LOCKUPS</i></div>
+<section>
+  <div class="head"><span class="tag">Wordmark</span><h2>A custom lowercase, round like the face</h2><p>Drawn with one stroke weight, round ends and circular bowls, so the letters share the face's softness. "last" and "harness" can split into two colours, cream and lichen, which also shows where the name breaks. The Arabic is set in Readex Pro for now; a custom Arabic wordmark is still to come from a type designer.</p></div>
+  <div class="card" style="background:var(--forest);border:0"><svg id="word" viewBox="-6 -2 440 78" style="width:100%;max-width:760px;height:auto;margin:auto" role="img" aria-label="lastharness wordmark"></svg></div>
+  <div class="tiles" id="locks"></div>
+</section>
+
+<div class="part">03 <i>COLOUR</i></div>
+<section>
+  <div class="head"><span class="tag">Grove</span><h2>Four colours for the brand, four for status</h2><p>Grove is a pine and cognac blend: forest and moss for depth, lichen as the brand colour, cream as paper. The status colours only ever appear in the slot, so the slot can tell you what a worker is doing at a glance.</p></div>
+  <div class="sw" id="swatches"></div>
+  <div class="states" id="status"></div>
+</section>
+<section>
+  <div class="head"><span class="tag">Omarchy</span><h2>On Omarchy, the mark takes the theme's colours</h2><p>The spec says everything follows the Omarchy theme. The mark needs only three colours: the face takes the theme's foreground, the eyes its background, and the slot its accent. Because the mark is a silhouette, it survives any theme. The colours below are close approximations of each theme.</p></div>
+  <div class="themes" id="themes"></div>
+</section>
+
+<div class="part">04 <i>MOODS AND MOTION</i></div>
+<section>
+  <div class="head"><span class="tag">Moods</span><h2>The eyes carry the state of the harness</h2><p>Seven moods, each tied to something the product actually does. Only the eyes and the slot change; the face never does.</p></div>
+  <div class="states" id="moods"></div>
+</section>
+<section>
+  <div class="head"><span class="tag">Motion</span><h2>Five animations, all from the same three parts</h2><p>The rule, as with the bots: the work moves first, then the face looks at it.</p></div>
+  <div class="motion" id="motion"></div>
+</section>
+
+<div class="part">05 <i>THE CREW</i></div>
+<section>
+  <div class="head"><span class="tag">Workers</span><h2>The logo is a worker with an empty slot</h2><p>Each worker is a ball in its own colour, and its tool sits exactly where the logo's slot is: up and to the right. When the tool starts to work, the worker turns and looks up at it. The logo is the harness itself: the same glance, waiting for whichever tool the job needs.</p></div>
+  <div class="crew" id="crew"></div>
+</section>
+
+<div class="part">06 <i>PATTERN AND ICONS</i></div>
+<section>
+  <div class="head"><span class="tag">Pattern</span><h2>A field of slots, with a few faces looking at them</h2><p>For backgrounds, packaging and the website. The dots are slots; every so often one has a face beside it, glancing at it.</p></div>
+  <div class="card" style="padding:0;overflow:hidden;border:0"><svg id="pattern" viewBox="0 0 960 300" style="width:100%;height:auto;display:block" role="img" aria-label="Pattern"></svg></div>
+</section>
+<section>
+  <div class="head"><span class="tag">Icons</span><h2>App icons for every platform, and a tray icon that shows status</h2></div>
+  <div class="tiles" id="icons"></div>
+</section>
+
+<div class="part">07 <i>IN USE</i></div>
+<section>
+  <div class="head"><span class="tag">Applications</span><h2>Where people will meet it</h2><p>The terminal first, because that is the first front end. Then the Omarchy top bar, a desktop notification, the phone app, the browser UI with a department at work, a chat-channel avatar and a social card.</p></div>
+  <div class="two" id="apps1"></div>
+  <div class="two" id="apps2"></div>
+  <div class="two" id="apps3"></div>
+</section>
+
+<div class="part">08 <i>TYPE</i></div>
+<section>
+  <div class="card type" id="type"></div>
+</section>
+
+<div class="part">09 <i>DON'T</i></div>
+<section>
+  <div class="head"><span class="tag">Misuse</span><h2>Six ways to break it</h2></div>
+  <div class="dont" id="donts"></div>
+</section>
+
+<section><div class="kit" id="kit"></div></section>
+</div>
+
+<script>
+(function(){
+// LastHarness mark: Glance + Slot, pure. 64 grid. Everything sits inside the circle (32,32) r30.
+// Face: rounded square x 8..46, y 18..56, rx 15. Slot: circle (49,15) r6. Eyes glance at the slot.
+const LH={
+  face:{x:8,y:18,w:38,h:38,rx:15}, slot:{cx:49,cy:15,r:6}, centre:[27,37],
+  glance:'translate(2.4 -2) rotate(-8 27 37)'
+};
+const _r=(x,y,w,h,r,f,ex='')=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${f}" ${ex}/>`;
+// eye shapes for each mood. Eyes are drawn in face coordinates, then the mood's transform is applied.
+function lhEyes(c,mood='glance',dist=false){
+  const n=dist?[18.1,29.8,7,12.6,3.5]:[18.6,30.6,6,11,3], f=dist?[29.6,30.6,5.6,11.8,2.8]:[30.1,31.4,4.6,10.2,2.3];
+  const pill=([x,y,w,h,r])=>_r(x,y,w,h,r,c);
+  const line=(d,w=2.6)=>`<path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  switch(mood){
+    case 'front': return pill(n)+pill([28.4,30.6,6,11,3]);
+    case 'glance': return `<g transform="${LH.glance}">${pill(n)+pill(f)}</g>`;
+    case 'think': return `<g transform="translate(1.4 -3.6) rotate(-4 27 37)">${pill(n)+pill(f)}</g>`;
+    case 'happy': return `<g transform="translate(1.2 -1) rotate(-6 27 37)">${line('M18.4 38.2Q21.6 32.6 24.8 38.2',3)+line('M29.8 38.2Q32.4 33.4 35 38.2',2.7)}</g>`;
+    case 'sleep': return line('M18.6 38.6H24.6',2.8)+line('M29.4 38.6H35',2.8);
+    case 'error': return line('M18.8 33.2L24.4 38.8M24.4 33.2L18.8 38.8',2.6)+line('M29.6 33.2L35.2 38.8M35.2 33.2L29.6 38.8',2.6);
+    case 'ask': return _r(17.8,29.4,7,12.6,3.5,c)+_r(29.2,29.4,7,12.6,3.5,c);
+  }
+}
+// o: {face, eye, slot, mood, dist, cls:{eyes,slot,face}}
+function lhMark(o){
+  const {face,eye,slot=face,mood='glance',dist=false,cls={}}=o, F=LH.face, s=dist?6.6:LH.slot.r;
+  return `<g class="${cls.face||''}" style="transform-origin:27px 37px">${_r(F.x,F.y,F.w,F.h,F.rx,face)}</g>`
+   +`<g class="${cls.eyes||''}" style="transform-origin:27px 37px">${lhEyes(eye,mood,dist)}</g>`
+   +`<circle class="${cls.slot||''}" style="transform-origin:49px 15px" cx="${LH.slot.cx}" cy="${LH.slot.cy}" r="${s}" fill="${slot}"/>`;
+}
+// 16 px pixel version: X face, e eye, O slot
+const LH_PX=[
+  '.............OO.',
+  '............OOOO',
+  '............OOOO',
+  '.............OO.',
+  '................',
+  '...XXXXXXX......',
+  '..XXXXXXXXX.....',
+  '.XXXXXXXeXXX....',
+  '.XXXeeXXeXXX....',
+  '.XXXeeXXeXXX....',
+  '.XXXeeXXXXXX....',
+  '.XXXXXXXXXXX....',
+  '.XXXXXXXXXXX....',
+  '.XXXXXXXXXXX....',
+  '..XXXXXXXXX.....',
+  '...XXXXXXX......'
+];
+function lhPixel(face,eye,slot=face){
+  let s='';LH_PX.forEach((row,y)=>[...row].forEach((ch,x)=>{
+    const c=ch==='X'?face:ch==='e'?eye:ch==='O'?slot:null; if(c&&c!=='none') s+=`<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${c}"/>`;}));
+  return s;
+}
+// custom wordmark, lowercase geometric, even stroke, round ends. viewBox 0 0 426 74 (baseline 66, x-height 32..66)
+function lhWord(c,a=c,w=8.5){
+  const s=cx=>`M${cx+11} 39C${cx+11} 34 ${cx+6} 32 ${cx} 32C${cx-8} 32 ${cx-12} 36 ${cx-12} 40C${cx-12} 44 ${cx-8} 46 ${cx} 47C${cx+8} 48 ${cx+12} 50 ${cx+12} 54C${cx+12} 59 ${cx+7} 62 ${cx} 62C${cx-7} 62 ${cx-11} 59 ${cx-12} 55`;
+  const g=(col,d)=>`<g fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</g>`;
+  return g(c,`<path d="M6 8V64"/><circle cx="35" cy="47" r="15"/><path d="M50 32V64"/><path d="${s(77)}"/><path d="M110 16V51A13 13 0 0 0 123 64H126M101 32H125"/>`)
+   +g(a,`<path d="M140 8V64M140 47A15 15 0 0 1 170 47V64"/><circle cx="201" cy="47" r="15"/><path d="M216 32V64"/><path d="M232 32V64M232 46A14 14 0 0 1 246 32H252"/><path d="M266 32V64M266 47A15 15 0 0 1 296 47V64"/><path d="M312 47H342A15 15 0 1 0 337.6 57.6"/><path d="${s(369)}"/><path d="${s(407)}"/>`);
+}
+// horizontal lockup in one SVG: viewBox 0 0 352 64. Wordmark ascender (8..64) matched to the face height (18..56).
+function lhLockup(o){const k=38/56;return lhMark(o)+`<g transform="translate(70 ${56-64*k}) scale(${k})">${lhWord(o.word||o.face,o.word2||o.word||o.face)}</g>`;}
+
+  // ---------- Tools in own 64 coords, centred near (32,32) ----------
+  const TOOLS = {
+    lead: {r:0, draw:(c,k)=>`<circle cx="32" cy="32" r="29" fill="${c}"/><circle cx="32" cy="32" r="21" fill="${k}"/><g class="needle"><path d="M32 13L39 32H25z" fill="${c}"/><path d="M25 32H39L32 51z" fill="${c}" opacity=".45"/></g><circle cx="32" cy="32" r="3.4" fill="${k}"/>`},
+    research: {r:0, draw:(c,k)=>`<path d="M37 39l6-6 15 15a4 4 0 0 1 0 5.5l-.5.5a4 4 0 0 1-5.5 0z" fill="${c}"/><circle cx="26" cy="26" r="21" fill="${c}"/><circle cx="26" cy="26" r="13.5" fill="${k}"/><path d="M18 21a9.5 9.5 0 0 1 7-6" fill="none" stroke="${c}" stroke-width="3.6" stroke-linecap="round" opacity=".75"/>`},
+    writer: {r:45, draw:(c,k)=>`<rect x="21" y="3" width="22" height="40" rx="8" fill="${c}"/><path d="M21 42H43L35 58Q32 62 29 58z" fill="${c}"/><path d="M21 13H43M21 42.5H43" stroke="${k}" stroke-width="3.2"/><path d="M32 49V59" stroke="${k}" stroke-width="2.8" stroke-linecap="round"/><circle cx="32" cy="48.5" r="2.8" fill="${k}"/>`},
+    coder: {r:0, draw:(c,k)=>`<rect x="3" y="9" width="58" height="46" rx="8" fill="${c}"/><path d="M3 21H61" stroke="${k}" stroke-width="3.6"/><path d="M14 30l8 7-8 7" fill="none" stroke="${k}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><rect class="cursor" x="28" y="41" width="15" height="5" rx="2.5" fill="${k}"/>`},
+    designer: {r:45, draw:(c,k)=>`<rect x="27.5" y="0" width="9" height="24" rx="4.5" fill="${c}"/><rect x="21" y="20" width="22" height="11" rx="2" fill="${c}"/><path d="M17 31H47V36C47 47 39 54 32 62C25 54 17 47 17 36z" fill="${c}"/><path d="M21 21H43M21 30.5H43" stroke="${k}" stroke-width="3.2"/>`},
+    planner: {r:0, draw:(c,k)=>`<rect x="9" y="8" width="46" height="54" rx="7" fill="${c}"/><rect x="20" y="2" width="24" height="14" rx="4" fill="${c}" stroke="${k}" stroke-width="3.6"/><path d="M18 30h15M18 40h20M18 50h12" stroke="${k}" stroke-width="4" stroke-linecap="round"/><path class="tick" d="M40 46l4 4 7-7" fill="none" stroke="${k}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`}
+  };
+  const C={accent:'#e0af68',blue:'#7aa2f7',magenta:'#bb9af7',green:'#9ece6a',red:'#f7768e',cyan:'#7dcfff'}, BG='#1a1b26';
+  const ROLES=[
+    {k:'lead',n:'Lead',a:'accent',d:'Compass. The needle spins while it decides the direction.'},
+    {k:'research',n:'Researcher',a:'blue',d:'Magnifier. It sweeps the lens over the page.'},
+    {k:'writer',n:'Writer',a:'magenta',d:'Pen, nib toward the head. It scribbles.'},
+    {k:'coder',n:'Coder',a:'green',d:'Terminal. The cursor blinks and the window bounces with each keystroke.'},
+    {k:'designer',n:'Designer',a:'red',d:'Brush, tip toward the head. It dabs.'},
+    {k:'planner',n:'Planner',a:'cyan',d:'Clipboard. The tick draws itself.'}
+  ];
+
+  const PALS={
+    grove:{n:'Grove',names:['Forest','Moss','Lichen','Cream'],forest:'#15251c',moss:'#5f7d48',lichen:'#b2c27c',cream:'#f2ead6',gold:'#e0a050',mint:'#6fcf9f',clay:'#d0784f'},
+    cobalt:{n:'Cobalt',names:['Navy','Cobalt','Periwinkle','Cream'],forest:'#0f1b45',moss:'#2a4bd7',lichen:'#7d95ff',cream:'#f3ede0',gold:'#f0b44a',mint:'#5fd3a8',clay:'#e2725b'},
+    pine:{n:'Pine',names:['Pine','Spruce','Leaf','Cream'],forest:'#0e2b25',moss:'#1e6b55',lichen:'#5fbf92',cream:'#f1ebdd',gold:'#e8b04e',mint:'#a6ecc4',clay:'#d0784f'},
+    cognac:{n:'Cognac',names:['Saddle','Cognac','Amber','Cream'],forest:'#2a1b14',moss:'#b5622c',lichen:'#e0924f',cream:'#f3ebdd',gold:'#f5cd62',mint:'#86d4a0',clay:'#e8655a'},
+    omarchy:{n:'Omarchy · Tokyo Night',names:['Night','Storm','Accent','Foreground'],forest:'#1a1b26',moss:'#3b4261',lichen:'#7aa2f7',cream:'#c0caf5',gold:'#e0af68',mint:'#9ece6a',clay:'#f7768e'}
+  };
+  const hx=c=>c.replace('#','').match(/../g).map(h=>parseInt(h,16));
+  const mix=(a,b,k)=>'#'+hx(a).map((v,i)=>Math.round(v+(hx(b)[i]-v)*k).toString(16).padStart(2,'0')).join('');
+  let G={...PALS.grove}, PKEY='grove';
+  let T0=performance.now();
+  const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- the live mark: appears looking at you, a slot appears, it glances, the slot goes, it looks back ----------
+  const cl=x=>Math.max(0,Math.min(1,x)), io=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2, ob=x=>{const c=1.9;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);}, seg=(u,a,b)=>cl((u-a)/(b-a));
+  function liveInner(c){return `<g class="lf"><rect x="8" y="18" width="38" height="38" rx="15" fill="${c.face}"/></g><g class="le"><rect class="e1" fill="${c.eye}"/><rect class="e2" fill="${c.eye}"/></g><circle class="lr" cx="49" cy="15" r="6" fill="none" stroke="${c.slot}" stroke-width="1.4" opacity="0"/><circle class="ls" cx="49" cy="15" r="6" fill="${c.slot}" style="transform-origin:49px 15px;transform-box:view-box"/>`;}
+  const SP=1.4, LOOP=6.8;
+  function liveState(t){
+    const S={sx:1,sy:1,lean:0,bob:0,e:0,open:1,widen:1,slot:0,ringR:6,ringO:0,fade:1};
+    const blink=(u,a)=>{const k=seg(u,a,a+.16);return k>0&&k<1?1-.92*Math.sin(Math.PI*k):1;};
+    if(t<SP){ // spawn, looking at us
+      const k=seg(t,0,.6); const s=ob(k); const w=Math.sin(seg(t,.15,.85)*Math.PI*2)*(1-seg(t,.15,.85));
+      S.sx=s*(1+.12*w); S.sy=s*(1-.12*w); S.fade=cl(t/.15);
+      S.open=t<.62?.08:io(seg(t,.62,.8)); if(t>1.02) S.open*=blink(t,1.02);
+      return S;
+    }
+    const u=(t-SP)%LOOP;
+    // slot in (pop), slot out (swell then shrink)
+    if(u>=.7&&u<1.1) S.slot=ob(seg(u,.7,1.1)); else if(u>=1.1&&u<3.3) S.slot=1;
+    else if(u>=3.3&&u<3.44) S.slot=1+.2*seg(u,3.3,3.44); else if(u>=3.44&&u<3.72) S.slot=1.2*(1-io(seg(u,3.44,3.72)));
+    // ring bursts
+    if(u>=.72&&u<1.35){const k=seg(u,.72,1.35);S.ringR=6+9*k;S.ringO=.75*(1-k);}
+    if(u>=3.48&&u<4.1){const k=seg(u,3.48,4.1);S.ringR=4+10*k;S.ringO=.55*(1-k);}
+    // surprise: eyes widen and the face stretches when the slot appears
+    if(u>=.78&&u<1.12){const k=Math.sin(Math.PI*seg(u,.78,1.12));S.widen=1+.18*k;S.sy=1+.05*k;S.sx=1-.03*k;}
+    // glance: anticipation, turn, hold; after the slot goes, search a little, then look back at us
+    if(u<1.12) S.e=0;
+    else if(u<1.25) S.e=-.08*Math.sin(Math.PI*seg(u,1.12,1.25));
+    else if(u<1.62) S.e=io(seg(u,1.25,1.62));
+    else if(u<3.5) S.e=1;
+    else if(u<3.75) S.e=1+.14*io(seg(u,3.5,3.75));
+    else if(u<4.2) S.e=1.14-1.28*io(seg(u,3.75,4.2));
+    else if(u<4.5) S.e=-.14+.14*io(seg(u,4.2,4.5));
+    S.lean=Math.max(0,Math.min(1.1,S.e));
+    // a small squash when it turns back to us, and an idle bob while it looks at us
+    if(u>=4.2&&u<4.6){const k=Math.sin(Math.PI*seg(u,4.2,4.6));S.sy*=1-.05*k;S.sx*=1+.04*k;}
+    if(u<.7||u>4.6) S.bob=Math.sin((u+.3)*Math.PI*1.3)*.5;
+    S.open=blink(u,2.4)*blink(u,5.7)*blink(u,5.92);
+    return S;
+  }
+  function drawLive(svg,t){
+    if(!svg.querySelector('.lf')) return;
+    const S=RM?{sx:1,sy:1,lean:1,bob:0,e:1,open:1,widen:1,slot:1,ringR:6,ringO:0,fade:1}:liveState(t);
+    const lf=svg.querySelector('.lf'),le=svg.querySelector('.le');
+    const face=`translate(${(.9*S.lean).toFixed(2)} ${(-.7*S.lean+S.bob).toFixed(2)}) rotate(${(-3.5*S.lean).toFixed(2)} 27 56) translate(27 56) scale(${S.sx.toFixed(3)} ${S.sy.toFixed(3)}) translate(-27 -56)`;
+    lf.setAttribute('transform',face);lf.setAttribute('opacity',S.fade);
+    const e=S.e, ec=Math.max(0,Math.min(1,e));
+    le.setAttribute('transform',face+` translate(${(2.4*e).toFixed(2)} ${(-2*e).toFixed(2)}) rotate(${(-8*e).toFixed(2)} 27 37)`);le.setAttribute('opacity',S.fade);
+    const L=(a,b)=>a+(b-a)*ec;
+    const eyes=[[18.6,30.6,6,11],[L(28.4,30.1),L(30.6,31.4),L(6,4.6),L(11,10.2)]];
+    ['.e1','.e2'].forEach((q,i)=>{const [x,y,w,h]=eyes[i],H=Math.max(.6,h*S.open*S.widen),W=w*(S.widen>1?1+(S.widen-1)*.4:1),el=svg.querySelector(q);
+      el.setAttribute('x',(x+w/2-W/2).toFixed(2));el.setAttribute('y',(y+h/2-H/2).toFixed(2));el.setAttribute('width',W.toFixed(2));el.setAttribute('height',H.toFixed(2));el.setAttribute('rx',Math.min(W/2,H/2).toFixed(2));});
+    svg.querySelector('.ls').style.transform=`scale(${Math.max(0,S.slot).toFixed(3)})`;
+    const r=svg.querySelector('.lr');r.setAttribute('r',S.ringR.toFixed(2));r.setAttribute('opacity',S.ringO.toFixed(2));
+  }
+  (function loop(now){const t=(now-T0)/1000;document.querySelectorAll('svg.live-mark').forEach(s=>drawLive(s,t));if(!RM)requestAnimationFrame(loop);})(T0);
+  if(RM) setTimeout(()=>document.querySelectorAll('svg.live-mark').forEach(s=>drawLive(s,0)),0);
+
+  function build(){
+  G.dot=mix(G.forest,G.lichen,.16); G.dot2=mix(G.forest,G.lichen,.1);
+  const rs=document.documentElement.style;
+  [['forest',G.forest],['moss',G.moss],['lichen',G.lichen],['cream',G.cream],['gold',G.gold],['mint',G.mint],['clay',G.clay],['dot',G.dot],
+   ['forest0',mix(G.forest,'#000000',.35)],['forest2',mix(G.forest,G.cream,.07)],['forest3',mix(G.forest,G.cream,.14)]].forEach(([k,v])=>rs.setProperty('--'+k,v));
+  const DK={face:G.lichen,eye:G.forest,slot:G.gold}, LT={face:G.forest,eye:G.cream,slot:G.gold};
+  document.getElementById('palName').textContent=G.n;document.getElementById('palText').textContent=G.names.join(', ').replace(/, ([^,]*)$/,' and $1')+', with three status colours for the slot.';
+  const SV=(inner,px,vb='0 0 64 64',ex='')=>`<svg viewBox="${vb}" ${px?`width="${px}" height="${px}"`:''} ${ex} aria-hidden="true">${inner}</svg>`;
+  const $=id=>document.getElementById(id);
+  const sizeMark=(o,px)=>px<=16?SV(lhPixel(o.face,o.eye,o.slot),px,'0 0 16 16','shape-rendering="crispEdges"'):SV(lhMark({...o,dist:px<=32}),px);
+
+  // cover
+  $('coverMark').innerHTML=liveInner(DK);
+  $('coverLock').innerHTML=lhLockup({...DK,word:G.cream,word2:G.lichen});
+
+  // grid
+  let g='';for(let i=0;i<=64;i+=2)g+=`<path d="M${i} 0V64M0 ${i}H64" stroke="#ddd6c2" stroke-width="${i%8?.08:.2}"/>`;
+  g+=`<rect x="-3" y="-3" width="70" height="70" fill="none" stroke="#c4880f" stroke-width=".3" stroke-dasharray="1 1" opacity=".6"/>`;
+  g+=`<circle cx="32" cy="32" r="30" fill="none" stroke="#c0392b" stroke-width=".35" stroke-dasharray="1.2 1"/>`;
+  g+=lhMark({face:G.forest,eye:'#fbf8ee',slot:G.gold});
+  g+=`<g fill="none" stroke="#c4880f" stroke-width=".3" stroke-dasharray="1 .8"><circle cx="49" cy="15" r="10.5"/><path d="M27 12V60M4 37H52"/></g>`;
+  g+=`<g font-family="JetBrains Mono,monospace" font-size="2.2" fill="#8a5a0a"><text x="8.5" y="16.6">face 38 × 38 · r15</text><text x="41" y="4.6">slot r6</text><text x="54.5" y="27">gap 4.5</text><text x="1" y="63.5">circle r30</text><text x="28" y="61.6">centre (27, 37)</text><text x="47" y="40">glance 8°</text></g>`;
+  $('grid').innerHTML=g;
+
+  // sizes
+  $('sizes').innerHTML=
+    `<div class="tile t-l wide"><div class="sizes">${[128,64,48].map(p=>sizeMark(LT,p)).join('')}</div><small>128 · 64 · 48 · as drawn</small></div>`
+   +`<div class="tile t-l"><div class="sizes">${[32,24,20].map(p=>sizeMark(LT,p)).join('')}</div><small>32 · 24 · 20 · distance version</small></div>`
+   +`<div class="tile t-d"><div class="sizes">${SV(lhPixel(G.lichen,G.forest,G.gold),96,'0 0 16 16','shape-rendering="crispEdges"')}${sizeMark(DK,16)}</div><small>16 · pixel version, shown 6× and actual</small></div>`
+   +`<div class="tile t-l"><div class="blur">${SV(lhMark({...LT,dist:true}),64)}</div><small>far away: blurred, it still reads as a face looking at a dot</small></div>`;
+
+  // wordmark and lockups
+  $('word').innerHTML=lhWord(G.cream,G.lichen);
+  const stacked=(o,c1,c2)=>`<svg viewBox="0 0 300 150" style="width:100%;max-width:190px;height:auto" aria-hidden="true"><g transform="translate(118 0)">${lhMark(o)}</g><g transform="translate(17 92) scale(.63)">${lhWord(c1,c2)}</g></svg>`;
+  $('locks').innerHTML=
+    `<div class="tile t-d wide">${SV(lhLockup({...DK,word:G.cream,word2:G.lichen}),null,'0 0 362 64','style="width:100%;max-width:300px;height:auto"')}<small>horizontal, two colour</small></div>`
+   +`<div class="tile t-l wide">${SV(lhLockup({...LT,word:G.forest}),null,'0 0 362 64','style="width:100%;max-width:300px;height:auto"')}<small>horizontal, one colour</small></div>`
+   +`<div class="tile t-d">${stacked(DK,G.cream,G.lichen)}<small>stacked</small></div>`
+   +`<div class="tile t-d wide"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center">${SV(lhMark(DK),56)}<span style="font:600 20px var(--f-ar);color:var(--cream)" lang="ar" dir="rtl">لاست هارنس</span></div><small>Arabic lockup, Readex Pro for now</small></div>`
+   +`<div class="tile t-s"><div style="display:flex;gap:10px;align-items:center">${SV(lhMark({face:'#c0caf5',eye:'#1a1b26',slot:'#e0af68'}),40)}<span style="font:700 30px var(--f-mono)">lh</span></div><small>command lockup, for the terminal and docs</small></div>`
+   +`<div class="tile t-l"><svg viewBox="-14 -14 92 92" width="150" aria-hidden="true"><rect x="-14" y="-14" width="92" height="92" fill="none" stroke="#c4880f" stroke-width=".6" stroke-dasharray="2 1.5"/><rect x="2" y="2" width="60" height="60" fill="none" stroke="#c4880f" stroke-width=".4" opacity=".5"/>${lhMark(LT)}<path d="M-14 8H2" stroke="#c4880f" stroke-width=".6"/><text x="-12" y="6" font-family="JetBrains Mono,monospace" font-size="5" fill="#8a5a0a">12</text></svg><small>clear space: one slot diameter</small></div>`;
+
+  // colour
+  $('swatches').innerHTML=[
+    [G.names[0],G.forest,G.cream,'ground, ink'],[G.names[1],G.moss,G.cream,'secondary'],[G.names[2],G.lichen,G.forest,'the brand colour; slot: idle'],[G.names[3],G.cream,G.forest,'paper'],
+    ['Busy',G.gold,G.forest,'slot: busy'],['Ready',G.mint,G.forest,'slot: ready'],['Needs you',G.clay,G.forest,'slot: needs you']
+  ].map(([n,bg,fg,u])=>`<div style="background:${bg};color:${fg}"><b>${n}</b><span>${bg.toUpperCase()}</span><span style="opacity:.8">${u}</span></div>`).join('');
+  $('status').innerHTML=[['Idle',G.lichen,'waiting for a task'],['Busy',G.gold,'a worker is on it'],['Ready',G.mint,'done, results waiting'],['Needs you',G.clay,'a permission or a failure']]
+    .map(([n,c,d])=>`<figure>${SV(lhMark({...DK,slot:c}))}<b>${n}</b><span>${d}</span></figure>`).join('');
+  $('themes').innerHTML=[
+    ['Tokyo Night','#1a1b26','#c0caf5','#7aa2f7'],['Gruvbox','#282828','#ebdbb2','#d79921'],['Catppuccin','#1e1e2e','#cdd6f4','#cba6f7'],['Everforest','#2d353b','#d3c6aa','#a7c080'],
+    ['Nord','#2e3440','#d8dee9','#88c0d0'],['Rosé Pine','#191724','#e0def4','#ebbcba'],['Kanagawa','#1f1f28','#dcd7ba','#7e9cd8'],['Grove (ours)','#15251c','#b2c27c','#e0a050']
+  ].map(([n,bg,fg,ac])=>`<figure style="background:${bg};color:${fg}">${SV(lhMark({face:fg,eye:bg,slot:ac}))}<span>${n}</span></figure>`).join('');
+
+  // moods
+  $('moods').innerHTML=[
+    ['front','Idle','Looking at you, waiting.',G.lichen],['glance','Working','Looking at the tool. The default logo.',G.gold],['think','Thinking','Planning a step. Eyes up.',G.gold],
+    ['happy','Done','A goal finished.',G.mint],['sleep','Idle mode','Asleep, using almost nothing.',G.moss],['ask','Needs you','A permission request. Eyes on you.',G.clay],['error','Failed','A step failed and could not be resolved.',G.clay]
+  ].map(([m,n,d,c])=>`<figure>${SV(lhMark({...DK,mood:m,slot:c}))}<b>${n}</b><span>${d}</span></figure>`).join('');
+
+  // motion
+  $('motion').innerHTML=[
+    ['LIVE','Appear and glance','It appears looking at you and blinks. A slot pops in, it notices, and turns to look. The slot goes, it looks for it, then back at you. Plays when the core starts and when a task arrives.'],
+    [lhMark({...DK,mood:'think',cls:{eyes:'look',slot:'pulse'}}),'Thinking','The slot pulses in gold while the eyes move between you and the work. The loader.'],
+    [lhMark({...DK,mood:'happy',slot:G.mint,cls:{face:'hop'}}),'Done','A small hop and happy eyes, with the slot in mint.'],
+    [lhMark({...DK,mood:'sleep',slot:G.moss,cls:{face:'breathe',slot:'dim-slot'}}),'Idle mode','Slow breathing, the slot dimmed. No timers in the real thing; this is the tray icon.'],
+    [`<g>${lhMark({...DK,cls:{slot:'statuscycle'}})}</g>`,'Status','The slot steps through idle, busy, ready and needs you.']
+  ].map(([m,n,d])=>`<figure>${m==='LIVE'?`<svg class="live-mark" viewBox="0 0 64 64" aria-hidden="true">${liveInner(DK)}</svg>`:SV(m)}<b>${n}</b><span>${d}</span></figure>`).join('')
+   +`<figure style="grid-column:1/-1"><div class="prog" id="prog">${SV(lhMark(DK),44)}${'<i></i>'.repeat(8)}</div><b>Progress</b><span>Each step of a plan is a slot. The current one glows gold, finished ones turn mint, and the face glances along the row.</span></figure>`;
+
+
+  // crew (Round 17 bots)
+  const RB=21.5,DEG=Math.PI/180,YAW=56*DEG,PIT=38*DEG;
+  function ball(lam,phi,yaw,pit){const x0=Math.sin(lam)*Math.cos(phi),y0=Math.sin(phi),z0=Math.cos(lam)*Math.cos(phi);
+    const x1=x0*Math.cos(yaw)+z0*Math.sin(yaw),z1=-x0*Math.sin(yaw)+z0*Math.cos(yaw);return [x1,y0*Math.cos(pit)+z1*Math.sin(pit),z1*Math.cos(pit)-y0*Math.sin(pit)];}
+  function seam(svg,q,lam,yaw,pit){let d='',pen=false;for(let i=-90;i<=90;i+=6){const [x,y,z]=ball(lam,i*DEG,yaw,pit);if(z>.02){d+=(pen?'L':'M')+(24+RB*x).toFixed(2)+' '+(40-RB*y).toFixed(2);pen=true;}else pen=false;}svg.querySelector(q).setAttribute('d',d);}
+  function setBot(svg,e,blink){const yaw=e*YAW,pit=e*PIT;
+    svg.querySelector('.head').setAttribute('transform',`translate(${(2.4*e).toFixed(2)} ${(-2.4*e).toFixed(2)})`);
+    seam(svg,'.sL',-96*DEG,yaw,pit);seam(svg,'.sR',96*DEG,yaw,pit);
+    [['.eL',-24],['.eR',24]].forEach(([q,a])=>{const el=svg.querySelector(q),[x,y,z]=ball(a*DEG,-3*DEG,yaw,pit);
+      if(z<.1){el.setAttribute('opacity',0);return;}
+      const w=6.5*Math.max(.3,Math.pow(z,.85)),h=12*(blink?.12:1)*(.55+.45*z),sx=24+16.5*x,sy=40-16.5*y,rot=.35*Math.atan2(Math.sin(a*DEG+yaw)*Math.sin(pit),Math.cos(a*DEG+yaw))/DEG;
+      el.setAttribute('opacity',1);el.setAttribute('x',(sx-w/2).toFixed(2));el.setAttribute('y',(sy-h/2).toFixed(2));el.setAttribute('width',w.toFixed(2));el.setAttribute('height',h.toFixed(2));el.setAttribute('rx',Math.min(w/2,h/2,3.25).toFixed(2));el.setAttribute('transform',`rotate(${rot.toFixed(2)} ${sx.toFixed(2)} ${sy.toFixed(2)})`);});}
+  function member(key,c,k,o={}){const t=TOOLS[key];
+    const tool=`<g class="act-${key}"><g transform="translate(51 13) rotate(${t.r}) scale(.37) translate(-32 -32)">${t.draw(c,k)}</g></g>`;
+    const head=`<g class="head"><circle cx="24" cy="40" r="22" fill="${c}"/><circle cx="24" cy="40" r="22" fill="url(#ballShade)"/><path class="sL" fill="none" stroke="#000" stroke-opacity=".2" stroke-width=".9" stroke-linecap="round"/><path class="sR" fill="none" stroke="#000" stroke-opacity=".2" stroke-width=".9" stroke-linecap="round"/><rect class="eL" fill="${k}"/><rect class="eR" fill="${k}"/></g>`;
+    return `<svg viewBox="0 0 64 64" class="bot${o.live?' anim':''}" data-d="${o.d||0}" data-e="${o.e??0}" style="--d:${o.d||0}s" role="img" aria-label="${o.label||key}">${head}${tool}</svg>`;}
+  const sm=x=>x*x*(3-2*x),turnAt=p=>p<.32?0:p<.45?sm((p-.32)/.13):p<.62?1:p<.74?1-sm((p-.62)/.12):0,blinkAt=p=>p>.88&&p<.905;
+  $('crew').innerHTML=`<figure class="mate" style="background:var(--forest)"><svg class="live-mark" viewBox="0 0 64 64" aria-hidden="true">${liveInner(DK)}</svg><b style="color:var(--cream)">LastHarness</b><span style="color:#b9bca9">The harness: an empty slot, ready for any tool.</span></figure>`
+    +ROLES.map((r,i)=>`<figure class="mate">${member(r.k,C[r.a],BG,{d:-i*1.1,label:r.n,live:true})}<b>${r.n}</b><span>${r.d}</span></figure>`).join('');
+  $('crew').style.gridTemplateColumns='repeat(auto-fit,minmax(140px,1fr))';
+
+  // pattern
+  (function(){const st=40,ox=20,oy=20,W=960,H=300;let s=`<rect width="${W}" height="${H}" fill="${G.forest}"/>`;
+    const rnd=(()=>{let a=7;return()=>{a=(a*16807)%2147483647;return a/2147483647;};})();
+    const faces=[[3,4],[8,2],[13,5],[18,3],[20,5],[5,7],[16,7]];const cover=new Set();
+    faces.forEach(([i,j])=>{for(let di=0;di<2;di++)for(let dj=0;dj<2;dj++)cover.add((i+di)+','+(j-dj));cover.add((i+2)+','+(j-2));});
+    for(let j=0;j*st+oy<H;j++)for(let i=0;i*st+ox<W;i++){if(cover.has(i+','+j))continue;const r=rnd();
+      s+=`<circle cx="${ox+i*st}" cy="${oy+j*st}" r="3.4" fill="${r<.04?G.gold:r<.08?G.mint:G.dot}"/>`;}
+    // each face: its slot lands on the grid point two right and two up of its bottom-left dot
+    faces.forEach(([i,j])=>{const sx=ox+(i+2)*st,sy=oy+(j-2)*st,k=1.15;
+      s+=`<g transform="translate(${sx-49*k} ${sy-15*k}) scale(${k})">${lhMark({face:G.lichen,eye:G.forest,slot:G.gold})}</g>`;});
+    $('pattern').innerHTML=s;})();
+  // icons
+  const tile=(inner,shape,bg)=>{const clip={sq:'<rect width="64" height="64" rx="14"/>',squircle:'<path d="M32 0C55 0 64 9 64 32S55 64 32 64 0 55 0 32 9 0 32 0Z"/>',circle:'<circle cx="32" cy="32" r="32"/>',ios:'<rect width="64" height="64" rx="14.5"/>'}[shape];
+    const id='ic'+Math.random().toString(36).slice(2,7);return `<defs><clipPath id="${id}">${clip}</clipPath></defs><g clip-path="url(#${id})"><rect width="64" height="64" fill="${bg}"/>${shape==='squircle'?`<rect width="64" height="64" fill="url(#ballShade)" opacity=".5"/>`:''}<g transform="translate(6 6) scale(.8125)">${inner}</g></g>`;};
+  $('icons').innerHTML=[
+    [tile(lhMark(DK),'sq',G.forest),'Linux · rounded square','t-l'],[tile(lhMark(DK),'squircle',G.forest),'macOS · squircle','t-l'],
+    [tile(lhMark(DK),'circle',G.forest),'Android · adaptive, circle mask','t-l'],[tile(lhMark({...LT}),'ios',G.cream),'iOS · light','t-d'],
+    [`${SV(lhPixel('#c0caf5','#1a1b26','#e0af68'),32,'0 0 16 16','shape-rendering="crispEdges"')} ${SV(lhPixel('#c0caf5','#1a1b26','#7aa2f7'),32,'0 0 16 16','shape-rendering="crispEdges"')} ${SV(lhPixel('#c0caf5','#1a1b26','none'),32,'0 0 16 16','shape-rendering="crispEdges"')}`,'tray · busy, ready, idle (pixel, shown 2×)','t-s'],
+    [`${SV(lhPixel('#16201a','#fff','#16201a'),32,'0 0 16 16','shape-rendering="crispEdges"')} <span style="background:#16201a;border-radius:8px;padding:6px;display:inline-flex">${SV(lhPixel('#fff','#16201a','#fff'),32,'0 0 16 16','shape-rendering="crispEdges"')}</span>`,'symbolic tray icon, one colour, for light and dark bars','t-w']
+  ].map(([s,l,c])=>`<div class="tile ${c}">${s.startsWith('<svg')?`<div class="sizes">${s}</div>`:SV(s,96)}<small>${l}</small></div>`).join('');
+
+  // applications
+  const bot16=(k,c)=>member(k,c,BG,{e:0}).replace('<svg ','<svg width="16" height="16" ');
+  $('apps1').innerHTML=
+    `<div class="term"><div class="bar"><i></i><i></i><i></i></div><div class="body"><span><span class="acc">~/projects/atlas</span> <span class="dim">❯</span> lh</span>
+      <div class="hello">${SV(lhMark(DK))}<div><div><b style="color:#f2ead6">LastHarness</b> <span class="dim">0.1 · local-first</span></div><div class="dim">core up · 3 providers · memory: 412 pages</div><div><span class="ok">●</span> ready · project <span class="acc">atlas</span></div></div></div>
+      <span class="dim">department: website · lead plans 6 steps</span>
+      ${ROLES.map((r,i)=>`<div class="w">${bot16(r.k,C[r.a])}<span>${r.n.toLowerCase()}</span><span class="${i<2?'ok':i<4?'busy':'dim'}">${i<2?'✓ done':i<4?'● working':'○ queued'}</span></div>`).join('')}
+      <span><span class="dim">❯</span> <span style="background:#d7dccf;color:#11181a">&nbsp;</span></span></div></div>`
+   +`<div style="display:grid;gap:14px;align-content:start"><div class="waybar"><div class="ws"><span class="on">1</span><span>2</span><span>3</span><span>4</span></div><span class="sp"></span><span class="lh">${SV(lhPixel('#c0caf5','#1a1b26','#e0af68'),16,'0 0 16 16','shape-rendering="crispEdges"')} 2 busy</span><span>󰖩</span><span>14:32</span></div>
+      <div class="notif">${SV(lhMark({...DK,mood:'happy',slot:G.mint}))}<div><b>Research finished</b><p>The researcher found 4 sources on local embedding models. The writer is drafting the summary.</p><div class="btns"><span class="p">Open</span><span>Later</span></div></div></div>
+      <div class="notif">${SV(lhMark({...DK,mood:'ask',slot:G.clay}))}<div><b>The coder asks to run a command</b><p><span style="font-family:var(--f-mono)">omarchy-pkg-add ripgrep</span></p><div class="btns"><span class="p">Allow</span><span>Deny</span></div></div></div></div>`;
+  $('apps2').innerHTML=
+    `<div class="card" style="background:var(--forest);border:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+      <div class="phone"><div class="top">${SV(lhMark(DK))}<span>LastHarness</span></div><div class="msgs"><div class="m u">Plan a launch page for atlas</div><div class="m">The website department will do it in 6 steps. Shall I start?</div><div class="m u">Go</div><div class="m">${SV(lhMark({...DK,mood:'think'}),18)} The planner is on step 1.</div></div><div class="in">Message</div></div>
+      <div class="phone"><div class="pin">${SV(lhMark({...DK,mood:'front'}))}<b style="font:600 15px var(--f-ui)">Pair this phone</b><span style="font-size:12.5px;color:#b9bca9">Enter this PIN on your computer</span><span class="code">482 913</span><span style="font:11px var(--f-mono);color:#7d8a80">fingerprint 3F:9A:…:C2</span></div></div></div>`
+   +`<div class="browser"><div class="chrome"><span class="tabt">${SV(lhPixel(G.lichen,G.forest,G.gold),14,'0 0 16 16','shape-rendering="crispEdges"')} LastHarness</span><span>https://atlas.local:7341</span></div>
+      <div class="app"><nav><span class="lk">${SV(lhLockup({...LT,word:G.forest}),null,'0 0 362 64')}</span><span class="on">Department</span><span>Chat</span><span>Memory</span><span>Rules</span><span>Settings</span></nav><div class="flow"><svg id="flow" viewBox="0 0 520 250" aria-label="Department flow"></svg></div></div></div>`;
+  (function(){let s='';const lead=[60,125];const w=ROLES.slice(1);
+    s+=`<g transform="translate(${lead[0]-38} ${lead[1]-40}) scale(1.2)">${lhMark({...LT,slot:G.gold})}</g><text x="${lead[0]}" y="${lead[1]+52}" text-anchor="middle" font-family="Instrument Sans,system-ui,sans-serif" font-size="13" fill="#16201a">lead</text>`;
+    w.forEach((r,i)=>{const y=25+i*50,x=350;const busy=i===1||i===2;
+      s+=`<path d="M${lead[0]+30} ${lead[1]}C220 ${lead[1]} 260 ${y} ${x-34} ${y}" fill="none" stroke="${busy?G.gold:'#c9c2ab'}" stroke-width="${busy?2.4:1.4}" ${busy?'stroke-dasharray="6 6"':''}>${busy?'<animate attributeName="stroke-dashoffset" from="12" to="0" dur=".6s" repeatCount="indefinite"/>':''}</path>`;
+      s+=`<g transform="translate(${x-22} ${y-22}) scale(.69)">${member(r.k,C[r.a],BG,{e:busy?1:0}).replace(/<svg[^>]*>/,'').replace('</svg>','')}</g><text x="${x+30}" y="${y+4}" font-family="Instrument Sans,system-ui,sans-serif" font-size="13" fill="#16201a">${r.n.toLowerCase()} <tspan fill="${busy?'#b5741a':i===0?'#2d8a5c':'#8a8f86'}">${busy?'working':i===0?'done':'queued'}</tspan></text>`;});
+    $('flow').innerHTML=s;$('flow').querySelectorAll('svg.bot').forEach(()=>{});})();
+  $('apps3').innerHTML=
+    `<div class="social"><svg viewBox="0 0 1200 630" aria-label="Social card"><rect width="1200" height="630" fill="${G.forest}"/>${(()=>{let d='';for(let y=40;y<630;y+=56)for(let x=40;x<1200;x+=56){if(y>150&&y<540&&x>90&&x<1080)continue;const h=(x*3+y*5)%41;d+=`<circle cx="${x}" cy="${y}" r="4" fill="${h===0?G.gold:G.dot2}"/>`;}return d;})()}<g transform="translate(110 200) scale(2.6)">${lhLockup({...DK,word:G.cream,word2:G.lichen})}</g><text x="132" y="460" font-family="Instrument Sans,system-ui,sans-serif" font-size="40" fill="#cfd1c0">The last harness you'll need.</text><text x="132" y="512" font-family="JetBrains Mono,ui-monospace,monospace" font-size="26" fill="#7d8a80">local-first · department-led · lh</text></svg></div>`
+   +`<div class="card" style="align-content:center"><h3>Chat channels and the tray</h3><p>The mark fits a circle, so circular avatars in Telegram, Matrix, Signal and Slack never crop it.</p><div class="avatars">${[['Telegram',G.forest,DK],['Matrix',G.cream,LT],['Signal',G.moss,{face:G.cream,eye:G.moss,slot:G.gold}],['Slack','#1a1b26',{face:'#c0caf5',eye:'#1a1b26',slot:'#e0af68'}]].map(([n,bg,o])=>`<figure><div class="av" style="background:${bg}">${SV(`<g transform="translate(4 4) scale(.875)">${lhMark(o)}</g>`,64)}</div>${n}</figure>`).join('')}
+     <figure>${SV(`<path d="M32 2A30 30 0 1 1 31.9 2Z" fill="#fff"/><g transform="translate(6 6) scale(.8125)">${lhMark({face:G.forest,eye:G.cream,slot:G.gold})}</g>`,72)}sticker</figure></div></div>`;
+
+  // type
+  $('type').innerHTML=[
+    ['Instrument Sans','interface, headings',`<span style="font:600 30px var(--f-ui);letter-spacing:-.02em">Your departments, on your machine.</span>`],
+    ['JetBrains Mono','terminal, code, numbers',`<span style="font:500 17px var(--f-mono)">lh plan "launch page" --department website</span>`],
+    ['Readex Pro','Arabic, until a custom Arabic wordmark exists',`<span style="font:500 26px/1.6 var(--f-ar)" lang="ar" dir="rtl">أقسامك، على جهازك.</span>`],
+    ['Wordmark','custom lowercase, never typed',SV(lhWord(getComputedStyle(document.documentElement).getPropertyValue('--fg').trim()||'#16201a'),null,'-6 -2 440 78','style="height:40px;width:auto"')]
+  ].map(([n,u,s])=>`<div class="row"><div><b>${n}</b><br><small>${u}</small></div><div>${s}</div></div>`).join('');
+
+  // don'ts
+  $('donts').innerHTML=[
+    [`<g transform="translate(64 0) scale(-1 1)">${lhMark(LT)}</g>`,'Don\'t flip it. The face always looks up and to the right, toward the work.'],
+    [`<g transform="translate(32 32) scale(1.3 .8) translate(-32 -32)">${lhMark(LT)}</g>`,'Don\'t stretch or squash it.'],
+    [lhMark({face:G.forest,eye:G.cream,slot:G.forest}).replace(/<circle[^>]*\/>$/,''),'Don\'t remove the slot. Without it the eyes look at nothing.'],
+    [`<rect width="64" height="64" fill="#fff"/>${lhMark({face:'#111',eye:'#fff',slot:'#c0392b'})}`,'Don\'t use red, black and white together. It reads as a flag.'],
+    [lhMark({face:'none',eye:G.forest,slot:'none'}).replace('fill="none"','fill="none" stroke="#15251c" stroke-width="2"').replace(/fill="none"\/>$/,'fill="none" stroke="#15251c" stroke-width="2"/>'),'Don\'t outline it. It is a solid shape.'],
+    [`<g transform="rotate(-20 32 32)">${lhMark(LT)}</g>`,'Don\'t rotate it. The tilt is in the eyes, not the face.']
+  ].map(([m,d])=>`<figure><div class="pl">${SV(m)}</div><span>${d}</span></figure>`).join('');
+
+  $('kit').innerHTML=`<span class="tag">Files</span><h2>The file kit</h2><p>Sent with this page as a zip. Everything is drawn from the same numbers as the construction grid.</p><ul>
+    <li><code>svg/</code> mark in dark, light, one colour black and white, the distance version, the 16 px pixel version, horizontal and stacked lockups, the wordmark, and the app icon.</li>
+    <li><code>png/</code> the mark and app icon at 16, 24, 32, 48, 64, 128, 256 and 512, plus the social card at 1200 × 630.</li>
+    <li><code>favicon.ico</code> with the pixel version at 16 and the drawn mark at 32 and 48.</li>
+    <li><code>omarchy/</code> a template, <code>lastharness-mark.svg.tpl</code>, that uses <code>{{ foreground }}</code>, <code>{{ background }}</code> and <code>{{ accent }}</code>, so Omarchy renders the mark in the active theme.</li>
+  </ul>`;
+
+  document.querySelectorAll('svg.bot').forEach(s=>setBot(s,+s.dataset.e,false));
+  window._lhBots={setBot,turnAt,blinkAt};
+  }
+  // ---------- theme switcher ----------
+  function setTheme(k){PKEY=k;G={...PALS[k]};build();paintSwitch();}
+  function setMode(m){if(m==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',m);try{localStorage.setItem('lh-mode',m)}catch(e){}paintSwitch();}
+  function paintSwitch(){const mode=document.documentElement.getAttribute('data-theme')||'auto';
+    document.getElementById('switch').innerHTML='<span class="lbl">Palette</span>'+Object.entries(PALS).map(([k,P])=>`<button type="button" data-p="${k}" aria-pressed="${k===PKEY}"><i>${[P.forest,P.moss,P.lichen,P.cream].map(c=>`<b style="background:${c}"></b>`).join('')}</i>${P.n}</button>`).join('')
+      +'<span class="sep"></span><span class="lbl">Page</span>'+[['auto','Auto'],['light','Light'],['dark','Dark']].map(([m,n])=>`<button type="button" data-m="${m}" aria-pressed="${m===mode}">${n}</button>`).join('');
+    document.getElementById('switch').querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>{setTheme(b.dataset.p);try{localStorage.setItem('lh-pal',b.dataset.p)}catch(e){}}));
+    document.getElementById('switch').querySelectorAll('[data-m]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.m)));}
+  let savedP='grove',savedM='auto';try{savedP=localStorage.getItem('lh-pal')||'grove';savedM=localStorage.getItem('lh-mode')||'auto';}catch(e){}
+  if(!PALS[savedP])savedP='grove';
+  if(savedM!=='auto')document.documentElement.setAttribute('data-theme',savedM);
+  setTheme(savedP);
+  document.getElementById('replay').addEventListener('click',()=>{T0=performance.now();});
+  // progress row
+  (function(){let k=0;const step=()=>{const dots=[...document.querySelectorAll('#prog i')];dots.forEach((d,i)=>{d.classList.toggle('on',i<k);d.classList.toggle('now',i===k)});k=(k+1)%(dots.length+2);};
+    if(RM){k=5;step();return;}setInterval(step,700);})();
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+    const t0=performance.now();
+    (function tick(now){const t=(now-t0)/1000,B=window._lhBots;document.querySelectorAll('svg.bot.anim').forEach(s=>{const d=+s.dataset.d,p=(((t-d)/6)%1+1)%1;B.setBot(s,B.turnAt(p),B.blinkAt(p));});requestAnimationFrame(tick);})(t0);
+  }
+})();
+</script>

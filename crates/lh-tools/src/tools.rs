@@ -148,7 +148,7 @@ impl Tool {
                 json!({"type":"object","properties":{"text":{"type":"string"},"title":{"type":"string"},"layer":{"type":"string","enum":["preferences","facts","projects"]}},"required":["text"]}),
             ),
             Tool::Codemode => (
-                "Run a short JavaScript script (body of an async function; top-level await and return work) that calls your other tools as `await tools.<name>({...})`, each resolving to the tool's text. Only what the script returns, passes to text() or console.log comes back to you. Use it to loop, filter long results or combine several calls in one step. No files, network or timers except through tools.",
+                "Run a short JavaScript script (body of an async function; top-level await and return work) that calls your other tools as `await tools.<name>({...})`, each resolving to the tool's text. Only what the script returns, passes to text() or console.log comes back to you. Use it to loop, filter long results or combine several calls in one step. No files, network or timers except through tools. Also: `store(key, value)` and `load(key)` keep JSON values for later scripts in this chat (not saved to disk); `searchTools(query)` gives the names and descriptions of matching tools; `await models()` lists the model names the server offers.",
                 json!({"type":"object","properties":{"script":{"type":"string"}},"required":["script"]}),
             ),
             Tool::CodeLookup => (
@@ -415,6 +415,8 @@ pub struct ToolSet {
     sandbox: bool,
     /// Language servers started for this chat (see `lsp`).
     pub(crate) lsp: std::sync::Arc<crate::lsp::Lsp>,
+    /// What codemode scripts in this chat keep with `store` (see `codemode`). Memory only, gone with the chat.
+    pub(crate) codemode_kv: crate::codemode::Kv,
 }
 
 impl ToolSet {
@@ -436,7 +438,7 @@ impl ToolSet {
         self
     }
     pub fn new(tools: impl IntoIterator<Item = Tool>) -> Self {
-        Self { guard: OutboundGuard::default(), tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None, extras: vec![], hooks: None, sandbox: false, lsp: Default::default() }
+        Self { guard: OutboundGuard::default(), tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None, extras: vec![], hooks: None, sandbox: false, lsp: Default::default(), codemode_kv: Default::default() }
     }
     /// Check what web, image and MCP tools send out against this function before they run.
     pub fn with_outbound_guard(mut self, g: GuardFn) -> Self {

@@ -14,7 +14,9 @@ accent_text = "#1e1710"
 button = "#3b3732"
 button_hover = "#47423b"
 border = "#413d37"
-danger = "#d9705f"
+danger = "#e6806e"
+focus_ring = "#cfb08c"
+warn = "#dcb56a"
 
 [background]
 kind = "solid"             # solid, gradient or image

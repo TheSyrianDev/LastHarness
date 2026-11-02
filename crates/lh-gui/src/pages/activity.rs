@@ -82,7 +82,24 @@ pub fn summary(kind: &str, d: &Value) -> String {
         "schedule_ran" => format!("Scheduled task \"{}\" ran: {}", pick(&["name"]).unwrap_or_default(), pick(&["result"]).unwrap_or_default()),
         "schedule_added" => format!("Added the scheduled task \"{}\"", pick(&["name"]).unwrap_or_default()),
         "schedule_removed" => "Removed a scheduled task".into(),
+        "schedule_changed_files" => {
+            let files: Vec<&str> = d["files"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+            format!("Scheduled task \"{}\" changed {}: {}", pick(&["name"]).unwrap_or_default(), if files.len() == 1 { "1 file".to_string() } else { format!("{} files", files.len()) }, short(&files.join(", "), 160))
+        }
         "hooks_problem" => format!("hooks.toml could not be read: {}", pick(&["error"]).unwrap_or_default()),
+        // something learned or changed in the team or memory: "Created the role planner", not the raw record
+        _ if d["op"].is_string() && d["item"].is_string() => {
+            let op = pick(&["op"]).unwrap_or_default();
+            let done = match op.as_str() {
+                "create" => "Created".to_string(),
+                "update" => "Changed".to_string(),
+                "delete" => "Removed".to_string(),
+                "revert" => "Reverted".to_string(),
+                o => kind_label(o),
+            };
+            let what = pick(&["kind"]).map(|k| format!("the {} ", k.replace('_', " "))).unwrap_or_default();
+            format!("{done} {what}\"{}\"", pick(&["item"]).unwrap_or_default())
+        }
         _ => match d {
             Value::Null => String::new(),
             Value::Object(m) if m.is_empty() => String::new(),
@@ -186,11 +203,13 @@ mod tests {
         assert_eq!(summary("setting_changed", &json!({"key": "parallel", "value": "2"})), "Changed \"Workers at the same time\" to 2 workers");
         assert_eq!(summary("setting_changed", &json!({"key": "unavailable", "value": "stop"})), "Changed \"When a model is missing\" to Stop and tell me");
         assert_eq!(summary("startup", &json!({"provider": "x"})), "The core started");
+        assert_eq!(summary("schedule_changed_files", &json!({"id": 1, "name": "tidy", "files": ["a.txt", "b.txt"]})), "Scheduled task \"tidy\" changed 2 files: a.txt, b.txt");
         assert_eq!(summary("schedule_ran", &json!({"name": "news", "result": "ok"})), "Scheduled task \"news\" ran: ok");
         assert_eq!(summary("setting_changed", &json!({"key": "made.up"})), "Changed made.up");
         assert_eq!(summary("tool_call", &json!({"tool": "bash", "incognito": true})), "Used bash (private chat, details not kept)");
         assert_eq!(summary("undo", &json!({"path": "/a/b.txt"})), "Undid the change to /a/b.txt");
         assert_eq!(summary("mystery", &Value::Null), "");
+        assert_eq!(summary("learned", &json!({"kind": "role", "item": "planner", "op": "create", "version": 1})), "Created the role \"planner\"");
         assert_eq!(summary("mystery", &json!({"a": 1})), "{\"a\":1}");
     }
 

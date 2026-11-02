@@ -1,27 +1,25 @@
-//! The chat width controls in Settings: a slider, a box to type the number in, and presets. The numbers and the
-//! rules (clamping, steps, presets, saving) are in `lh_gui::layout` and are tested there; this file connects them
-//! to the slider from gpui-component, a text box, the keyboard and the screen reader.
+//! The chat width controls in Settings: a slider with a glass knob, a box to type the number in, and presets. The
+//! numbers and the rules (clamping, steps, presets, saving) are in `lh_gui::layout` and are tested there; this file
+//! draws the slider and connects it to a text box, the keyboard and the screen reader.
 //!
-//! The slider only knows left to right. In right-to-left it is given the mirrored value (`layout::mirror`) so the
-//! narrow end is on the right and the fill grows from there. The row around it carries its own slider role with
-//! the real number, because the slider inside announces the mirrored one.
+//! In right-to-left the narrow end is on the right and the fill grows from there.
 
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::input::{Input, InputEvent, InputState};
-use gpui_component::slider::{Slider, SliderEvent, SliderState};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use crate::app::App;
 use crate::ui::Kind;
-use lh_gui::layout::{mirror, slider_max, ColumnWidth, BUILT_IN_WIDTHS, COLUMN_MIN, COLUMN_STEP};
+use lh_gui::layout::{slider_max, ColumnWidth, BUILT_IN_WIDTHS, COLUMN_MIN, COLUMN_STEP};
 
 /// Everything the width controls remember between frames.
 pub struct WidthControls {
-    pub slider: Entity<SliderState>,
-    /// What the slider was built for. It is built again when the room or the direction changes.
-    built_max: f32,
-    built_rtl: bool,
-    _sub: Subscription,
+    /// Where the track was drawn last frame (left edge and width), to turn a pointer position into a width.
+    track: Rc<Cell<(f32, f32)>>,
+    /// The knob is held.
+    pub dragging: bool,
     /// The number box.
     pub input: Entity<InputState>,
     /// Keyboard focus for the whole slider row.
@@ -35,19 +33,9 @@ pub struct WidthControls {
     pub note: Option<String>,
 }
 
-fn build_slider(window: &mut Window, cx: &mut Context<App>, column: ColumnWidth, room: f32, rtl: bool) -> (Entity<SliderState>, Subscription) {
-    let state = cx.new(|_| lh_gui::width_slider::state(column, room, rtl));
-    let sub = cx.subscribe_in(&state, window, |this: &mut App, _, ev: &SliderEvent, window, cx| match ev {
-        SliderEvent::Change(v) => this.width_dragged(v.end(), window, cx),
-        SliderEvent::Release(_) => this.persist(),
-    });
-    (state, sub)
-}
-
 impl WidthControls {
-    pub fn new(window: &mut Window, cx: &mut Context<App>, column: ColumnWidth, rtl: bool) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<App>, column: ColumnWidth, _rtl: bool) -> Self {
         let room = 1200.;
-        let (slider, sub) = build_slider(window, cx, column, room, rtl);
         let input = cx.new(|cx| InputState::new(window, cx).placeholder("px"));
         input.update(cx, |s, cx| s.set_value(column.input_text(room), window, cx));
         cx.subscribe_in(&input, window, |this: &mut App, _, ev: &InputEvent, window, cx| {
@@ -57,15 +45,18 @@ impl WidthControls {
         })
         .detach();
         let preset_name = cx.new(|cx| InputState::new(window, cx).placeholder("Name this width"));
-        WidthControls { slider, built_max: slider_max(room), built_rtl: rtl, _sub: sub, input, focus: cx.focus_handle(), room, preset_name, selected: None, note: None }
+        WidthControls { track: Rc::new(Cell::new((0., 1.))), dragging: false, input, focus: cx.focus_handle(), room, preset_name, selected: None, note: None }
     }
 }
 
 impl App {
     /// Set from the slider while it is dragged: the column follows live; the file is written when the drag ends.
-    pub fn width_dragged(&mut self, slider_value: f32, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn width_dragged(&mut self, pointer_x: f32, window: &mut Window, cx: &mut Context<Self>) {
         let room = self.width.room;
-        let value = if self.rtl { mirror(slider_value, room) } else { slider_value };
+        let (left, wide) = self.width.track.get();
+        let frac = ((pointer_x - left) / wide.max(1.)).clamp(0., 1.);
+        let frac = if self.rtl { 1. - frac } else { frac };
+        let value = COLUMN_MIN + frac * (slider_max(room) - COLUMN_MIN);
         let w = ColumnWidth::from_slider(value, room);
         if self.layout().column != w {
             self.layout_mut().column = w;
@@ -86,34 +77,11 @@ impl App {
         cx.notify();
     }
 
-    /// Make the slider and the number box show the width now in use.
+    /// Make the number box show the width now in use; the slider is drawn from the width itself.
     pub fn sync_width_widgets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (room, w) = (self.width.room, self.layout().column);
-        let pos = w.position(room);
-        let value = if self.rtl { mirror(pos, room) } else { pos };
-        self.width.slider.update(cx, |s, cx| s.set_value(value, window, cx));
         let text = w.input_text(room);
         self.width.input.update(cx, |s, cx| s.set_value(text, window, cx));
-    }
-
-    /// Called every frame the Settings window is up: builds the slider again if the room or the direction changed,
-    /// and takes a value a screen reader set on the slider inside.
-    pub fn keep_width_slider_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let room = self.width.room;
-        if (slider_max(room) - self.width.built_max).abs() > 0.1 || self.width.built_rtl != self.rtl {
-            let (slider, sub) = build_slider(window, cx, self.layout().column, room, self.rtl);
-            self.width.slider = slider;
-            self.width._sub = sub;
-            self.width.built_max = slider_max(room);
-            self.width.built_rtl = self.rtl;
-            return;
-        }
-        let v = self.width.slider.read(cx).value().end();
-        let real = if self.rtl { mirror(v, room) } else { v };
-        if (real - self.layout().column.position(room)).abs() > 0.5 {
-            let w = ColumnWidth::from_slider(real, room);
-            self.set_column(w, window, cx);
-        }
     }
 
     /// The number box was finished (Enter, or the cursor left it): read it, or put the real number back.
@@ -197,6 +165,56 @@ impl App {
         cx.notify();
     }
 
+    /// The track and its glass knob. A press anywhere on it moves the knob there; the drag follows the pointer
+    /// even outside the track until the button is let go.
+    fn width_track(&self, cx: &mut Context<Self>) -> AnyElement {
+        const KNOB: f32 = 18.;
+        let p = &self.pal;
+        let room = self.width.room;
+        let max = slider_max(room);
+        let frac = ((self.layout().column.position(room) - COLUMN_MIN) / (max - COLUMN_MIN).max(1.)).clamp(0., 1.);
+        let frac = if self.rtl { 1. - frac } else { frac };
+        let held = self.width.dragging;
+        let g = self.swell("width-thumb", held, 3.);
+        let (track, me, dragging) = (self.width.track.clone(), cx.entity().downgrade(), held);
+        let fill = div().absolute().top(px(KNOB / 2. - 2.)).h(px(4.)).rounded_full().bg(p.accent.opacity(0.7));
+        let fill = if self.rtl { fill.right(px(0.)).w(relative(1. - frac)) } else { fill.left(px(0.)).w(relative(frac)) };
+        div().id("chat-width-track").relative().w_full().h(px(KNOB)).cursor_pointer()
+            .on_mouse_down(MouseButton::Left, cx.listener(|a, ev: &MouseDownEvent, w, cx| {
+                a.width.dragging = true;
+                a.width_dragged(f32::from(ev.position.x), w, cx);
+                cx.notify();
+            }))
+            .child(div().absolute().top(px(KNOB / 2. - 2.)).left_0().right_0().h(px(4.)).rounded_full().bg(p.border))
+            .child(fill)
+            // the knob sits inside the track: at 0 its left edge meets the start, at 1 its right edge meets the end
+            .child(div().absolute().top_0().left_0().right(px(KNOB)).h(px(KNOB))
+                .child(self.glass(div().absolute().top(px(-g)).left(relative(frac)).ml(px(-g)).size(px(KNOB + g * 2.)).rounded_full(), "width-thumb", held, KNOB / 2. + g)
+                    .child(div().size_full().rounded_full().border_2().border_color(p.accent.opacity(if held { 0.5 } else { 0.85 })))))
+            .child(canvas(move |b, _, _| track.set((f32::from(b.origin.x) + KNOB / 2., f32::from(b.size.width) - KNOB)), move |_, _, window, _| {
+                if !dragging {
+                    return;
+                }
+                let m = me.clone();
+                window.on_mouse_event(move |ev: &MouseMoveEvent, phase, window, cx| {
+                    if phase == DispatchPhase::Bubble {
+                        m.update(cx, |a, cx| a.width_dragged(f32::from(ev.position.x), window, cx)).ok();
+                    }
+                });
+                let m = me.clone();
+                window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+                    if phase == DispatchPhase::Bubble {
+                        m.update(cx, |a, cx| {
+                            a.width.dragging = false;
+                            a.persist();
+                            cx.notify();
+                        }).ok();
+                    }
+                });
+            }).absolute().size_full())
+            .into_any_element()
+    }
+
     /// The Chat width part of Settings: the slider row, then the presets.
     pub fn width_controls(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
@@ -241,7 +259,7 @@ impl App {
                     cx.stop_propagation();
                 }
             }))
-            .child(Slider::new(&self.width.slider).when(rtl, |s| s.reverse()));
+            .child(self.width_track(cx));
         let unit = div().text_sm().text_color(p.muted).child(if col == ColumnWidth::Full { if rtl { "الكامل" } else { "Full" } } else { "px" });
         let slider_row = div()
             .flex()

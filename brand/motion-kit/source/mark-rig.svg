@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LastHarness mark, rigged for animation. 64-unit grid; multiply by 8 for the 512 px Lottie comp.
+     Every animated part is its own named group. data-pivot = the point the part scales/rotates around.
+     Parenting: #eyes is a child of #face (eyes follow the face's squash, lean and bob).
+     Rest pose shown = "front" (looking at you). The logo pose = glance (see timing-sheet.md). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <g id="guides" display="none">
+    <circle cx="32" cy="32" r="30" fill="none" stroke="#c0392b" stroke-width=".3"/>
+  </g>
+  <g id="face" data-pivot="27,56" data-note="pivot = bottom centre, so squash and lean sit on the floor">
+    <rect id="face-shape" x="8" y="18" width="38" height="38" rx="15" fill="#b2c27c"/>
+    <g id="eyes" data-pivot="27,37" data-note="glance = translate(2.4,-2) rotate(-8) about this pivot">
+      <g id="eye-near" data-pivot="21.6,36.1" data-note="blinks scale Y about its own centre">
+        <rect x="18.6" y="30.6" width="6" height="11" rx="3" fill="#15251c"/>
+      </g>
+      <g id="eye-far" data-pivot="31.4,36.1" data-note="front: 28.4,30.6 6x11 r3 -> glance: 30.1,31.4 4.6x10.2 r2.3 (narrower: turned away)">
+        <rect x="28.4" y="30.6" width="6" height="11" rx="3" fill="#15251c"/>
+      </g>
+    </g>
+  </g>
+  <g id="slot" data-pivot="49,15" data-note="the tool's place / status light">
+    <circle cx="49" cy="15" r="6" fill="#e0a050"/>
+  </g>
+  <g id="slot-ring" data-pivot="49,15" data-note="burst ring, stroke 1.4, only visible during slot-in / slot-out">
+    <circle cx="49" cy="15" r="6" fill="none" stroke="#e0a050" stroke-width="1.4" opacity="0"/>
+  </g>
+</svg>

@@ -110,20 +110,26 @@ pub async fn run_due(store: &lh_store::Store, base: &str, token: &str) -> usize 
         }
     };
     for s in &due {
-        let result = run_one(&api, s).await;
+        let start = store.last_seq().unwrap_or(0);
+        let (result, session) = run_one(&api, s).await;
         let _ = store.finish_schedule(s.id, &result);
         let _ = store.log("schedule_ran", "-", "lhd", &json!({"id": s.id, "name": s.name, "result": result}));
+        // a notice the app can show: this task changed files while nobody watched
+        let files = session.and_then(|sid| store.files_written(&sid, start).ok().map(|f| (sid, f)));
+        if let Some((sid, files)) = files.filter(|(_, f)| !f.is_empty()) {
+            let _ = store.log("schedule_changed_files", &sid, "lhd", &json!({"id": s.id, "name": s.name, "files": files}));
+        }
     }
     due.len()
 }
 
-/// Run one task as a chat and say how it went: "ok", "failed: …", or "ok, but said no to …".
-async fn run_one(api: &Arc<Api>, s: &Schedule) -> String {
+/// Run one task as a chat and say how it went: "ok", "failed: …", or "ok, but said no to …". Also gives the chat's id.
+async fn run_one(api: &Arc<Api>, s: &Schedule) -> (String, Option<String>) {
     let v = match api.call(reqwest::Method::POST, "/v1/sessions", Some(json!({"model": s.model, "project_dir": s.folder}))).await {
         Ok(v) => v,
-        Err(e) => return format!("failed: {e}"),
+        Err(e) => return (format!("failed: {e}"), None),
     };
-    let Some(session) = v["id"].as_str().map(str::to_string) else { return "failed: the core gave no chat".into() };
+    let Some(session) = v["id"].as_str().map(str::to_string) else { return ("failed: the core gave no chat".into(), None) };
     let (mut end, mut refused) = (String::from("failed: the turn ended without an answer"), Vec::<String>::new());
     let text = format!("(Scheduled task \"{}\". Nobody is watching; do what you can without asking.)\n\n{}", s.name, s.prompt);
     let r = api
@@ -147,8 +153,9 @@ async fn run_one(api: &Arc<Api>, s: &Schedule) -> String {
     }
     let _ = api.call(reqwest::Method::DELETE, &format!("/v1/sessions/{session}"), None).await;
     refused.dedup();
-    match (end.as_str(), refused.is_empty()) {
+    let said = match (end.as_str(), refused.is_empty()) {
         ("ok", false) => format!("ok, but said no to {}", refused.join(", ")),
         _ => end,
-    }
+    };
+    (said, Some(session))
 }

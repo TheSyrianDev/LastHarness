@@ -32,14 +32,53 @@ fn kind_of_name(name: &str) -> &'static str {
     }
 }
 
+const KINDS: [&str; 8] = ["markdown", "code", "text", "image", "html", "table", "chart", "app"];
+const TABLE_FORMAT: &str = r#"a table's content is JSON: {"columns": ["Name", ...], "rows": [["a", 1], ...]}"#;
+const CHART_FORMAT: &str = r#"a chart's content is JSON: {"type": "bar"|"line"|"pie", "labels": ["Jan", ...], "series": [{"name": "Sales", "values": [3, ...]}]}"#;
+
+/// A table must be columns and rows of plain values, so every front end can draw it (the terminal as text).
+pub(crate) fn check_table(c: &str) -> Result<String, ToolError> {
+    let bad = |why: &str| ToolError::Args(format!("{why}; {TABLE_FORMAT}"));
+    let v: Value = serde_json::from_str(c).map_err(|e| bad(&format!("not JSON ({e})")))?;
+    let cols = v["columns"].as_array().filter(|a| !a.is_empty() && a.iter().all(Value::is_string)).ok_or_else(|| bad("`columns` must be a list of names"))?;
+    let rows = v["rows"].as_array().ok_or_else(|| bad("`rows` is missing"))?;
+    for (i, r) in rows.iter().enumerate() {
+        let r = r.as_array().ok_or_else(|| bad(&format!("row {} is not a list", i + 1)))?;
+        if r.len() != cols.len() || r.iter().any(|x| x.is_object() || x.is_array()) {
+            return Err(bad(&format!("row {} must have {} plain values", i + 1, cols.len())));
+        }
+    }
+    Ok(json!({"columns": cols, "rows": rows, "caption": v["caption"].as_str()}).to_string())
+}
+
+/// A chart is drawn by the front end from numbers, never from code the model wrote.
+pub(crate) fn check_chart(c: &str) -> Result<String, ToolError> {
+    let bad = |why: &str| ToolError::Args(format!("{why}; {CHART_FORMAT}"));
+    let v: Value = serde_json::from_str(c).map_err(|e| bad(&format!("not JSON ({e})")))?;
+    let kind = v["type"].as_str().filter(|t| ["bar", "line", "pie"].contains(t)).ok_or_else(|| bad("`type` must be bar, line or pie"))?;
+    let labels = v["labels"].as_array().filter(|a| !a.is_empty() && a.len() <= 500).ok_or_else(|| bad("`labels` must be a list of 1 to 500 names"))?;
+    let series = v["series"].as_array().filter(|a| !a.is_empty() && a.len() <= 12).ok_or_else(|| bad("`series` must be a list of 1 to 12"))?;
+    for s in series {
+        let vals = s["values"].as_array().ok_or_else(|| bad("each series needs `values`"))?;
+        if vals.len() != labels.len() || !vals.iter().all(Value::is_number) {
+            return Err(bad(&format!("each series needs {} numbers in `values`, one per label", labels.len())));
+        }
+    }
+    if kind == "pie" && series.len() != 1 {
+        return Err(bad("a pie has exactly one series"));
+    }
+    let labels: Vec<String> = labels.iter().map(|l| l.as_str().map(str::to_string).unwrap_or_else(|| l.to_string())).collect();
+    Ok(json!({"type": kind, "labels": labels, "series": series, "caption": v["caption"].as_str()}).to_string())
+}
+
 /// Decide what to send for a call: `(kind, text or path)`. Pure, so it is tested without a session.
 pub(crate) fn plan(a: &Value, allow: impl Fn(&Path) -> bool, root: &Path) -> Result<(String, String, Option<PathBuf>), ToolError> {
     let title = a["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).ok_or(ToolError::Args("`title` is missing".into()))?;
     let title: String = title.chars().take(80).collect();
     let want = a["kind"].as_str().map(str::to_ascii_lowercase);
     if let Some(k) = &want {
-        if !["markdown", "code", "text", "image", "html"].contains(&k.as_str()) {
-            return Err(ToolError::Args("`kind` must be markdown, code, text, image or html".into()));
+        if !KINDS.contains(&k.as_str()) {
+            return Err(ToolError::Args(format!("`kind` must be one of {}", KINDS.join(", "))));
         }
     }
     match (a["content"].as_str(), a["path"].as_str()) {
@@ -48,7 +87,15 @@ pub(crate) fn plan(a: &Value, allow: impl Fn(&Path) -> bool, root: &Path) -> Res
             if kind == "image" {
                 return Err(ToolError::Args("an image is shown from a `path`, not from `content`".into()));
             }
+            if c.chars().count() > MAX_TEXT && matches!(kind.as_str(), "table" | "chart" | "app") {
+                return Err(ToolError::Args(format!("a {kind} can be at most {MAX_TEXT} characters")));
+            }
             let c: String = c.chars().take(MAX_TEXT).collect();
+            let c = match kind.as_str() {
+                "table" => check_table(&c)?,
+                "chart" => check_chart(&c)?,
+                _ => c,
+            };
             Ok((kind, c, None)).map(|(k, c, p)| (k, format!("{title}\n{c}"), p))
         }
         (_, Some(p)) => {
@@ -83,8 +130,8 @@ impl ExtraTool for ShowTool {
     fn def(&self) -> ToolDef {
         ToolDef {
             name: "show".into(),
-            description: "Open text, a file or an image beside the chat so the user can read it properly. Give content, or a path inside the folder.".into(),
-            parameters: json!({"type": "object", "properties": {"title": {"type": "string"}, "content": {"type": "string"}, "path": {"type": "string"}, "kind": {"type": "string", "enum": ["markdown", "code", "text", "image", "html"]}}, "required": ["title"]}),
+            description: "Show text, a file or an image beside the chat, or a table, chart or small app in it. Give content, or a path inside the folder. table and chart content is JSON (a mistake explains the format). app content is one HTML page with inline CSS and JS, no network; it may call lh.followUp(text) in a click handler to offer the user a next question.".into(),
+            parameters: json!({"type": "object", "properties": {"title": {"type": "string"}, "content": {"type": "string"}, "path": {"type": "string"}, "kind": {"type": "string", "enum": KINDS}}, "required": ["title"]}),
         }
     }
     fn risk(&self) -> Risk {
@@ -94,7 +141,7 @@ impl ExtraTool for ShowTool {
         format!("show \"{}\" beside the chat", a["title"].as_str().unwrap_or("?"))
     }
     fn guideline(&self) -> Option<String> {
-        Some("show opens a long answer, file or image beside the chat.".into())
+        Some("show opens a long answer, file, image, table, chart or small app.".into())
     }
     fn run(&self, a: Value) -> BoxFut<'_, Result<String, ToolError>> {
         Box::pin(async move {
@@ -168,6 +215,33 @@ mod tests {
         assert_eq!(k, "html");
         assert!(page.is_none(), "text with no file has nothing to open in a browser");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn tables_and_charts_are_checked_and_explain_their_format() {
+        let r = Path::new("/x");
+        let (k, body, _) = plan(&json!({"title": "T", "kind": "table", "content": r#"{"columns":["a","b"],"rows":[["x",1]]}"#}), allow_all, r).unwrap();
+        assert_eq!(k, "table");
+        assert!(body.contains(r#""columns":["a","b"]"#));
+        let e = plan(&json!({"title": "T", "kind": "table", "content": r#"{"columns":["a"],"rows":[["x",1]]}"#}), allow_all, r).unwrap_err().to_string();
+        assert!(e.contains("row 1") && e.contains("columns"), "{e}");
+        assert!(plan(&json!({"title": "T", "kind": "table", "content": "nope"}), allow_all, r).unwrap_err().to_string().contains("not JSON"));
+        let ok = r#"{"type":"bar","labels":["a","b"],"series":[{"name":"s","values":[1,2.5]}]}"#;
+        assert_eq!(plan(&json!({"title": "C", "kind": "chart", "content": ok}), allow_all, r).unwrap().0, "chart");
+        let short = r#"{"type":"line","labels":["a","b"],"series":[{"values":[1]}]}"#;
+        assert!(plan(&json!({"title": "C", "kind": "chart", "content": short}), allow_all, r).unwrap_err().to_string().contains("2 numbers"));
+        let pie2 = r#"{"type":"pie","labels":["a"],"series":[{"values":[1]},{"values":[2]}]}"#;
+        assert!(plan(&json!({"title": "C", "kind": "chart", "content": pie2}), allow_all, r).unwrap_err().to_string().contains("one series"));
+        assert!(plan(&json!({"title": "C", "kind": "chart", "content": r#"{"type":"radar"}"#}), allow_all, r).unwrap_err().to_string().contains("bar, line or pie"));
+    }
+
+    #[test]
+    fn an_app_passes_whole_or_not_at_all() {
+        let r = Path::new("/x");
+        let (k, body, _) = plan(&json!({"title": "Calc", "kind": "app", "content": "<button>1</button>"}), allow_all, r).unwrap();
+        assert_eq!((k.as_str(), body.as_str()), ("app", "Calc\n<button>1</button>"));
+        let big = "x".repeat(MAX_TEXT + 1);
+        assert!(plan(&json!({"title": "Calc", "kind": "app", "content": big}), allow_all, r).unwrap_err().to_string().contains("at most"), "a cut-off page would be broken");
     }
 
     #[test]

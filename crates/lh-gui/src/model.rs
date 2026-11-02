@@ -5,6 +5,9 @@ use std::time::Instant;
 
 use lh_client::ServerEvent;
 
+/// Starts the changes of an allowed file write, as added under the step's result.
+pub const DIFF_MARK: &str = "Changes to ";
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Block {
     User(String),
@@ -12,8 +15,8 @@ pub enum Block {
     Assistant { text: String, reasoning: String, worked: Option<u64> },
     Tool { id: String, name: String, arguments: String, result: Option<String> },
     Notice(String),
-    /// The assistant opened something beside the chat; the title lets the chat offer to open it again.
-    Shown(String),
+    /// Something the assistant showed (a table, chart, document, picture or small app), drawn in the chat itself.
+    Shown(crate::content::Content),
     Error(String),
 }
 
@@ -74,11 +77,17 @@ pub struct Chat {
     pub mode: Mode,
     /// The project folder, for a chat in project mode.
     pub project: String,
+    /// Unix seconds of the last message, for the sidebar; 0 when unknown.
+    pub last: i64,
     turn_had_text: bool,
     /// When the thinking and tool use before the next answer began.
     work_since: Option<Instant>,
     /// How long and how fast the model has been thinking since the last thing it wrote or did.
     pub think: crate::thinking::Thinking,
+}
+
+pub fn unix_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
 pub const NEW_TITLE: &str = "New chat";
@@ -100,9 +109,38 @@ pub fn truncate_title(title: &str, max: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
+/// A tool step in plain words, like "Read garden/notes.md" or "Run cargo test", for the Work panel. The raw
+/// arguments stay one click away; this is only the line a person reads.
+pub fn step_words(name: &str, arguments: &str) -> String {
+    let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or(serde_json::Value::Null);
+    let pick = |keys: &[&str]| keys.iter().find_map(|k| args.get(*k).and_then(|v| v.as_str()).map(|v| one_line(v)));
+    let target = pick(&["path", "file", "command", "url", "query", "name", "text"]);
+    let verb = match name {
+        "read_file" => "Read",
+        "write_file" => "Wrote",
+        "edit_file" => "Edited",
+        "list_dir" | "list_files" => "Listed",
+        "run_command" | "bash" | "shell" => "Ran",
+        "web_fetch" | "fetch" => "Opened",
+        "web_search" | "search" => "Searched for",
+        "recall" => "Looked up",
+        "remember" => "Saved",
+        _ => "",
+    };
+    let verb = if verb.is_empty() {
+        let mut w = name.replace('_', " ");
+        if let Some(f) = w.get(0..1).map(|f| f.to_uppercase()) { w.replace_range(0..1, &f); }
+        w
+    } else { verb.to_string() };
+    match target {
+        Some(t) => truncate_title(&format!("{verb} {t}"), 120),
+        None => verb,
+    }
+}
+
 impl Chat {
     pub fn new(key: u64, model: &str) -> Chat {
-        Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), turn_had_text: false, work_since: None, think: Default::default() }
+        Chat { key, session: None, title: NEW_TITLE.into(), model: model.into(), blocks: vec![], busy: false, asks: vec![], context_tokens: None, dormant: false, incognito: false, mode: Mode::Chat, project: String::new(), last: 0, turn_had_text: false, work_since: None, think: Default::default() }
     }
 
     /// A chat that is only a name in the list until the user opens it.
@@ -120,6 +158,7 @@ impl Chat {
             self.title = one_line(text).chars().take(40).collect();
         }
         self.blocks.push(Block::User(text.into()));
+        self.last = unix_now();
         self.busy = true;
         self.turn_had_text = false;
         self.work_since = Some(Instant::now());
@@ -187,7 +226,21 @@ impl Chat {
             }
             ServerEvent::ToolResult { id, text } => {
                 if let Some(Block::Tool { result, .. }) = self.blocks.iter_mut().rev().find(|b| matches!(b, Block::Tool { id: i, .. } if i == id)) {
-                    *result = Some(text.clone());
+                    // a diff that came first stays under the result
+                    *result = Some(match result.take() {
+                        Some(d) if d.starts_with(DIFF_MARK) => format!("{text}\n\n{d}"),
+                        _ => text.clone(),
+                    });
+                }
+            }
+            ServerEvent::Diff { id, path, diff } => {
+                // shown inside the step, which stays folded until opened
+                if let Some(Block::Tool { result, .. }) = self.blocks.iter_mut().rev().find(|b| matches!(b, Block::Tool { id: i, .. } if i == id)) {
+                    let d = format!("{DIFF_MARK}{path}\n{diff}");
+                    *result = Some(match result.take() {
+                        Some(r) => format!("{r}\n\n{d}"),
+                        None => d,
+                    });
                 }
             }
             ServerEvent::Ask { id, tool, what, reason, worker, detail } => self.asks.push(Ask { id: id.clone(), tool: tool.clone(), what: what.clone(), reason: reason.clone(), worker: worker.clone(), detail: detail.clone() }),
@@ -216,7 +269,7 @@ impl Chat {
                     self.blocks.push(Block::Error(m.clone()));
                 }
             }
-            ServerEvent::Show { title, .. } => self.blocks.push(Block::Shown(title.clone())),
+            ServerEvent::Show { title, kind, content, path } => self.blocks.push(Block::Shown(crate::content::Content::from_show(title, kind, content, path.as_deref()))),
             ServerEvent::Finish(_) | ServerEvent::Other => {}
         }
     }
@@ -322,6 +375,15 @@ impl Chats {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_tool_step_reads_as_plain_words() {
+        use super::step_words;
+        assert_eq!(step_words("read_file", r#"{"path":"~/garden/notes.md"}"#), "Read ~/garden/notes.md");
+        assert_eq!(step_words("run_command", r#"{"command":"cargo test"}"#), "Ran cargo test");
+        assert_eq!(step_words("make_chart", "{}"), "Make chart");
+        assert_eq!(step_words("odd", "not json"), "Odd");
+    }
+
+    #[test]
     fn long_titles_end_with_the_ellipsis_in_the_text() {
         assert_eq!(truncate_title("short", 10), "short");
         assert_eq!(truncate_title("abcdefghij", 6), "abcde…");
@@ -394,11 +456,11 @@ mod tests {
     }
 
     #[test]
-    fn something_the_assistant_shows_leaves_a_line_in_the_chat() {
+    fn something_the_assistant_shows_is_kept_in_the_chat() {
         let mut c = Chat::new(1, "m");
         c.push_user("x");
         c.apply(&ServerEvent::Show { title: "Plan".into(), kind: "markdown".into(), content: "# Plan".into(), path: None });
-        assert_eq!(c.blocks.last(), Some(&Block::Shown("Plan".into())));
+        assert!(matches!(c.blocks.last(), Some(Block::Shown(x)) if x.title == "Plan" && x.body == "# Plan"), "the whole thing is kept, to draw in the chat");
         assert!(c.busy, "showing something does not end the turn");
     }
 

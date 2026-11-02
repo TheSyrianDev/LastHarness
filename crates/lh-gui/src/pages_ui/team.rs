@@ -88,9 +88,9 @@ impl App {
 
     fn away_section(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let v = self.sp.data.get("away").map(AwayView::from_json).unwrap_or_default();
-        let switch = gpui_component::switch::Switch::new("away-switch").checked(v.away).label("Away mode").on_click(cx.listener(|a, on: &bool, _, cx| {
-            a.pg_do("away", "POST", "/v1/team/away".into(), Some(json!({"on": *on})), &["away", "tsettings"], if *on { "Away mode is on." } else { "Away mode is off." }, cx);
-        }));
+        let switch = self.glass_switch("away-switch", v.away, true, "Away mode", true, cx, |a, on, _, cx| {
+            a.pg_do("away", "POST", "/v1/team/away".into(), Some(json!({"on": on})), &["away", "tsettings"], if on { "Away mode is on." } else { "Away mode is off." }, cx);
+        });
         let mut card = self.pg_card().id("away-card").role(Role::Group).aria_label("Away mode").child(switch);
         card = card.child(self.pg_small("While you are away, departments keep working but say no to anything that needs permission, and set those steps aside for you."));
         if !v.decisions.is_empty() {
@@ -110,13 +110,13 @@ impl App {
     fn depts_section(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let list: Vec<Value> = self.sp.data.get("depts").map(|v| arr(v, "departments").to_vec()).unwrap_or_default();
         let mut col = div().flex().flex_col().gap_2();
-        let new = self.button("dept-new", "New department", Kind::Normal, cx, |a, w, cx| {
+        let new = self.button("dept-new", "New department", Kind::Ghost, cx, |a, w, cx| {
             let f = DeptForm::default();
             a.open_dept_form(true, f, w, cx);
         });
         col = col.child(div().flex().items_center().gap_2().child(div().flex_1().child(self.pg_heading("Departments"))).child(new));
         if list.is_empty() {
-            col = col.child(self.pg_small("No departments yet."));
+            col = col.child(self.pg_small("No departments yet"));
         }
         for d in list {
             col = col.child(self.dept_card(d, cx));
@@ -187,7 +187,7 @@ impl App {
         let p = self.pal.clone();
         let list = match self.sp.data.get(data) {
             Some(v) => versions(arr(v, "versions"), |h| h["note"].as_str().unwrap_or("").to_string()),
-            None => return self.pg_small("Loading the history...").into_any_element(),
+            None => return self.pg_small("Loading the history…").into_any_element(),
         };
         let rows: Vec<AnyElement> = list
             .into_iter()
@@ -292,7 +292,7 @@ impl App {
     fn roles_section(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let list: Vec<Value> = self.sp.data.get("roles").map(|v| arr(v, "roles").to_vec()).unwrap_or_default();
         let mut col = div().flex().flex_col().gap_2();
-        let new = self.button("role-new", "New role", Kind::Normal, cx, |a, w, cx| a.open_role_form(true, RoleForm::blank(), w, cx));
+        let new = self.button("role-new", "New role", Kind::Ghost, cx, |a, w, cx| a.open_role_form(true, RoleForm::blank(), w, cx));
         col = col.child(div().flex().items_center().gap_2().child(div().flex_1().child(self.pg_heading("Roles"))).child(new));
         col = col.child(self.pg_small("A role is a job a worker can do: its instructions, the tools it may use and the kind of model it runs on."));
         for r in list {
@@ -486,7 +486,7 @@ impl App {
     fn types_section(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let types: Vec<TypeRow> = self.sp.data.get("types").map(logic::types).unwrap_or_default();
         let mut col = div().flex().flex_col().gap_2();
-        let new = self.button("type-new", "New type", Kind::Normal, cx, |a, w, cx| {
+        let new = self.button("type-new", "New type", Kind::Ghost, cx, |a, w, cx| {
             a.sp.team.type_edit = Some(String::new());
             for k in ["type.name", "type.model", "type.fallbacks"] {
                 a.pg_set(k, "", w, cx);
@@ -607,7 +607,7 @@ impl App {
             let shown = match &home {
                 Some(Home::Type(t)) => format!("Type {t}"),
                 Some(Home::Model(m)) => format!("Model {m}"),
-                None => "Choose...".into(),
+                None => "Choose…".into(),
             };
             let mut options: Vec<(String, String)> = others.iter().map(|(l, v)| (l.clone(), format!("type:{v}"))).collect();
             options.extend(self.pg_model_options().into_iter().map(|(l, v)| (format!("Model {l}"), format!("model:{v}"))));

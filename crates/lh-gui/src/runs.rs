@@ -55,6 +55,11 @@ pub enum Outcome {
     Stopped,
 }
 
+/// Whether a run started by chat session `run_chat` (none: not by a chat) shows with the chat whose session is `chat`.
+pub fn shown_with(run_chat: Option<&str>, chat: Option<&str>) -> bool {
+    run_chat.is_none_or(|r| Some(r) == chat)
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Run {
     pub id: String,
@@ -218,6 +223,13 @@ impl Run {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_chats_run_shows_only_with_that_chat() {
+        assert!(shown_with(None, None) && shown_with(None, Some("s1")), "a run from the Departments page shows everywhere");
+        assert!(shown_with(Some("s1"), Some("s1")));
+        assert!(!shown_with(Some("s1"), Some("s2")) && !shown_with(Some("s1"), None));
+    }
 
     fn run_with(events: &[Value]) -> Run {
         let mut r = Run::new("r1", "pets", "explain purring");

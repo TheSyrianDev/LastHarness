@@ -3,7 +3,6 @@
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::input::{Input, InputEvent, InputState, Textarea};
-use gpui_component::Disableable as _;
 use gpui_component::text::TextView;
 
 use crate::app::App;
@@ -13,6 +12,7 @@ use lh_gui::runs::{Outcome, Question, Run, StepState};
 use lh_gui::settings;
 use crate::style::PanelExt;
 use crate::ui::Kind;
+use lh_gui::model::Block;
 
 pub use lh_gui::content::{Content, ContentKind};
 
@@ -29,39 +29,71 @@ fn state_mark(s: StepState) -> &'static str {
 }
 
 impl App {
+    /// How much each tab of the side panel holds for the chat that is open. A tab with nothing is not shown.
+    pub fn dock_counts(&self) -> Vec<(Panel, usize)> {
+        let chat = self.chats.current();
+        let tools = chat.map(|c| c.blocks.iter().filter(|b| matches!(b, Block::Tool { .. })).count()).unwrap_or(0);
+        let runs = self.panels.runs.values().filter(|r| !r.finished).count();
+        let recalled = chat.map(|c| c.blocks.iter().filter(|b| matches!(b, Block::Tool { name, .. } if name == "recall" || name == "remember")).count()).unwrap_or(0);
+        let branches = self.branches().map(|(n, _)| n).filter(|n| *n > 1).unwrap_or(0);
+        vec![(Panel::Content, self.content.len()), (Panel::Work, tools + runs), (Panel::Memory, recalled + self.panels.proposals.len()), (Panel::Tree, branches)]
+    }
+
+    /// The side panel: about the chat that is open. One row of tabs with counts, then the size, pop-out and
+    /// close icons; the tab's body under it.
     pub fn right_panel(&mut self, width: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        use crate::ui::icons;
         let p = self.pal.clone();
         let rtl = self.rtl;
-        let panel = self.layout().panel;
-        let expanded = self.layout().right_expanded;
+        let counts = self.dock_counts();
+        let mut panel = self.layout().panel;
+        if !DOCK_TABS.contains(&panel) {
+            panel = Panel::Content;
+        }
         let title = panel_label(panel, rtl);
-        let widen = self.button("panel-widen", if expanded { if rtl { "تضييق" } else { "Narrow" } } else if rtl { "توسيع" } else { "Widen" }, Kind::Ghost, cx, |a, _, cx| {
+        let expanded = self.layout().right_expanded;
+        let widen = self.icon_button("panel-widen", icons::widen(), if expanded { if rtl { "تضييق" } else { "Narrow" } } else if rtl { "توسيع" } else { "Widen" }, cx, |a, _, cx| {
             a.layout_mut().cycle_width();
             a.persist();
             cx.notify();
         });
         let popout = (panel == Panel::Content && !self.content.is_empty()).then(|| {
             let item = self.content[self.content_index.min(self.content.len() - 1)].clone();
-            self.button("panel-popout", if rtl { "فصل في نافذة" } else { "Pop out" }, Kind::Ghost, cx, move |a, _, cx| a.pop_out(item.clone(), cx))
+            self.icon_button("panel-popout", icons::popout(), if rtl { "فصل في نافذة" } else { "Pop out" }, cx, move |a, _, cx| a.pop_out(item.clone(), cx))
         });
-        let hide = self.button("panel-hide", if rtl { "إخفاء" } else { "Hide" }, Kind::Ghost, cx, |a, _, cx| {
+        let hide = self.icon_button("panel-hide", icons::close(), if rtl { "إخفاء" } else { "Close" }, cx, |a, _, cx| {
             a.layout_mut().hide_right();
             a.persist();
             cx.notify();
         });
         let body = match panel {
-            Panel::Departments => self.departments_body(cx),
-            Panel::Memory => self.memory_body(cx),
+            Panel::Memory => self.memory_used_body(cx),
             Panel::Content => self.content_body(window, cx),
             Panel::Tree => self.tree_body(cx),
+            _ => self.work_body(cx),
         };
-        // the tabs, then the size controls beneath them
-        let tabs: Vec<AnyElement> = DOCK_TABS
-            .into_iter()
-            .map(|t| self.button(format!("dock-{}", panel_label(t, false)), panel_label(t, rtl), if t == panel { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| a.show_in_dock(t, cx)))
+        let lift = BoxShadow { color: hsla(0., 0., 0., if p.dark { 0.3 } else { 0.08 }), offset: point(px(0.), px(1.)), blur_radius: px(2.), spread_radius: px(0.), inset: false };
+        let tabs: Vec<AnyElement> = counts
+            .iter()
+            .filter(|(t, n)| *n > 0 || *t == panel)
+            .map(|(t, n)| {
+                let (t, n, on) = (*t, *n, *t == panel);
+                div().id(SharedString::from(format!("dock-{}", panel_label(t, false)))).role(Role::Tab).aria_label(panel_label(t, rtl)).aria_selected(on)
+                    .flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1p5().px_2p5().py_1().rounded(p.inner).cursor_pointer().text_sm()
+                    .text_color(if on { p.text } else { p.muted })
+                    .when(on, |d| d.bg(p.surface).shadow(vec![lift.clone()]).font_weight(gpui::FontWeight::MEDIUM))
+                    .hover(|s| s.text_color(p.text))
+                    .on_click(cx.listener(move |a, _, _, cx| a.show_in_dock(t, cx)))
+                    .child(panel_label(t, rtl))
+                    .when(n > 0, |d| d.child(div().text_xs().text_color(p.muted).child(n.to_string())))
+                    .into_any_element()
+            })
             .collect();
-        let tab_row = div().id("dock-tabs").role(Role::TabList).aria_label(if rtl { "أقسام اللوحة" } else { "Side panel sections" }).flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_1().children(tabs);
-        let controls = div().id("dock-controls").flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(div().flex_1()).child(widen).children(popout).child(hide);
+        let tab_row = div().id("dock-tabs").role(Role::TabList).aria_label(if rtl { "أقسام اللوحة" } else { "Side panel sections" })
+            .flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_0p5().p_0p5().rounded(p.inner).bg(p.sunken.opacity(0.6)).min_w_0().overflow_hidden().children(tabs);
+        let head = div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1()
+            .child(div().flex_1().min_w_0().flex().when(rtl, |d| d.justify_end()).child(tab_row))
+            .child(widen).children(popout).child(hide);
         div()
             .id("right-panel")
             .role(Role::Group)
@@ -72,11 +104,104 @@ impl App {
             .w(px(width))
             .h_full()
             .p_2()
-            .panel(&p, self.focus == crate::app::Focus::Side)
+            .side_panel(&p)
             .on_mouse_down(MouseButton::Left, cx.listener(|a, _, _, cx| a.focus_on(crate::app::Focus::Side, cx)))
-            .child(tab_row)
-            .child(controls)
-            .child(div().id("panel-body").flex_1().overflow_y_scroll().flex().flex_col().gap_2().child(body))
+            .child(head)
+            .child(div().id("panel-body").flex_1().overflow_y_scroll().flex().flex_col().gap_2().child(div().id(SharedString::from(format!("panel-tab-{}", panel_label(panel, false)))).flex().flex_col().gap_2().child(body).with_animation(SharedString::from(format!("panel-in-{}", panel_label(panel, false))), Animation::new(lh_gui::motion::press(p.anim).max(std::time::Duration::from_millis(1))).with_easing(lh_gui::motion::ease_out), |e, t| e.opacity(t))))
+            .into_any_element()
+    }
+
+    /// A run a chat started shows only with that chat; one started elsewhere (the Departments page) shows with all.
+    fn run_is_for_this_chat(&self, run: &str) -> bool {
+        lh_gui::runs::shown_with(self.panels.run_sessions.get(run).map(String::as_str), self.chats.current().and_then(|c| c.session.as_deref()))
+    }
+
+    /// Work: department runs going now, as a board (step count and who waits), then this chat's tool steps.
+    fn work_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let mut col = div().flex().flex_col().gap_1();
+        let runs: Vec<Run> = self.panels.runs.values().filter(|r| !r.finished && self.run_is_for_this_chat(&r.id)).cloned().collect();
+        if !runs.is_empty() {
+            col = col.child(div().text_xs().font_weight(gpui::FontWeight::MEDIUM).text_color(p.muted).child(if rtl { "أقسام تعمل الآن" } else { "Running now" }));
+            for r in runs {
+                let (done, all) = r.progress();
+                let (state, color) = if r.is_waiting() { (if rtl { "بانتظارك" } else { "Asks you" }, p.danger) } else { (if rtl { "يعمل" } else { "Working" }, p.accent) };
+                let name = r.dept.clone();
+                col = col.child(
+                    div().id(SharedString::from(format!("work-run-{}", r.id))).flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_2().px_2().py_1p5().rounded(p.inner).cursor_pointer().hover(|s| s.bg(p.button))
+                        .on_click(cx.listener(move |a, _, _, cx| a.open_department(&name, cx)))
+                        .child(div().flex_1().min_w_0().flex().flex_col()
+                            .child(div().truncate().text_sm().text_color(p.text).child(r.goal.clone()))
+                            .child(div().text_xs().text_color(p.muted).child(format!("{} · {done}/{all}", r.dept))))
+                        .child(div().text_xs().font_weight(gpui::FontWeight::MEDIUM).text_color(color).child(state)),
+                );
+            }
+        }
+        let key = self.chats.current().map(|c| c.key).unwrap_or(0);
+        let steps: Vec<(usize, String, String, bool)> = self.chats.current().map(|c| c.blocks.iter().enumerate().filter_map(|(bi, b)| match b {
+            Block::Tool { name, arguments, result, .. } => Some((bi, lh_gui::model::step_words(name, arguments), lh_gui::model::one_line(arguments), result.is_some())),
+            _ => None,
+        }).collect()).unwrap_or_default();
+        if !steps.is_empty() {
+            col = col.child(div().pt_2().text_xs().font_weight(gpui::FontWeight::MEDIUM).text_color(p.muted).child(if rtl { "خطوات هذه المحادثة" } else { "Steps in this chat" }));
+            for (bi, words, args, done) in steps.into_iter().rev() {
+                let open = self.open_steps.contains(&(key, bi));
+                let mut row = div().id(SharedString::from(format!("work-step-{bi}"))).role(Role::Button).aria_label(SharedString::from(words.clone()))
+                    .flex().flex_col().gap_1().px_2().py_1().rounded(p.inner).cursor_pointer().hover(|s| s.bg(p.button))
+                    .on_click(cx.listener(move |a, _, _, cx| {
+                        if !a.open_steps.remove(&(key, bi)) { a.open_steps.insert((key, bi)); }
+                        cx.notify();
+                    }))
+                    .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_2()
+                        .child(div().size(px(8.)).flex_none().rounded_full().bg(if done { p.muted.opacity(0.5) } else { p.accent }))
+                        .child(div().flex_1().min_w_0().truncate().text_sm().text_color(p.text).child(words)));
+                if open {
+                    row = row.child(div().pl_4().text_xs().text_color(p.muted).font_family(p.mono.clone()).child(args));
+                }
+                col = col.child(row);
+            }
+        }
+        if self.panels.runs.values().all(|r| r.finished || !self.run_is_for_this_chat(&r.id)) && self.chats.current().map_or(true, |c| !c.blocks.iter().any(|b| matches!(b, Block::Tool { .. }))) {
+            col = col.child(self.note(if rtl { "لا شيء يجري لهذه المحادثة. خطوات الأدوات وأعمال الأقسام تظهر هنا." } else { "Nothing is being done for this chat. Tool steps and department work show up here." }));
+        }
+        col.into_any_element()
+    }
+
+    /// Memory used: what this chat looked up or saved, then suggestions waiting for a yes.
+    fn memory_used_body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let mut col = div().flex().flex_col().gap_1();
+        let used: Vec<(String, String)> = self.chats.current().map(|c| c.blocks.iter().filter_map(|b| match b {
+            Block::Tool { name, arguments, result, .. } if name == "recall" || name == "remember" => Some((name.clone(), result.clone().unwrap_or_else(|| lh_gui::model::one_line(arguments)))),
+            _ => None,
+        }).collect()).unwrap_or_default();
+        for (i, (name, text)) in used.into_iter().enumerate() {
+            let what = if name == "remember" { if rtl { "حُفظ" } else { "Saved" } } else if rtl { "استُرجع" } else { "Looked up" };
+            col = col.child(div().id(SharedString::from(format!("used-{i}"))).flex().flex_col().gap_0p5().p_2().rounded(p.inner).bg(p.surface)
+                .child(div().text_xs().text_color(p.muted).child(what))
+                .child(div().text_sm().text_color(p.text).child(lh_gui::model::truncate_title(&lh_gui::model::one_line(&text), 220))));
+        }
+        if !self.panels.proposals.is_empty() {
+            col = col.child(div().pt_2().text_xs().font_weight(gpui::FontWeight::MEDIUM).text_color(p.muted).child(if rtl { "تذكّر هذا؟" } else { "Remember this?" }));
+            col = col.child(self.memory_body(cx));
+        } else if col_is_empty(&self.chats, rtl) {
+            col = col.child(self.note(if rtl { "لم تستخدم هذه المحادثة الذاكرة بعد." } else { "This chat has not used memory yet. What it looks up or saves shows here." }));
+            col = col.child(self.button("open-memory-page", if rtl { "كل الذاكرة" } else { "See all memory" }, Kind::Ghost, cx, |a, _, cx| a.open_page(lh_gui::layout::Page::Memory, cx)));
+        }
+        col.into_any_element()
+    }
+
+    /// The Departments or Memory page in the middle: the same lists as before, with room to read.
+    pub fn list_page(&mut self, departments: bool, cx: &mut Context<Self>) -> AnyElement {
+        let body = if departments { self.departments_body(cx) } else { self.memory_body(cx) };
+        let back = self.button("page-back", if self.rtl { "رجوع إلى المحادثة" } else { "Back to chat" }, Kind::Ghost, cx, |a, _, cx| {
+            a.layout_mut().back_to_chat();
+            cx.notify();
+        });
+        div().id("list-page").flex_1().h_full().overflow_y_scroll().flex().flex_col().items_center().p_3()
+            .child(div().w_full().max_w(px(760.)).flex().flex_col().gap_3().child(div().flex().when(self.rtl, |d| d.justify_end()).child(back)).child(body))
             .into_any_element()
     }
 
@@ -94,7 +219,14 @@ impl App {
             return col.child(self.note("The core is not running, so there are no departments to show.")).into_any_element();
         }
         if self.panels.departments.is_empty() {
-            col = col.child(self.note("No departments yet. Make one with `lh team` and it appears here."));
+            col = col.child(self.note("No departments yet. A department is a small team with a lead that the assistant can hand bigger jobs to."));
+            // in its own row so it keeps its own width instead of stretching across the page
+            col = col.child(div().flex().child(self.button("make-department", "Make a department", Kind::Primary, cx, |a, w, cx| {
+                if !a.settings_open {
+                    a.toggle_settings(w, cx);
+                }
+                a.set_settings_page(lh_gui::setting_names::Category::Departments, w, cx);
+            })));
         }
         for d in self.panels.departments.clone() {
             let name = d.name.clone();
@@ -185,19 +317,11 @@ impl App {
         let reports = self.system_dark.is_some() || lh_gui::appearance::system_dark().is_some();
         let sw = lh_gui::appearance::switches(self.prefs.mode, self.system_dark, reports);
         let dark_note = if sw.dark_enabled { None } else { Some(if rtl { if sw.dark_on { "يتبع سطح المكتب: داكن الآن" } else { "يتبع سطح المكتب: فاتح الآن" } } else if sw.dark_on { "Following the desktop: dark now" } else { "Following the desktop: light now" }) };
-        let dark_switch = gpui_component::switch::Switch::new("dark-mode-switch")
-            .checked(sw.dark_on)
-            .disabled(!sw.dark_enabled)
-            .label(if rtl { "الوضع الداكن" } else { "Dark mode" })
-            .on_click(cx.listener(|a, on: &bool, w, cx| a.set_appearance(lh_gui::appearance::after_dark_switch(*on), w, cx)));
-        let match_switch = gpui_component::switch::Switch::new("match-desktop-switch")
-            .checked(sw.match_on)
-            .disabled(!sw.match_enabled)
-            .label(if rtl { "مطابقة سطح المكتب" } else { "Match the desktop" })
-            .on_click(cx.listener(|a, on: &bool, w, cx| {
-                let dark = a.dark();
-                a.set_appearance(lh_gui::appearance::after_match_switch(*on, dark), w, cx)
-            }));
+        let dark_switch = self.glass_switch("dark-mode-switch", sw.dark_on, sw.dark_enabled, if rtl { "الوضع الداكن" } else { "Dark mode" }, true, cx, |a, on, w, cx| a.set_appearance(lh_gui::appearance::after_dark_switch(on), w, cx));
+        let match_switch = self.glass_switch("match-desktop-switch", sw.match_on, sw.match_enabled, if rtl { "مطابقة سطح المكتب" } else { "Match the desktop" }, true, cx, |a, on, w, cx| {
+            let dark = a.dark();
+            a.set_appearance(lh_gui::appearance::after_match_switch(on, dark), w, cx)
+        });
         let modes = div().flex().flex_col().gap_1().id("mode-switches").role(Role::Group).aria_label(if rtl { "الوضع" } else { "Light or dark" })
             .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().child(dark_switch).children(dark_note.map(|n| div().text_xs().text_color(p.muted).child(n))))
             .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().child(match_switch).children((!reports && !sw.match_on).then(|| div().text_xs().text_color(p.muted).child(if rtl { "سطح المكتب لا يخبرنا بوضعه." } else { "This desktop does not say whether it is light or dark." }))));
@@ -227,15 +351,12 @@ impl App {
         let fonts = div().flex().flex_col().gap_1()
             .child(self.font_picker_row(crate::app::FontSlot::Latin, cx))
             .child(self.font_picker_row(crate::app::FontSlot::Arabic, cx));
-        let pages_switch = gpui_component::switch::Switch::new("pages-inside-switch")
-            .checked(!self.prefs.pages_off)
-            .label(if rtl { "عرض صفحات الويب داخل التطبيق" } else { "Show web pages inside the app" })
-            .on_click(cx.listener(|a, on: &bool, _, cx| {
-                a.prefs.pages_off = !*on;
-                a.persist();
-                cx.notify();
-            }));
-        let pages_note = div().text_xs().text_color(p.muted).child(if rtl { "لا تستطيع أي صفحة تحميل شيء من الإنترنت أو من هذا الحاسوب، ولا تعمل فيها سكربتات. الصفحات الأكبر من 2 ميغابايت تظهر كبطاقة." } else { "No page can load anything from the internet or from this computer, and no scripts run. Pages over 2 MB show as a card instead." });
+        let pages_switch = self.glass_switch("pages-inside-switch", !self.prefs.pages_off, true, if rtl { "عرض صفحات الويب داخل التطبيق" } else { "Show web pages inside the app" }, true, cx, |a, on, _, cx| {
+            a.prefs.pages_off = !on;
+            a.persist();
+            cx.notify();
+        });
+        let pages_note = div().text_xs().text_color(p.muted).child(if rtl { "لا تستطيع أي صفحة تحميل شيء من الإنترنت أو من هذا الحاسوب. التطبيقات الصغيرة تعمل فيها سكربتات بلا اتصال بالشبكة. الصفحات الأكبر من 2 ميغابايت تظهر كبطاقة." } else { "No page can load anything from the internet or from this computer. Small apps run their scripts with no network. Pages over 2 MB show as a card instead." });
         let name_row = div().flex().flex_col().gap_1()
             .child(div().child(if rtl { "اسمك في شاشة المحادثة الجديدة" } else { "Your name on the new-chat screen" }))
             .child(div().w(px(220.)).child(Input::new(&self.name_input).aria_label("Your name")))
@@ -452,14 +573,14 @@ impl App {
             }
             settings::Control::ModelPicker => {
                 let none = if rtl { "لا شيء" } else { "None" };
-                let current = if s.value.trim().is_empty() { none.to_string() } else { self.models.name_of(&s.value) };
+                let current = if s.value.trim().is_empty() { none.to_string() } else { self.models.label_of(&s.value) };
                 let toggle = self.list_toggle(&s.key, current.clone(), cx);
                 if open {
                     let mut names: Vec<(String, String)> = vec![(none.to_string(), String::new())];
-                    if !s.value.trim().is_empty() && !self.models.has(&current) {
+                    if !s.value.trim().is_empty() && !self.models.has(&s.value) && !self.models.names().contains(&self.models.id_for(&s.value)) {
                         names.push((current.clone(), s.value.clone()));
                     }
-                    names.extend(self.models.names().iter().map(|n| (n.clone(), self.models.id_for(n))));
+                    names.extend(self.models.names().iter().map(|n| (self.models.label_of(n), n.clone())));
                     let rows: Vec<AnyElement> = names
                         .into_iter()
                         .enumerate()
@@ -542,7 +663,7 @@ impl App {
         let p = self.pal.clone();
         let mut col = div().flex().flex_col().gap_2();
         if let Some(e) = self.panels.settings_error.clone() {
-            col = col.child(div().px_2().py_1().rounded(p.inner).border_1().border_color(p.danger).text_color(p.danger).child(e));
+            col = col.child(div().px_3().py_2().rounded(p.inner).bg(p.danger.opacity(0.08)).border_1().border_color(p.danger.opacity(0.35)).text_sm().text_color(p.danger).child(e));
         }
         let query = self.settings_search.read(cx).value().to_string();
         let searching = !query.trim().is_empty();
@@ -564,7 +685,7 @@ impl App {
         if searching {
             col = col.child(div().text_sm().text_color(p.muted).child(format!("Results for \"{}\"", query.trim())));
         } else {
-            col = col.child(div().text_color(p.text).child(page.title())).child(div().text_xs().text_color(p.muted).child(page.blurb()));
+            col = col.child(div().flex().flex_col().gap_0p5().pb_1().child(div().text_lg().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(page.title())).child(div().text_sm().text_color(p.muted).child(page.blurb())));
         }
         if show_appearance {
             col = col.child(self.appearance_block(cx));
@@ -617,11 +738,11 @@ impl App {
             .track_focus(&self.settings_nav_focus)
             .tab_stop(true)
             .focus_visible(move |s| s.shadow(vec![ring]))
-            .w(px(168.))
+            .w(px(220.))
             .flex_none()
             .flex()
             .flex_col()
-            .gap_1()
+            .gap_0p5()
             .rounded(p.inner)
             .on_key_down(cx.listener(|a, ev: &KeyDownEvent, w, cx| {
                 let down = match ev.keystroke.key.as_str() {
@@ -647,12 +768,16 @@ impl App {
                     .py_1p5()
                     .rounded(p.inner)
                     .cursor_pointer()
-                    .text_color(if on { p.accent_text } else { p.text })
-                    .bg(if on { p.accent } else { hsla(0., 0., 0., 0.) })
+                    .w_full()
+                    .text_sm()
+                    .text_color(p.text)
+                    .when(on, |d| d.bg(p.button).font_weight(gpui::FontWeight::MEDIUM))
                     .hover(|s| s.bg(p.button))
                     .when(rtl, |d| d.text_right())
                     .on_click(cx.listener(move |a, _, w, cx| a.set_settings_page(c, w, cx)))
-                    .child(div().flex().when(rtl, |r| r.flex_row_reverse()).items_center().gap_1().child(c.title()).when(danger && !on, |r| r.child(div().w(px(6.)).h(px(6.)).rounded_full().bg(p.danger)))),
+                    .child(div().flex().when(rtl, |r| r.flex_row_reverse()).items_center().gap_2()
+                        .child(div().flex_none().size(px(16.)).child(crate::ui::icon_view(&p, crate::ui::icons::category(c), if on { p.accent } else { p.muted }, 16.)))
+                        .child(c.title()).when(danger && !on, |r| r.child(div().w(px(6.)).h(px(6.)).rounded_full().bg(p.danger)))),
             );
         }
         nav.into_any_element()
@@ -705,16 +830,6 @@ impl App {
                 Err(e) => self.content_note = Some(format!("Could not start the browser (xdg-open): {e}")),
             },
         }
-        cx.notify();
-    }
-
-    /// Bring the side panel back on a piece of content that was opened earlier, by its title.
-    pub fn show_content_again(&mut self, title: &str, cx: &mut Context<Self>) {
-        if let Some(i) = self.content.iter().rposition(|c| c.title == title) {
-            self.content_index = i;
-        }
-        self.layout_mut().show_panel(Panel::Content);
-        self.persist();
         cx.notify();
     }
 
@@ -851,23 +966,38 @@ impl App {
             return col.child(self.note("Nothing opened yet. Use \"Open in panel\" on a reply, a tool result or a memory note to read it here, larger, or in its own window.")).into_any_element();
         }
         let cur = self.content_index.min(self.content.len() - 1);
+        // one chip per opened thing; the open one is raised and carries its own close cross
+        let rtl = self.rtl;
         let tabs: Vec<AnyElement> = (0..self.content.len()).map(|i| {
-            let t = self.content[i].title.chars().take(24).collect::<String>();
-            self.button(format!("content-{i}"), if t.is_empty() { "Untitled".to_string() } else { t }, if i == cur { Kind::Primary } else { Kind::Ghost }, cx, move |a, _, cx| {
-                a.content_index = i;
-                cx.notify();
-            })
+            let t = self.content[i].title.chars().take(28).collect::<String>();
+            let on = i == cur;
+            let close = on.then(|| div().id(SharedString::from(format!("content-close-{i}"))).role(Role::Button).aria_label(if rtl { "إغلاق" } else { "Close" }).cursor_pointer().rounded_full().hover(|s| s.bg(p.button))
+                .on_click(cx.listener(move |a, _, _, cx| {
+                    // the chat still holds it; "Open beside" there brings it back
+                    a.content.remove(i);
+                    a.content_index = a.content_index.saturating_sub(1);
+                    if a.content.is_empty() {
+                        a.layout_mut().toggle_panel(Panel::Content);
+                    }
+                    cx.notify();
+                }))
+                .child(crate::ui::icon_view(&p, crate::ui::icons::close(), p.muted, 12.)));
+            div().id(SharedString::from(format!("content-{i}"))).role(Role::Tab).aria_label(t.clone()).aria_selected(on)
+                .flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1p5().px_2p5().py_1().rounded(p.inner).border_1().cursor_pointer().text_sm()
+                .border_color(if on { p.border } else { hsla(0., 0., 0., 0.) })
+                .bg(if on { p.surface } else { hsla(0., 0., 0., 0.) })
+                .text_color(if on { p.text } else { p.muted })
+                .hover(|s| s.text_color(p.text))
+                .on_click(cx.listener(move |a, _, _, cx| {
+                    a.content_index = i;
+                    cx.notify();
+                }))
+                .child(if t.is_empty() { "Untitled".to_string() } else { t })
+                .children(close)
+                .into_any_element()
         }).collect();
         let item = self.content[cur].clone();
-        let close = self.button("content-close", "Close", Kind::Ghost, cx, move |a, _, cx| {
-            a.content.remove(cur);
-            a.content_index = a.content_index.saturating_sub(1);
-            if a.content.is_empty() {
-                a.layout_mut().toggle_panel(Panel::Content);
-            }
-            cx.notify();
-        });
-        col = col.child(div().flex().flex_wrap().gap_1().children(tabs)).child(div().flex().gap_2().child(close)).child(if item.kind == ContentKind::Html { self.page_element(&item, window, cx).unwrap_or_else(|| self.html_card(&item, cur, cx)) } else { viewer(&item, "panel", &p) });
+        col = col.child(div().flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_1().children(tabs)).child(if item.kind == ContentKind::Html { self.page_element(&item, "panel", window, cx).unwrap_or_else(|| self.html_card(&item, cur, cx)) } else { viewer(&item, "panel", &p) });
         col.into_any_element()
     }
 
@@ -920,7 +1050,7 @@ impl App {
         let mut col = div().flex().flex_col().gap_2().p_3().panel(&p, false).text_color(p.text)
             .child(div().flex().items_center().gap_2().child(div().flex_1().child(r.goal.clone())).child(div().text_sm().text_color(if r.is_waiting() { p.accent } else { p.muted }).child(format!("{} {}", r.status, if total > 0 { format!("({done}/{total})") } else { String::new() }))));
         for s in &r.steps {
-            col = col.child(div().flex().gap_2().text_sm().child(div().w(px(18.)).text_color(if s.state == StepState::Failed { p.danger } else { p.accent }).child(state_mark(s.state))).child(div().flex_1().child(format!("{} · {}{}", s.title, s.assignee, if s.note.is_empty() { String::new() } else { format!(" — {}", s.note.chars().take(160).collect::<String>()) }))));
+            col = col.child(div().flex().gap_2().text_sm().child(div().w(px(16.)).text_color(if s.state == StepState::Failed { p.danger } else { p.accent }).child(state_mark(s.state))).child(div().flex_1().child(format!("{} · {}{}", s.title, s.assignee, if s.note.is_empty() { String::new() } else { format!(" — {}", s.note.chars().take(160).collect::<String>()) }))));
         }
         for q in r.questions.clone() {
             let (run, q1, q2) = (r.id.clone(), q.clone(), q.clone());
@@ -967,7 +1097,153 @@ pub fn viewer(item: &Content, scope: &str, p: &crate::style::Pal) -> AnyElement 
         ContentKind::Html => div().flex().flex_col().gap_2().child(div().text_sm().text_color(p.muted).child("Web page source (open the page from the side panel).")).child(code_view(&item.body, scope, &item.title, p)).into_any_element(),
         ContentKind::Image => div().child(img(std::path::PathBuf::from(item.body.clone())).max_w_full().object_fit(ObjectFit::Contain)).into_any_element(),
         ContentKind::Text => div().text_color(p.text).when(rtl, |d| d.text_right()).child(item.body.clone()).into_any_element(),
+        ContentKind::Table => lh_gui::content::Table::parse(&item.body).map(|t| table_view(&t, p)).unwrap_or_else(|| code_view(&item.body, scope, &item.title, p)),
+        ContentKind::Chart => lh_gui::content::Chart::parse(&item.body).map(|c| chart_view(&c, p)).unwrap_or_else(|| code_view(&item.body, scope, &item.title, p)),
     }
+}
+
+/// The colour of a chart's series: the theme's accent first, then its hue turned a step at a time.
+pub(crate) fn series_color(p: &crate::style::Pal, i: usize) -> Hsla {
+    // the first series is the accent; the rest take well-spaced hues, skipping any too near the accent. Lightness
+    // follows the mode, so every series stands at least 3:1 off the surface in light and dark looks alike.
+    if !p.series.is_empty() {
+        return p.series[i % p.series.len()];
+    }
+    let a = p.accent;
+    let (s, l) = if p.dark { (0.62, 0.68) } else { (0.62, 0.36) };
+    let grey = a.s < 0.15;
+    if i == 0 && !grey {
+        return Hsla { h: a.h, s: a.s.max(0.45), l, a: 1.0 };
+    }
+    const HUES: [f32; 7] = [0.58, 0.47, 0.11, 0.76, 0.95, 0.33, 0.03];
+    let near = |h: f32| !grey && { let d = (h - a.h).abs(); d.min(1. - d) < 0.07 };
+    let hues: Vec<f32> = HUES.iter().copied().filter(|h| !near(*h)).collect();
+    let k = if grey { i } else { i - 1 };
+    Hsla { h: hues[k % hues.len()], s, l, a: 1.0 }
+}
+
+/// A table drawn with the app's own type and lines: a header row, then rows; number columns line up on the right.
+pub fn table_view(t: &lh_gui::content::Table, p: &crate::style::Pal) -> AnyElement {
+    let cell = |text: String, right: bool, head: bool| {
+        // numbers line up digit under digit
+        div().flex_1().min_w(px(64.)).px_3().py_1p5().when(right, |d| d.text_right().font_features(gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)])))).when(head, |d| d.text_xs().text_color(p.muted)).when(!head, |d| d.text_sm().text_color(p.text)).child(text)
+    };
+    let head = div().flex().border_b_1().border_color(p.border).children(t.columns.iter().enumerate().map(|(c, n)| cell(n.clone(), t.numeric.get(c).copied().unwrap_or(false), true)));
+    let rows = t.rows.iter().enumerate().map(|(r, row)| {
+        div().flex().when(r % 2 == 1, |d| d.bg(p.sunken.opacity(0.5))).children(row.iter().enumerate().map(|(c, v)| {
+            let num = t.numeric.get(c).copied().unwrap_or(false);
+            let v = if num { v.parse::<f64>().map(lh_gui::content::short_number).unwrap_or_else(|_| v.clone()) } else { v.clone() };
+            cell(v, num, false)
+        }))
+    });
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(div().flex().flex_col().rounded(p.inner).border_1().border_color(p.border).overflow_hidden().child(head).children(rows))
+        .children(t.caption.clone().map(|c| div().text_xs().text_color(p.muted).child(c)))
+        .into_any_element()
+}
+
+/// A chart drawn from numbers: bars, a line, or a pie, with the value axis, labels and a legend.
+pub fn chart_view(c: &lh_gui::content::Chart, p: &crate::style::Pal) -> AnyElement {
+    use lh_gui::content::ChartKind;
+    let legend = (c.series.len() > 1 || c.kind == ChartKind::Pie).then(|| {
+        let names: Vec<String> = if c.kind == ChartKind::Pie { c.labels.clone() } else { c.series.iter().map(|s| s.0.clone()).collect() };
+        div().flex().flex_wrap().gap_3().children(names.into_iter().enumerate().map(|(i, n)| div().flex().items_center().gap_1p5().text_xs().text_color(p.muted).child(div().size(px(8.)).rounded_full().bg(series_color(p, i))).child(n)))
+    });
+    let caption = c.caption.clone().map(|t| div().text_xs().text_color(p.muted).child(t));
+    let plot = match c.kind {
+        ChartKind::Pie => {
+            let slices = c.slices();
+            let colors: Vec<Hsla> = (0..slices.len()).map(|i| series_color(p, i)).collect();
+            div().h(px(200.)).w_full().child(canvas(|_, _, _| (), move |b, _, window, _| {
+                let r = (f32::from(b.size.height).min(f32::from(b.size.width)) / 2.) - 4.;
+                let o = point(b.origin.x + b.size.width / 2., b.origin.y + b.size.height / 2.);
+                for ((s, e), col) in slices.iter().zip(&colors) {
+                    if e - s <= 0. {
+                        continue;
+                    }
+                    let mut pb = PathBuilder::fill();
+                    pb.move_to(o);
+                    let steps = ((e - s) * 96.).ceil().max(2.) as usize;
+                    for k in 0..=steps {
+                        let t = (s + (e - s) * k as f32 / steps as f32) * std::f32::consts::TAU;
+                        pb.line_to(point(o.x + px(r * t.sin()), o.y - px(r * t.cos())));
+                    }
+                    pb.close();
+                    if let Ok(path) = pb.build() {
+                        window.paint_path(path, *col);
+                    }
+                }
+            }).size_full()).into_any_element()
+        }
+        _ => {
+            let (lo, hi, step) = c.axis();
+            let ticks: Vec<f64> = (0..=(((hi - lo) / step).round() as usize).min(10)).map(|k| lo + step * k as f64).collect();
+            let levels: Vec<Vec<f32>> = c.series.iter().map(|s| s.1.iter().map(|v| c.level(*v)).collect()).collect();
+            let zero = c.level(0.);
+            let colors: Vec<Hsla> = (0..levels.len()).map(|i| series_color(p, i)).collect();
+            let (grid, kind, n) = (p.border, c.kind, c.labels.len().max(1));
+            // one series of bars: the biggest value takes the accent, the rest sit in a quiet neutral, so the bar
+            // that matters reads first
+            let (rest, lead) = (p.muted, levels.first().filter(|_| levels.len() == 1).and_then(|ls| ls.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map(|(i, _)| i)));
+            let tick_levels: Vec<f32> = ticks.iter().map(|t| c.level(*t)).collect();
+            let area = canvas(|_, _, _| (), move |b, _, window, _| {
+                let (x0, y0, w, h) = (b.origin.x, b.origin.y, f32::from(b.size.width), f32::from(b.size.height));
+                let y_of = |l: f32| y0 + px(h * (1. - l));
+                for l in &tick_levels {
+                    let mut g = PathBuilder::stroke(px(1.));
+                    g.move_to(point(x0, y_of(*l)));
+                    g.line_to(point(x0 + px(w), y_of(*l)));
+                    if let Ok(path) = g.build() {
+                        window.paint_path(path, grid);
+                    }
+                }
+                let slot = w / n as f32;
+                match kind {
+                    ChartKind::Bar => {
+                        let k = levels.len().max(1) as f32;
+                        let bar = (slot * 0.7 / k).min(48.);
+                        let group = bar * k;
+                        for (si, ls) in levels.iter().enumerate() {
+                            for (i, l) in ls.iter().enumerate() {
+                                let x = slot * i as f32 + (slot - group) / 2. + bar * si as f32;
+                                let (top, bottom) = (l.max(zero), l.min(zero));
+                                let r = Bounds { origin: point(x0 + px(x + 1.), y_of(top)), size: size(px((bar - 2.).max(1.)), px((h * (top - bottom)).max(1.))) };
+                                let col = match lead { Some(m) if m != i => rest, _ => colors[si] };
+                                window.paint_quad(fill(r, col).corner_radii(Corners { top_left: px(3.), top_right: px(3.), bottom_left: px(0.), bottom_right: px(0.) }));
+                            }
+                        }
+                    }
+                    _ => {
+                        for (si, ls) in levels.iter().enumerate() {
+                            let mut pb = PathBuilder::stroke(px(2.));
+                            for (i, l) in ls.iter().enumerate() {
+                                let pt = point(x0 + px(slot * (i as f32 + 0.5)), y_of(*l));
+                                if i == 0 { pb.move_to(pt) } else { pb.line_to(pt) }
+                            }
+                            if let Ok(path) = pb.build() {
+                                window.paint_path(path, colors[si]);
+                            }
+                            for (i, l) in ls.iter().enumerate() {
+                                let c = point(x0 + px(slot * (i as f32 + 0.5) - 3.), y_of(*l) - px(3.));
+                                window.paint_quad(fill(Bounds { origin: c, size: size(px(6.), px(6.)) }, colors[si]).corner_radii(px(3.)));
+                            }
+                        }
+                    }
+                }
+            }).size_full();
+            let axis = div().relative().w(px(44.)).h_full().children(ticks.iter().map(|t| {
+                let l = c.level(*t);
+                div().absolute().right(px(6.)).top(relative(1. - l)).mt(px(-8.)).text_xs().text_color(p.muted).child(lh_gui::content::short_number(*t))
+            }));
+            let every = (c.labels.len() / 12).max(1);
+            let labels = div().flex().ml(px(44.)).children(c.labels.iter().enumerate().map(|(i, l)| div().flex_1().min_w_0().overflow_hidden().text_center().text_xs().text_color(p.muted).child(if i % every == 0 { l.clone() } else { String::new() })));
+            div().flex().flex_col().gap_1().child(div().flex().h(px(200.)).child(axis).child(div().flex_1().h_full().child(area))).child(labels).into_any_element()
+        }
+    };
+    div().flex().flex_col().gap_2().w_full().child(plot).children(legend).children(caption).into_any_element()
 }
 
 /// A piece of content in a window of its own.
@@ -996,3 +1272,8 @@ impl App {
     }
 }
 
+
+/// Whether the open chat has no memory steps.
+fn col_is_empty(chats: &lh_gui::model::Chats, _rtl: bool) -> bool {
+    chats.current().map_or(true, |c| !c.blocks.iter().any(|b| matches!(b, Block::Tool { name, .. } if name == "recall" || name == "remember")))
+}

@@ -86,8 +86,8 @@ pub fn friendly_error(key: &str, err: &str) -> String {
     let e = e.strip_prefix(key).unwrap_or(e).trim();
     let mut c = e.chars();
     match c.next() {
-        Some(f) => format!("{}{}.", f.to_uppercase().collect::<String>(), c.as_str().trim_end_matches('.')),
-        None => "The core did not accept this value.".into(),
+        Some(f) => format!("{}{}", f.to_uppercase().collect::<String>(), c.as_str().trim_end_matches('.')),
+        None => "The core did not accept this value".into(),
     }
 }
 
@@ -223,8 +223,8 @@ mod tests {
 
     #[test]
     fn the_cores_refusal_reads_in_the_card() {
-        assert_eq!(friendly_error("core.idle_after", "core.idle_after must be a whole number from 0 to 86400"), "Must be a whole number from 0 to 86400.");
-        assert_eq!(friendly_error("a.b", ""), "The core did not accept this value.");
+        assert_eq!(friendly_error("core.idle_after", "core.idle_after must be a whole number from 0 to 86400"), "Must be a whole number from 0 to 86400");
+        assert_eq!(friendly_error("a.b", ""), "The core did not accept this value");
     }
 
     #[test]

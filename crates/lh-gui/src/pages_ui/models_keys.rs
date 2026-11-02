@@ -25,11 +25,16 @@ impl App {
         let p = self.pal.clone();
         let info = self.sp.data.get("provider").map(ProviderInfo::from_json);
         let mut col = div().flex().flex_col().gap_2();
+        let failed = self.sp.errors.contains_key("provider");
         if let Some(e) = self.pg_error("provider") {
             col = col.child(e);
         }
         let Some(info) = info else {
-            return col.child(self.pg_small("Asking the core about your model service...")).into_any_element();
+            // while the core cannot be reached, "asking" would be untrue
+            if failed {
+                return col.into_any_element();
+            }
+            return col.child(self.pg_small("Asking the core about your model service…")).into_any_element();
         };
         let status = info.status();
         let dot = match status {
@@ -130,7 +135,7 @@ impl App {
             card = card.child(self.test_result_view(&r));
         }
         if self.sp.models_keys.testing {
-            card = card.child(self.pg_small("Trying the address..."));
+            card = card.child(self.pg_small("Trying the address…"));
         }
         if let Some(e) = self.pg_error("provtest") {
             card = card.child(e);
@@ -140,7 +145,7 @@ impl App {
 
     /// "Test connection": try an address with the key typed so far (or the saved one).
     fn test_button(&mut self, id: &str, url: String, key: String, cx: &mut Context<Self>) -> AnyElement {
-        let label = if self.sp.models_keys.testing { "Testing..." } else { "Test connection" };
+        let label = if self.sp.models_keys.testing { "Testing…" } else { "Test connection" };
         self.button(id.to_string(), label, Kind::Normal, cx, move |a, _, cx| {
             // from the saved row the form's boxes may be empty: use the address on the row
             let (u, k) = if form_is_open(a) { (a.pg_val("prov.url", cx), a.pg_val("prov.key", cx)) } else { (url.clone(), key.clone()) };

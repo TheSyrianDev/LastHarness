@@ -20,7 +20,7 @@ pub mod hooks;
 pub mod lsp;
 pub use hooks::Hooks;
 pub use compact::{compact_if_needed, SUMMARY_MARKER, estimate_tokens, CompactError, CompactOptions, Compacted};
-pub use perm::{Action, Answer, AskRequest, Asker, Decision, LivePerms, Mode, Permissions};
+pub use perm::{Action, Answer, AskRequest, Asker, Decision, LivePerms, Mode, Permissions, ShowDiff};
 pub use runner::{run_turn, Gate, Meter, MeterVerdict, Model, NoMeter, Outcome, TurnEnd, TurnEvent, TurnOptions};
 pub use web::{html_to_text, is_public, WebConfig};
 pub use tools::{default_tools, BoxFut, ExtraTool, GuardFn, OutboundGuard, Risk, Tool, ToolError, ToolOutput, ToolSet, Undo};

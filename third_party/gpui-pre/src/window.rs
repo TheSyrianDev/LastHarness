@@ -4615,6 +4615,39 @@ impl Window {
         }
     }
 
+    /// Paint liquid glass at `bounds`: what was painted before it in this frame shows
+    /// through, bent near the rounded edge, blurred a little, tinted and with a rim.
+    /// Anything painted after it draws on top. Renderers without backdrop support
+    /// draw only the tint and rim.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_glass(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radius: Pixels,
+        params: crate::GlassParams,
+    ) {
+        self.invalidator.debug_assert_paint();
+
+        let scale = self.scale_factor();
+        let opacity = self.element_opacity();
+        let bounds = self.snap_bounds(bounds);
+        let max_radius = bounds.size.width.min(bounds.size.height) * 0.5;
+        self.next_frame.scene.insert_primitive(crate::Glass {
+            order: 0,
+            pad: 0,
+            bounds,
+            content_mask: self.snapped_content_mask(),
+            corner_radius: corner_radius.scale(scale).min(max_radius),
+            blur: params.blur.scale(scale),
+            refraction: params.refraction.scale(scale),
+            rim: params.rim * opacity,
+            tint: params.tint.opacity(opacity),
+            variant: params.variant.index(),
+            energy: params.energy.clamp(0.0, 1.0),
+        });
+    }
+
     /// Paint the given `Path` into the scene for the next frame at the current z-index.
     ///
     /// This method should only be called as part of the paint phase of element drawing.

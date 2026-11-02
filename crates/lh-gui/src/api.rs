@@ -22,6 +22,7 @@ pub struct StoredChat {
     pub context_tokens: u64,
     pub live: bool,
     pub last: i64,
+    pub project: String,
 }
 
 impl StoredChat {
@@ -35,6 +36,7 @@ impl StoredChat {
             context_tokens: v["context_tokens"].as_u64().unwrap_or(0),
             live: v["live"].as_bool().unwrap_or(false),
             last: v["last"].as_i64().unwrap_or(0),
+            project: v["project"].as_str().unwrap_or("").to_string(),
         })
     }
 }
@@ -74,6 +76,8 @@ pub enum Cmd {
 #[derive(Debug)]
 pub enum Ev {
     Models(Vec<String>),
+    /// The same list with modes and load state, when the core gives them.
+    ModelDetails(Vec<crate::models::ModelInfo>),
     Chats(Vec<StoredChat>),
     Connected(bool),
     SessionReady { chat: u64, session: String, model: String },
@@ -376,6 +380,12 @@ async fn refresh(cfg: &Config, client: Arc<Client>, out: Out) {
         Ok(m) => {
             out.send(Ev::Connected(true));
             out.send(Ev::Models(m));
+            if let Ok(v) = client.call("GET", "/v1/models", None).await {
+                let d: Vec<crate::models::ModelInfo> = v["details"].as_array().map(|a| a.iter().filter_map(crate::models::ModelInfo::from_json).collect()).unwrap_or_default();
+                if !d.is_empty() {
+                    out.send(Ev::ModelDetails(d));
+                }
+            }
         }
         Err(message) => {
             out.send(Ev::Connected(false));

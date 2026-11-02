@@ -108,6 +108,36 @@ pub struct Info {
     /// The height of the whole page in CSS pixels, and how far down the view is.
     pub content_height: f32,
     pub scroll_y: f32,
+    /// A follow-up the page offered with `lh.followUp(text)` since the last answer; empty for none.
+    pub follow_up: String,
+}
+
+/// Sites an app in the chat may load pictures, map tiles and JSON from, over https only. The helper has no
+/// network: it hands such requests to the app, which fetches them (see `fetch_allowed`) and passes the bytes back.
+pub const ALLOWED_HOSTS: [&str; 4] = ["tile.openstreetmap.org", "a.tile.openstreetmap.org", "b.tile.openstreetmap.org", "upload.wikimedia.org"];
+/// The largest single answer passed to a page, and the most answers one page gets.
+pub const FETCH_MAX_BYTES: usize = 5 * 1024 * 1024;
+pub const FETCH_MAX_COUNT: usize = 300;
+
+/// Whether a page may have this address fetched for it: https, the default port, an allowed host, no user name.
+pub fn fetch_allowed(url: &str) -> bool {
+    let Ok(u) = url::Url::parse(url) else { return false };
+    u.scheme() == "https" && u.port().is_none() && u.username().is_empty() && u.password().is_none() && u.host_str().is_some_and(|h| ALLOWED_HOSTS.contains(&h))
+}
+
+/// Whether an answer of this type may be passed to the page: pictures and JSON only.
+pub fn fetch_type_allowed(content_type: &str) -> bool {
+    let t = content_type.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    (t.starts_with("image/") && t != "image/svg+xml") || t == "application/json" || t == "application/geo+json"
+}
+
+/// The longest follow-up a page may offer, in characters.
+pub const FOLLOW_UP_MAX: usize = 500;
+
+/// A page's follow-up as plain text: no control characters, spaces run together, at most `FOLLOW_UP_MAX` characters.
+pub fn clean_follow_up(text: &str) -> String {
+    let flat: String = text.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    flat.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(FOLLOW_UP_MAX).collect()
 }
 
 /// The place under the pointer is a link to this address (resolved against the page's own address). `same_page` is
@@ -130,6 +160,11 @@ pub struct PageView {
     opts: Options,
     info: Info,
     net: NetReport,
+    /// The last follow-up the page offered, until the app takes it.
+    follow_up: Option<String>,
+    /// Requests to allowed sites waiting for the app to fetch them, and how many were asked for in all.
+    to_fetch: Vec<(u32, String)>,
+    fetched: usize,
     /// After a timeout or a crash nothing more is asked of the engine.
     dead: Option<Fallback>,
 }
@@ -168,12 +203,11 @@ impl PageView {
                 }
             }
         });
-        let mut view = PageView { child, to_helper: Some(req_tx), from_helper: rep_rx, threads: vec![writer, reader], opts: opts.clone(), info: Info { title: String::new(), content_height: 0., scroll_y: 0. }, net: NetReport::default(), dead: None };
+        let mut view = PageView { child, to_helper: Some(req_tx), from_helper: rep_rx, threads: vec![writer, reader], opts: opts.clone(), info: Info { title: String::new(), content_height: 0., scroll_y: 0., follow_up: String::new() }, net: NetReport::default(), follow_up: None, to_fetch: vec![], fetched: 0, dead: None };
         let load = Request::Load { w, h, scale, fault: opts.fault, html: html.as_bytes().to_vec() };
         match view.call(load, opts.load_timeout)? {
             Reply::Info(i, n) => {
-                view.info = i;
-                view.net = n;
+                view.note(i, n);
                 Ok(view)
             }
             _ => Err(Fallback::Crashed),
@@ -228,7 +262,39 @@ impl PageView {
         }
     }
 
-    fn note(&mut self, i: Info, n: NetReport) {
+    /// The follow-up the page offered, once. Nothing is sent anywhere: the app shows it and waits for a click.
+    pub fn take_follow_up(&mut self) -> Option<String> {
+        self.follow_up.take()
+    }
+
+    /// Requests to allowed sites the app should fetch for the page. Over the per-page count they are dropped,
+    /// and the page's request simply never finishes.
+    pub fn take_fetches(&mut self) -> Vec<(u32, String)> {
+        std::mem::take(&mut self.to_fetch)
+    }
+
+    /// Hand the page what was fetched for request `id`. Anything not a picture or JSON, or too big, is refused.
+    pub fn deliver(&mut self, id: u32, status: u16, content_type: &str, body: Vec<u8>) -> Result<(), Fallback> {
+        let ok = status > 0 && fetch_type_allowed(content_type) && body.len() <= FETCH_MAX_BYTES;
+        let (status, content_type, body) = if ok { (status, content_type.to_string(), body) } else { (0, String::new(), vec![]) };
+        let t = self.opts.call_timeout;
+        if let Reply::Info(i, n) = self.call(Request::Deliver { id, status, content_type, body }, t)? {
+            self.note(i, n);
+        }
+        Ok(())
+    }
+
+    fn note(&mut self, i: Info, mut n: NetReport) {
+        for (id, url) in std::mem::take(&mut n.fetch) {
+            if fetch_allowed(&url) && self.fetched < FETCH_MAX_COUNT {
+                self.fetched += 1;
+                self.to_fetch.push((id, url));
+            }
+        }
+        let f = clean_follow_up(&i.follow_up);
+        if !f.is_empty() {
+            self.follow_up = Some(f);
+        }
         self.info = i;
         self.net = n;
     }
@@ -261,6 +327,24 @@ impl PageView {
             }
             _ => Err(self.fail(Fallback::Crashed)),
         }
+    }
+
+    /// Pass the pointer to the page (physical pixels from the picture's top left): 0 moved, 1 pressed, 2 released.
+    pub fn pointer(&mut self, action: u8, x: f32, y: f32) -> Result<(), Fallback> {
+        let t = self.opts.call_timeout;
+        if let Reply::Info(i, n) = self.call(Request::Pointer { action, x, y }, t)? {
+            self.note(i, n);
+        }
+        Ok(())
+    }
+
+    /// Pass a key to the page: its name and the text it types (empty for keys that type nothing).
+    pub fn key(&mut self, key: &str, text: &str) -> Result<(), Fallback> {
+        let t = self.opts.call_timeout;
+        if let Reply::Info(i, n) = self.call(Request::Key { key: key.into(), text: text.into() }, t)? {
+            self.note(i, n);
+        }
+        Ok(())
     }
 
     /// The link under a point of the picture (physical pixels from its top left corner), if any.
@@ -305,5 +389,29 @@ pub fn openable(url: &str) -> bool {
     match url::Url::parse(url) {
         Ok(u) => matches!(u.scheme(), "http" | "https" | "mailto") && !url.starts_with('-'),
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod follow_up_tests {
+    use super::*;
+
+    #[test]
+    fn a_follow_up_is_plain_short_text() {
+        assert_eq!(clean_follow_up("  Show me\n\tmore\u{7}  "), "Show me more");
+        assert_eq!(clean_follow_up(&"x".repeat(900)).chars().count(), FOLLOW_UP_MAX);
+        assert_eq!(clean_follow_up("<b>hi</b>"), "<b>hi</b>", "kept as text, never drawn as markup");
+        assert_eq!(clean_follow_up(" \n "), "");
+    }
+
+    #[test]
+    fn only_allowed_sites_over_https_are_fetched() {
+        assert!(fetch_allowed("https://tile.openstreetmap.org/3/4/2.png"));
+        assert!(fetch_allowed("https://upload.wikimedia.org/wikipedia/commons/a/a9/Example.jpg"));
+        for bad in ["http://tile.openstreetmap.org/1/0/0.png", "https://tile.openstreetmap.org:8443/x", "https://evil.example/x.png", "https://tile.openstreetmap.org.evil.example/x", "https://u:p@upload.wikimedia.org/x", "file:///etc/passwd", "nonsense"] {
+            assert!(!fetch_allowed(bad), "{bad}");
+        }
+        assert!(fetch_type_allowed("image/png") && fetch_type_allowed("application/json; charset=utf-8"));
+        assert!(!fetch_type_allowed("text/html") && !fetch_type_allowed("image/svg+xml") && !fetch_type_allowed("application/javascript"));
     }
 }

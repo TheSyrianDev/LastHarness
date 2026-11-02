@@ -283,6 +283,10 @@ impl Web {
 
 const INDEX: &str = include_str!("../web/index.html");
 const APP: &str = include_str!("../web/app.js");
+const STYLE: &str = include_str!("../web/style.css");
+pub const SANDBOX: &str = include_str!("../web/sandbox.html");
+/// The frame for an assistant-made app: its scripts run, but it may fetch nothing and only this site may hold it.
+pub const SANDBOX_CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 
 fn page(body: &'static str, content_type: &'static str) -> Response {
     let mut r = Response::new(Body::from(body));
@@ -310,7 +314,10 @@ pub fn device_folder_ok(dir: &std::path::Path) -> Result<(), String> {
 pub async fn headers(req: Request, next: Next) -> Response {
     let mut r = next.run(req).await;
     let h = r.headers_mut();
-    h.insert("content-security-policy", HeaderValue::from_static("default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"));
+    // the app frame keeps its own, stricter-on-network policy; everything else gets the site's
+    if !h.contains_key("content-security-policy") {
+        h.insert("content-security-policy", HeaderValue::from_static("default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"));
+    }
     h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
     h.insert("referrer-policy", HeaderValue::from_static("same-origin"));
     h.insert("cache-control", HeaderValue::from_static("no-store"));
@@ -337,11 +344,20 @@ struct VerifyBody {
     signature: String,
 }
 
+/// The app frame, with its own policy instead of the site's (which forbids inline scripts).
+pub fn sandbox_page() -> Response {
+    let mut r = page(SANDBOX, "text/html; charset=utf-8");
+    r.headers_mut().insert("content-security-policy", HeaderValue::from_static(SANDBOX_CSP));
+    r
+}
+
 /// The public part: pages, pairing and sign-in. Nothing here reveals anything private.
 pub fn public_routes(web: Arc<Web>) -> Router {
     Router::new()
         .route("/", get(|| async { page(INDEX, "text/html; charset=utf-8") }))
         .route("/app.js", get(|| async { page(APP, "text/javascript; charset=utf-8") }))
+        .route("/style.css", get(|| async { page(STYLE, "text/css; charset=utf-8") }))
+        .route("/sandbox.html", get(|| async { sandbox_page() }))
         .route(
             "/pair/start",
             post(|State(w): State<Arc<Web>>, Json(b): Json<StartBody>| async move {

@@ -3,7 +3,8 @@
 //! The answer goes to standard output; notes and errors go to standard error. With `--json` every event goes to
 //! standard output as one JSON line. The chat works in the current folder with the usual tools. Nobody is there
 //! to answer a permission question, so each one is answered no and named on standard error, unless the
-//! permission settings already allow it.
+//! permission settings already allow it. With `--bypass-permissions` every question is answered yes, after a
+//! warning on standard error.
 
 use std::io::{Read, Write};
 
@@ -30,6 +31,9 @@ impl End {
     }
 }
 
+/// Printed to standard error when a run starts with `--bypass-permissions`.
+pub const BYPASS_WARNING: &str = "Warning: --bypass-permissions lets this run write files and run commands without asking.\nEvery permission question in this run is answered yes.";
+
 /// The prompt: the text given, or standard input when it is `-`. Standard input that is not a terminal is added
 /// after the given text, so `cat notes.txt | lh -p "summarise this"` works.
 pub fn prompt(given: &str, stdin: &mut dyn Read, stdin_is_terminal: bool) -> String {
@@ -45,13 +49,14 @@ pub fn prompt(given: &str, stdin: &mut dyn Read, stdin_is_terminal: bool) -> Str
 }
 
 /// The JSON line for one event, for `--json`.
-pub fn event_json(e: &ServerEvent) -> Value {
+/// `yes` is the answer given to permission questions in this run.
+pub fn event_json(e: &ServerEvent, yes: bool) -> Value {
     match e {
         ServerEvent::Reasoning(t) => json!({"type": "reasoning", "text": t}),
         ServerEvent::Text(t) => json!({"type": "text", "text": t}),
         ServerEvent::ToolStart { id, name, arguments } => json!({"type": "tool_start", "id": id, "name": name, "arguments": arguments}),
         ServerEvent::ToolResult { id, text } => json!({"type": "tool_result", "id": id, "text": text}),
-        ServerEvent::Ask { id, tool, what, .. } => json!({"type": "ask", "id": id, "tool": tool, "what": what, "answer": "no"}),
+        ServerEvent::Ask { id, tool, what, .. } => json!({"type": "ask", "id": id, "tool": tool, "what": what, "answer": if yes { "yes" } else { "no" }}),
         ServerEvent::Usage { prompt_tokens, completion_tokens, cached_tokens } => json!({"type": "usage", "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "cached_tokens": cached_tokens}),
         ServerEvent::Finish(r) => json!({"type": "finish", "reason": r}),
         ServerEvent::Done { empty } => json!({"type": "done", "empty": empty}),
@@ -61,12 +66,13 @@ pub fn event_json(e: &ServerEvent) -> Value {
         ServerEvent::Notice(m) => json!({"type": "notice", "message": m}),
         ServerEvent::Error(m) => json!({"type": "error", "message": m}),
         ServerEvent::Show { title, kind, .. } => json!({"type": "show", "title": title, "kind": kind}),
+        ServerEvent::Diff { id, path, diff } => json!({"type": "diff", "id": id, "path": path, "diff": diff}),
         ServerEvent::Other => json!({"type": "other"}),
     }
 }
 
-/// Run one turn and write it out.
-pub async fn run(client: &Client, session: &str, text: &str, as_json: bool, out: &mut dyn Write, err: &mut dyn Write) -> End {
+/// Run one turn and write it out. `bypass` answers every permission question yes.
+pub async fn run(client: &Client, session: &str, text: &str, as_json: bool, bypass: bool, out: &mut dyn Write, err: &mut dyn Write) -> End {
     let mut stream = match client.turn(session, text).await {
         Ok(s) => s,
         Err(e) => {
@@ -86,13 +92,17 @@ pub async fn run(client: &Client, session: &str, text: &str, as_json: bool, out:
             }
         };
         if as_json {
-            let _ = writeln!(out, "{}", event_json(&ev));
+            let _ = writeln!(out, "{}", event_json(&ev, bypass));
         }
         match &ev {
             ServerEvent::Text(t) if !as_json => {
                 let _ = write!(out, "{t}");
                 let _ = out.flush();
                 ended_with_newline = t.ends_with('\n');
+            }
+            ServerEvent::Ask { id, tool, what, .. } if bypass => {
+                let _ = writeln!(err, "lh: said yes to {tool} ({what}): --bypass-permissions");
+                let _ = client.answer(session, id, true).await;
             }
             ServerEvent::Ask { id, tool, what, .. } => {
                 refused_ask = true;
@@ -155,7 +165,9 @@ mod tests {
 
     #[test]
     fn json_lines_name_the_event() {
-        assert_eq!(event_json(&ServerEvent::Text("a".into())), json!({"type": "text", "text": "a"}));
-        assert_eq!(event_json(&ServerEvent::Done { empty: false })["type"], "done");
+        assert_eq!(event_json(&ServerEvent::Text("a".into()), false), json!({"type": "text", "text": "a"}));
+        assert_eq!(event_json(&ServerEvent::Done { empty: false }, false)["type"], "done");
+        let ask = ServerEvent::Ask { id: "1".into(), tool: "write_file".into(), what: "w".into(), reason: String::new(), worker: String::new(), detail: String::new() };
+        assert_eq!((event_json(&ask, false)["answer"].as_str(), event_json(&ask, true)["answer"].as_str()), (Some("no"), Some("yes")));
     }
 }

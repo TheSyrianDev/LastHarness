@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LastHarness motion viewer</title>
+<style>
+:root{--bg:#0f1611;--fg:#ece9de;--muted:#9aa59b;--line:#2a352c;--acc:#b2c27c}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;padding:24px 16px}
+.wrap{max-width:900px;margin:auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,select{font:600 13px system-ui;padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:#16201a;color:var(--fg);cursor:pointer}
+button[aria-pressed=true]{background:var(--fg);color:var(--bg)}
+#stage{width:min(512px,100%);aspect-ratio:1;margin:auto;border-radius:16px;overflow:hidden}
+input[type=range]{width:100%}.mono{font:12px ui-monospace,monospace;color:var(--muted)}
+</style></head><body><div class="wrap">
+<h1>LastHarness · mark motion</h1>
+<div class="row"><span class="mono">file</span><select id="file"></select></div>
+<div class="row" id="segs"></div>
+<div id="stage"></div>
+<input id="scrub" type="range" min="0" max="491" value="0" aria-label="Scrub">
+<div class="row"><button id="play">Pause</button><button id="slow">0.25× speed</button><span class="mono" id="info"></span></div>
+</div>
+<script src="lottie.min.js"></script>
+<script>
+const files=['grove-dark-bg','grove-light-bg','tokyo-night-bg','mono-black-bg','grove-dark','grove-light','tokyo-night','mono-black'];
+const sel=document.getElementById('file');sel.innerHTML=files.map(f=>`<option>${f}</option>`).join('');
+let A,slow=false;
+function load(){if(A)A.destroy();
+  A=lottie.loadAnimation({container:document.getElementById('stage'),renderer:'svg',loop:true,autoplay:true,path:`../lottie/lastharness-mark-${sel.value}.json`});
+  A.addEventListener('DOMLoaded',()=>{const m=A.markers||[];
+    document.getElementById('segs').innerHTML='<button data-a>All</button>'+m.map(x=>`<button data-s="${x.time}" data-d="${x.duration}">${x.payload.name}</button>`).join('');
+    document.querySelectorAll('#segs button').forEach(b=>b.onclick=()=>{if(b.dataset.a!==undefined){A.resetSegments(true);A.goToAndPlay(0,true);}else A.playSegments([+b.dataset.s,+b.dataset.s+ +b.dataset.d],true);});
+    A.setSpeed(slow?.25:1);});
+  A.addEventListener('enterFrame',()=>{document.getElementById('scrub').value=Math.round(A.currentFrame+(A.firstFrame||0));document.getElementById('info').textContent='frame '+Math.round(A.currentFrame+(A.firstFrame||0));});}
+sel.onchange=load;load();
+document.getElementById('play').onclick=e=>{A.isPaused?A.play():A.pause();e.target.textContent=A.isPaused?'Play':'Pause';};
+document.getElementById('slow').onclick=e=>{slow=!slow;A.setSpeed(slow?.25:1);e.target.setAttribute('aria-pressed',slow);};
+document.getElementById('scrub').oninput=e=>{A.resetSegments(true);A.goToAndStop(+e.target.value,true);document.getElementById('play').textContent='Play';};
+</script></body></html>

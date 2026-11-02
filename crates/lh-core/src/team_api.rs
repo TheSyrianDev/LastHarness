@@ -9,7 +9,7 @@ use std::path::Path as FsPath;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event as Sse, KeepAlive, Sse as SseResponse};
 use axum::routing::{get, post};
@@ -53,6 +53,8 @@ pub struct Run {
     pub id: String,
     pub dept: String,
     pub goal: String,
+    /// The chat session that started this run, if a chat did.
+    pub session: Option<String>,
     log: Mutex<Vec<Value>>,
     notify: Notify,
     finished: AtomicBool,
@@ -61,8 +63,8 @@ pub struct Run {
 }
 
 impl Run {
-    fn new(id: String, dept: String, goal: String) -> Arc<Self> {
-        Arc::new(Self { id, dept, goal, log: Mutex::new(vec![]), notify: Notify::new(), finished: AtomicBool::new(false), questions: Mutex::new(HashMap::new()), next_q: AtomicU64::new(1) })
+    fn new(id: String, dept: String, goal: String, session: Option<String>) -> Arc<Self> {
+        Arc::new(Self { id, dept, goal, session, log: Mutex::new(vec![]), notify: Notify::new(), finished: AtomicBool::new(false), questions: Mutex::new(HashMap::new()), next_q: AtomicU64::new(1) })
     }
     fn push(&self, v: Value) {
         self.log.lock().unwrap().push(v);
@@ -466,10 +468,17 @@ struct NewRun {
     department: String,
     goal: String,
     project_dir: Option<String>,
+    /// The chat session the run is for, so a front end can show it with that chat.
+    session: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RunFilter {
+    session: Option<String>,
 }
 
 /// Start a run in the background. Used by the API and by the `call_department` tool.
-pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: String, goal: String, project: Option<String>, parent: Option<Arc<Session>>) -> Result<Arc<Run>, ApiError> {
+pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: String, goal: String, project: Option<String>, parent: Option<Arc<Session>>, chat: Option<String>) -> Result<Arc<Run>, ApiError> {
     let t = team(st)?;
     t.depts.get(&dept).map_err(err)?;
     let project = match project {
@@ -477,7 +486,9 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
         None => None,
     };
     let id = format!("r{}", t.next.fetch_add(1, Ordering::SeqCst));
-    let run = Run::new(id.clone(), dept.clone(), goal.clone());
+    // a run the chat's own assistant started belongs to that chat
+    let chat = chat.or_else(|| parent.as_ref().and_then(|p| st.sessions.lock().unwrap().iter().find(|(_, s)| Arc::ptr_eq(s, p)).map(|(k, _)| k.clone())));
+    let run = Run::new(id.clone(), dept.clone(), goal.clone(), chat);
     t.runs.lock().unwrap().insert(id, run.clone());
     let s = &st.settings;
     let provider_name = s.provider_name.clone();
@@ -543,7 +554,7 @@ async fn start_run<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: 
     if let (Some(axum::Extension(crate::web::Via::Device(_))), Some(d)) = (&via, &b.project_dir) {
         crate::web::device_folder_ok(std::path::Path::new(d)).map_err(|e| ApiError(StatusCode::FORBIDDEN, e))?;
     }
-    let run = start(&st, b.department, b.goal, b.project_dir, None).await?;
+    let run = start(&st, b.department, b.goal, b.project_dir, None, b.session).await?;
     Ok((StatusCode::CREATED, Json(json!({"id": run.id}))))
 }
 
@@ -552,11 +563,12 @@ fn run_of<M>(st: &AppState<M>, id: &str) -> Result<Arc<Run>, ApiError> {
 }
 
 fn run_summary(r: &Run) -> Value {
-    json!({"id": r.id, "department": r.dept, "goal": r.goal, "finished": r.is_finished()})
+    json!({"id": r.id, "department": r.dept, "goal": r.goal, "session": r.session, "finished": r.is_finished()})
 }
 
-async fn list_runs<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
-    let mut v: Vec<Arc<Run>> = team(&st)?.runs.lock().unwrap().values().cloned().collect();
+/// Every run, or with `?session=` only the runs that chat started.
+async fn list_runs<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Query(f): Query<RunFilter>) -> Result<Json<Value>, ApiError> {
+    let mut v: Vec<Arc<Run>> = team(&st)?.runs.lock().unwrap().values().filter(|r| f.session.is_none() || r.session == f.session).cloned().collect();
     v.sort_by_key(|r| r.id[1..].parse::<u64>().unwrap_or(0));
     Ok(Json(json!({"runs": v.iter().map(|r| run_summary(r)).collect::<Vec<_>>()})))
 }
@@ -694,7 +706,7 @@ impl<M: Model + 'static> ExtraTool for DeptTool<M> {
                 note = format!("Project {name} created in {}.\n", path.display());
                 project = Some(path.to_string_lossy().to_string());
             }
-            let run = start(&st, dept, goal, project, session).await.map_err(|e| ToolError::Failed(e.1))?;
+            let run = start(&st, dept, goal, project, session, None).await.map_err(|e| ToolError::Failed(e.1))?;
             // wait for the run to end; its questions reach the user through the session
             let mut i = 0;
             loop {

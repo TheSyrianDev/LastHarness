@@ -17,6 +17,8 @@ pub enum Panel {
     Content,
     /// The branches of the chat that is open.
     Tree,
+    /// What is being done for this chat: its tool steps and department runs.
+    Work,
     /// Last on purpose: a saved panel this version does not know (Settings used to be one; it is a window of its own
     /// now) falls back to this one.
     #[default]
@@ -246,6 +248,10 @@ pub enum Page {
     Chat,
     /// A department's own page, opened from the sidebar. The chat keeps running behind it.
     Department(String),
+    /// Every department, opened from the sidebar.
+    Departments,
+    /// Everything remembered, opened from the sidebar.
+    Memory,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -405,6 +411,10 @@ impl Layout {
         self.page = Page::Department(name.into());
     }
 
+    pub fn open_page(&mut self, page: Page) {
+        self.page = page;
+    }
+
     pub fn back_to_chat(&mut self) {
         self.page = Page::Chat;
     }
@@ -414,6 +424,18 @@ impl Layout {
     pub fn middle_room(&self, total: f32, min_middle: f32) -> f32 {
         let (left, right) = self.widths(total, min_middle);
         (total - left - right - 24.).max(0.)
+    }
+
+    /// The side panel does not fit beside a chat at least `min_middle` wide, so it is laid over the chat instead.
+    pub fn overlays(&self, total: f32, min_middle: f32) -> bool {
+        let left = if self.left_visible { self.left_width } else { 0. };
+        self.right_visible && !self.right_expanded && total - left - self.right_width < min_middle
+    }
+
+    /// The width of the side panel laid over the chat: its own width, but leaving a strip of the chat in view.
+    pub fn overlay_width(&self, total: f32) -> f32 {
+        let left = if self.left_visible { self.left_width } else { 0. };
+        self.right_width.min(total - left - 48.).max(RIGHT_MIN.min(total))
     }
 
     /// Widths the two side parts take in a window `total` wide, leaving the middle at least `min_middle`.
@@ -440,6 +462,18 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_narrow_window_lays_the_side_panel_over_the_chat() {
+        let mut l = Layout::default();
+        l.show_panel(Panel::Work);
+        assert!(!l.overlays(1400., 420.), "room for all three");
+        assert!(l.overlays(900., 420.));
+        assert_eq!(l.overlay_width(900.), 380.);
+        assert_eq!(l.overlay_width(600.), 292., "a strip of the chat stays in view");
+        l.hide_right();
+        assert!(!l.overlays(600., 420.));
+    }
 
     #[test]
     fn it_starts_with_the_chat_list_and_the_chat_only() {

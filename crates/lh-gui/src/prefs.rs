@@ -29,6 +29,14 @@ pub struct Prefs {
     pub arabic_font: String,
     /// The name the new-chat screen greets. Empty means the real name from the system.
     pub name: String,
+    /// Chats pinned to the top of the sidebar, by session id.
+    pub pinned: Vec<String>,
+    /// Snoozed chats by session id, with the Unix second they come back.
+    pub snoozed: std::collections::BTreeMap<String, i64>,
+    /// Days without a message before a chat settles into Earlier. 0 means the default, 3.
+    pub settle_days: u32,
+    /// The model on each stop of the model slider, fastest first; empty means filled for you.
+    pub tiers: Vec<String>,
 }
 
 pub fn path() -> PathBuf {
@@ -161,8 +169,8 @@ mod tests {
             }
             // whatever was read, the controls can be built from it
             let room = 1200.;
-            let s = crate::width_slider::state(got.layout.column, room, false);
-            assert!(s.min_value() < s.max_value());
+            let pos = got.layout.column.position(room);
+            assert!((480. ..=crate::layout::slider_max(room)).contains(&pos));
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

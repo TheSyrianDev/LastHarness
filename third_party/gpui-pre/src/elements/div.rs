@@ -1811,6 +1811,27 @@ pub struct Div {
 }
 
 impl Div {
+    /// LastHarness local patch: add a child that paints before (under) the children already added, such as a glass
+    /// layer behind a panel's content, whatever order the builder calls come in.
+    pub fn child_under(mut self, child: impl IntoElement) -> Self {
+        let el = child.into_any_element();
+        #[cfg(feature = "stacker")]
+        self.children.insert(0, StackSafe::new(el));
+        #[cfg(not(feature = "stacker"))]
+        self.children.insert(0, el);
+        self
+    }
+}
+
+impl Stateful<Div> {
+    /// LastHarness local patch: see [`Div::child_under`].
+    pub fn child_under(mut self, child: impl IntoElement) -> Self {
+        self.element = self.element.child_under(child);
+        self
+    }
+}
+
+impl Div {
     /// Add a listener to be called when the children of this `Div` are prepainted.
     /// This allows you to store the [`Bounds`] of the children for later use.
     pub fn on_children_prepainted(

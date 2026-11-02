@@ -1,7 +1,7 @@
 //! `lh`: terminal chat for the LastHarness core.
 //!
 //! lh [--url http://127.0.0.1:7842] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]
-//! lh -p "question" [--json] [--model NAME]   one turn, answer on standard output (see `headless`)
+//! lh -p "question" [--json] [--model NAME] [--bypass-permissions]   one turn, answer on standard output (see `headless`)
 //! lh memory <command>     (see `lh memory help`)
 //! lh learn <command>      (see `lh learn help`)
 //! lh team <command>       (see `lh team help`)
@@ -81,7 +81,7 @@ pub async fn run() {
     let mut channels_cmd: Option<Vec<String>> = None;
     let mut service_cmd: Option<Vec<String>> = None;
     let mut schedule_cmd: Option<Vec<String>> = None;
-    let (mut print, mut as_json): (Option<String>, bool) = (None, false);
+    let (mut print, mut as_json, mut bypass): (Option<String>, bool, bool) = (None, false, false);
     while let Some(arg) = a.next() {
         let mut val = || a.next().unwrap_or_else(|| fail(format!("{arg} needs a value")));
         match arg.as_str() {
@@ -92,8 +92,9 @@ pub async fn run() {
             "--incognito" => incognito = true,
             "-p" | "--print" => print = Some(val()),
             "--json" => as_json = true,
+            "--bypass-permissions" => bypass = true,
             "--help" | "-h" => {
-                println!("lh [--url URL] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]    chat with the core in the terminal\nlh -p \"question\" [--json] [--model NAME]    one turn: the answer on standard output (\"-\" reads the question from standard input; piped text is added to it)\nOther commands: setup, settings, memory, learn, team, mcp, trust, devices, channels, schedule, export, import, service. Run `lh <command> help` for each.");
+                println!("lh [--url URL] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]    chat with the core in the terminal\nlh -p \"question\" [--json] [--model NAME]    one turn: the answer on standard output (\"-\" reads the question from standard input; piped text is added to it)\n    Permission questions are answered no (exit code 3). --bypass-permissions answers them yes: the run may write files and run commands without asking.\nOther commands: setup, settings, memory, learn, team, mcp, trust, devices, channels, schedule, export, import, service. Run `lh <command> help` for each.");
                 return;
             }
             "learn" => {
@@ -273,8 +274,14 @@ pub async fn run() {
         }
         return;
     }
+    if bypass && print.is_none() {
+        fail("--bypass-permissions works only with -p");
+    }
     if let Some(given) = print {
         use std::io::IsTerminal;
+        if bypass {
+            eprintln!("{}", crate::headless::BYPASS_WARNING);
+        }
         let text = crate::headless::prompt(&given, &mut io::stdin(), io::stdin().is_terminal());
         if text.trim().is_empty() {
             fail("the question is empty");
@@ -289,7 +296,7 @@ pub async fn run() {
         };
         let dir = std::env::current_dir().unwrap_or_else(|e| fail(format!("cannot read the current folder: {e}")));
         let session = client.create_session(&model, &dir, ask_all, incognito).await.unwrap_or_else(|e| fail(e));
-        let end = crate::headless::run(&client, &session, &text, as_json, &mut io::stdout(), &mut io::stderr()).await;
+        let end = crate::headless::run(&client, &session, &text, as_json, bypass, &mut io::stdout(), &mut io::stderr()).await;
         let _ = client.call("DELETE", &format!("/v1/sessions/{session}"), None).await;
         std::process::exit(end.code());
     }

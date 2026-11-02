@@ -147,6 +147,15 @@ impl Store {
         self.with(|c| c.query_row("select coalesce(max(seq), 0) from activity", [], |r| r.get(0)))
     }
 
+    /// The files this session's tools wrote after activity `after`, oldest first, each once.
+    pub fn files_written(&self, session: &str, after: i64) -> Result<Vec<String>> {
+        self.with(|c| {
+            let mut q = c.prepare("select u.path from undo u join activity a on a.seq = u.seq where a.session = ?1 and u.seq > ?2 group by u.path order by min(u.seq)")?;
+            let rows = q.query_map((session, after), |r| r.get(0))?;
+            rows.collect()
+        })
+    }
+
     /// Put back every file this session wrote after activity `after`, newest first: the undo of one turn. Each
     /// file is checked as `undo` checks it, so a file someone changed since is left alone and reported.
     pub fn undo_since(&self, session: &str, after: i64) -> Result<Vec<(i64, String, UndoResult)>> {

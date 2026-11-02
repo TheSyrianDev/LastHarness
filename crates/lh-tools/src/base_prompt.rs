@@ -254,11 +254,12 @@ mod tests {
         // every tool that has a line, as in a session with memory, skills, web and a shell
         let mut every: Vec<String> = [crate::Tool::RunCommand, crate::Tool::WebFetch, crate::Tool::Recall, crate::Tool::Remember, crate::Tool::UseSkill].iter().filter_map(|t| t.guideline().map(str::to_string)).collect();
         // the lines the core adds for its own tools (kept in step with lh-core: `show` and the department tools)
-        every.push("show opens a long answer, file or image beside the chat.".into());
+        every.push("show opens a long answer, file, image, table, chart or small app.".into());
         every.push("Departments do bigger jobs: call_department for a job here, start_project for a new project.".into());
         let mut e = ctx(SessionKind::Project, Mode::Tiered, true, Some(worst_dir), &every);
         e.identity = w.identity.clone();
         let full = estimate_tokens(&base_prompt(&e));
+        eprintln!("prompt size: worst {worst}, every tool line {full} (cap {CAP_TOKENS})");
         assert!(full <= CAP_TOKENS, "with every tool line it is {full} tokens (cap {CAP_TOKENS})");
         eprintln!("base prompt: {alone} tokens typical, {worst} worst case with the default tool lines, {full} with every tool line");
     }

@@ -24,6 +24,35 @@ pub fn system_name(pref: &str) -> String {
     pick_name(pref, &passwd, &user)
 }
 
+/// A name from the system written in lower case gets capitals: "omar saeed" becomes "Omar Saeed". A name with
+/// any capital already is left as the person wrote it.
+pub fn tidy_name(name: &str) -> String {
+    let name = name.trim();
+    if name.chars().any(|c| c.is_uppercase()) {
+        return name.to_string();
+    }
+    name.split(' ').map(|w| {
+        let mut c = w.chars();
+        c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+    }).collect::<Vec<_>>().join(" ")
+}
+
+/// A hello for the time of day, `hour` being the local hour (0 to 23).
+pub fn greeting_at(name: &str, hour: u32, rtl: bool) -> String {
+    let name = tidy_name(name);
+    let (en, ar) = match hour {
+        5..=11 => ("Good morning", "صباح الخير"),
+        12..=17 => ("Good afternoon", "مساء الخير"),
+        _ => ("Good evening", "مساء الخير"),
+    };
+    match (rtl, name.is_empty()) {
+        (false, false) => format!("{en}, {name}"),
+        (false, true) => en.into(),
+        (true, false) => format!("{ar} يا {name}"),
+        (true, true) => ar.into(),
+    }
+}
+
 /// "{name} is back!" for someone with past chats, "Hello, {name}" otherwise. An empty name drops the name.
 pub fn greeting(name: &str, returning: bool, rtl: bool) -> String {
     let name = name.trim();
@@ -66,6 +95,16 @@ mod tests {
         assert_eq!(pick_name(" Sam ", PASSWD, "omar"), "Sam");
         assert_eq!(pick_name("", PASSWD, "omar"), "Omar Saeed");
         assert_eq!(pick_name("  ", PASSWD, "bare"), "bare");
+    }
+
+    #[test]
+    fn greeting_follows_the_hour_and_tidies_the_name() {
+        assert_eq!(greeting_at("omar", 8, false), "Good morning, Omar");
+        assert_eq!(greeting_at("omar saeed", 14, false), "Good afternoon, Omar Saeed");
+        assert_eq!(greeting_at("McKay", 22, false), "Good evening, McKay");
+        assert_eq!(greeting_at("", 3, false), "Good evening");
+        assert!(greeting_at("عمر", 9, true).starts_with("صباح الخير"));
+        assert_eq!(tidy_name("عمر"), "عمر");
     }
 
     #[test]

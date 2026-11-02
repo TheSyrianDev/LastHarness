@@ -35,6 +35,73 @@ fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32, x: f32) -> f32 {
     axis(y1, y2, (lo + hi) / 2.)
 }
 
+/// A value gliding from where it was to a new target, such as the raised part of a switch or a slider's thumb.
+#[derive(Clone, Debug, Default)]
+pub struct Glide {
+    from: f32,
+    to: f32,
+    started: Option<Instant>,
+}
+
+impl Glide {
+    /// Start moving to `to` from wherever it is now. The first target is taken at once, with no movement.
+    pub fn go(&mut self, to: f32, now: Instant, dur: Duration) {
+        if self.started.is_none() {
+            *self = Glide { from: to, to, started: Some(now) };
+        } else if to != self.to {
+            self.from = self.value(now, dur);
+            self.to = to;
+            self.started = Some(now);
+        }
+    }
+
+    pub fn value(&self, now: Instant, dur: Duration) -> f32 {
+        match self.started {
+            Some(t0) if !dur.is_zero() => {
+                let t = now.saturating_duration_since(t0).as_secs_f32() / dur.as_secs_f32();
+                if t >= 1. { self.to } else { self.from + (self.to - self.from) * ease_out(t) }
+            }
+            _ => self.to,
+        }
+    }
+
+    /// Stand still at `v`, as when something was dragged there by hand; the next `go` moves on from here.
+    pub fn hold(&mut self, v: f32) {
+        *self = Glide { from: v, to: v, started: Some(Instant::now() - Duration::from_secs(1)) };
+    }
+
+    pub fn moving(&self, now: Instant, dur: Duration) -> bool {
+        self.started.is_some_and(|t0| !dur.is_zero() && now.saturating_duration_since(t0) < dur)
+    }
+}
+
+/// The moving parts of every glass control, by name: how lit each drop is (its interaction energy: rest, hover,
+/// pressed), how far a released thumb is still stretched, where a switch knob is. Each eases to its new target in the
+/// press time instead of jumping. Shared by the drawing code (which sets targets and reads values at paint, when
+/// the pointer and the drop's real bounds are known) and the mouse handlers (which hold a value at release).
+#[derive(Clone, Debug, Default)]
+pub struct Eases(std::collections::HashMap<String, Glide>);
+
+impl Eases {
+    /// Move `key` toward `to` and say where it is now and whether it is still moving.
+    pub fn to(&mut self, key: &str, to: f32, now: Instant, dur: Duration) -> (f32, bool) {
+        let g = self.0.entry(key.to_string()).or_default();
+        g.go(to, now, dur);
+        let v = g.value(now, dur);
+        (v, g.moving(now, dur) && (v - to).abs() > 1e-4)
+    }
+
+    /// Where `key` is now, without changing its target; `or` when it was never set.
+    pub fn now(&self, key: &str, now: Instant, dur: Duration, or: f32) -> f32 {
+        self.0.get(key).map_or(or, |g| g.value(now, dur))
+    }
+
+    /// Stand `key` still at `v`, as a thumb is while it is held by hand.
+    pub fn hold(&mut self, key: &str, v: f32) {
+        self.0.entry(key.to_string()).or_default().hold(v);
+    }
+}
+
 /// A panel that is opening or closing. Its width is the full width times how far open it is; the full width is
 /// remembered while it is shut, so closing keeps the panel's size as it slides away.
 #[derive(Clone, Debug, Default)]
@@ -90,6 +157,20 @@ impl Reveal {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_glide_starts_still_then_eases_to_the_new_target() {
+        let (t0, d) = (Instant::now(), Duration::from_millis(200));
+        let mut g = Glide::default();
+        g.go(10., t0, d);
+        assert_eq!(g.value(t0, d), 10.);
+        g.go(20., t0, d);
+        let mid = g.value(t0 + Duration::from_millis(100), d);
+        assert!(mid > 15. && mid < 20., "eases out: {mid}");
+        assert_eq!(g.value(t0 + d, d), 20.);
+        assert!(!g.moving(t0 + d, d));
+        assert_eq!(g.value(t0, Duration::ZERO), 20., "reduced motion jumps");
+    }
 
     const D: Duration = Duration::from_millis(PANEL_MS);
 
@@ -167,5 +248,35 @@ mod tests {
         let mut r = Reveal::default();
         r.width(300., t0, D);
         assert_eq!(r.width(260., t0 + Duration::from_millis(10), D), 260., "a new width while open follows at once");
+    }
+
+    #[test]
+    fn glass_energy_eases_instead_of_jumping() {
+        let (t0, d) = (Instant::now(), Duration::from_millis(140));
+        let mut e = Eases::default();
+        assert_eq!(e.to("k", 0., t0, d), (0., false), "the first target is taken at once");
+        let (v, moving) = e.to("k", 1., t0, d);
+        assert!(v < 1e-3 && moving, "pressed: it starts from rest");
+        let mid = e.to("k", 1., t0 + Duration::from_millis(50), d).0;
+        assert!(mid > 0.2 && mid < 1., "part way: {mid}");
+        assert_eq!(e.now("k", t0 + d, d, 9.), 1.);
+        // let go part way: it eases back from where it is, not from 1
+        let back = e.to("k", 0., t0 + Duration::from_millis(50), d).0;
+        assert!((back - mid).abs() < 1e-4);
+        assert_eq!(e.now("unknown", t0, d, 0.5), 0.5);
+        assert_eq!(e.to("z", 1., t0, Duration::ZERO).0, 1., "reduced motion: no easing");
+    }
+
+    #[test]
+    fn a_released_stretch_shrinks_back_smoothly() {
+        let d = Duration::from_millis(220);
+        let mut e = Eases::default();
+        e.hold("s", 14.);
+        let t0 = Instant::now();
+        let (start, moving) = e.to("s", 0., t0, d);
+        assert!((start - 14.).abs() < 1e-3 && moving, "it starts from the held stretch");
+        let later = e.to("s", 0., t0 + Duration::from_millis(60), d).0;
+        assert!(later > 0. && later < 14.);
+        assert_eq!(e.to("s", 0., t0 + d, d).0, 0.);
     }
 }

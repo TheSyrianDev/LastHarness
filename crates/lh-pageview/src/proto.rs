@@ -39,6 +39,14 @@ pub enum Request {
     ScrollTo { y: f32 },
     Render,
     LinkAt { x: f32, y: f32 },
+    /// The pointer, in physical pixels of the picture: 0 moved, 1 pressed, 2 released. A helper that cannot
+    /// pass input on (Blitz) just answers with the page info.
+    Pointer { action: u8, x: f32, y: f32 },
+    /// A key pressed: its name as the toolkit gives it ("a", "backspace", "enter", "left"), and the text it types.
+    Key { key: String, text: String },
+    /// What the app fetched for a request the page made to an allowed site (see `NetReport::fetch`). A status of 0
+    /// means it could not be fetched; the page gets an error.
+    Deliver { id: u32, status: u16, content_type: String, body: Vec<u8> },
 }
 
 /// What the page asked the network for: counts, and the first few addresses.
@@ -47,6 +55,9 @@ pub struct NetReport {
     pub refused: u32,
     pub data_served: u32,
     pub urls: Vec<String>,
+    /// Requests to allowed sites the page made since the last answer, by number: the helper has no network, so
+    /// the app fetches them and hands the bytes back with `Request::Deliver`.
+    pub fetch: Vec<(u32, String)>,
 }
 
 pub enum Reply {
@@ -120,6 +131,23 @@ pub fn write_request(w: &mut impl Write, q: &Request) -> io::Result<()> {
             wf(w, *x)?;
             wf(w, *y)?;
         }
+        Request::Pointer { action, x, y } => {
+            w.write_all(&[6, *action])?;
+            wf(w, *x)?;
+            wf(w, *y)?;
+        }
+        Request::Key { key, text } => {
+            w.write_all(&[7])?;
+            wbytes(w, key.as_bytes())?;
+            wbytes(w, text.as_bytes())?;
+        }
+        Request::Deliver { id, status, content_type, body } => {
+            w.write_all(&[8])?;
+            w32(w, *id)?;
+            w32(w, *status as u32)?;
+            wbytes(w, content_type.as_bytes())?;
+            wbytes(w, body)?;
+        }
     }
     w.flush()
 }
@@ -141,6 +169,9 @@ pub fn read_request(r: &mut impl Read) -> io::Result<Option<Request>> {
         3 => Request::ScrollTo { y: rf(r)? },
         4 => Request::Render,
         5 => Request::LinkAt { x: rf(r)?, y: rf(r)? },
+        6 => Request::Pointer { action: r8(r)?, x: rf(r)?, y: rf(r)? },
+        7 => Request::Key { key: rstring(r)?, text: rstring(r)? },
+        8 => Request::Deliver { id: r32(r)?, status: r32(r)?.min(999) as u16, content_type: rstring(r)?, body: rbytes(r, crate::FETCH_MAX_BYTES)? },
         _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "unknown request")),
     }))
 }
@@ -149,10 +180,16 @@ fn write_info(w: &mut impl Write, i: &Info, n: &NetReport) -> io::Result<()> {
     wbytes(w, i.title.as_bytes())?;
     wf(w, i.content_height)?;
     wf(w, i.scroll_y)?;
+    wbytes(w, i.follow_up.as_bytes())?;
     w32(w, n.refused)?;
     w32(w, n.data_served)?;
     w32(w, n.urls.len() as u32)?;
     for u in &n.urls {
+        wbytes(w, u.as_bytes())?;
+    }
+    w32(w, n.fetch.len() as u32)?;
+    for (id, u) in &n.fetch {
+        w32(w, *id)?;
         wbytes(w, u.as_bytes())?;
     }
     Ok(())
@@ -161,12 +198,18 @@ fn write_info(w: &mut impl Write, i: &Info, n: &NetReport) -> io::Result<()> {
 fn read_info(r: &mut impl Read) -> io::Result<(Info, NetReport)> {
     let title = rstring(r)?;
     let (content_height, scroll_y) = (rf(r)?, rf(r)?);
+    let follow_up = rstring(r)?;
     let (refused, data_served, n) = (r32(r)?, r32(r)?, r32(r)?);
     if n > 1000 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "too many addresses"));
     }
     let urls = (0..n).map(|_| rstring(r)).collect::<io::Result<Vec<_>>>()?;
-    Ok((Info { title, content_height, scroll_y }, NetReport { refused, data_served, urls }))
+    let k = r32(r)?;
+    if k > 1000 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "too many fetches"));
+    }
+    let fetch = (0..k).map(|_| Ok((r32(r)?, rstring(r)?))).collect::<io::Result<Vec<_>>>()?;
+    Ok((Info { title, content_height, scroll_y, follow_up }, NetReport { refused, data_served, urls, fetch }))
 }
 
 pub fn write_reply(w: &mut impl Write, p: &Reply) -> io::Result<()> {
@@ -244,8 +287,8 @@ mod tests {
         assert!(matches!(read_request(&mut r).unwrap().unwrap(), Request::Render));
         assert!(read_request(&mut r).unwrap().is_none(), "a closed pipe is the end, not an error");
 
-        let info = Info { title: "عنوان".into(), content_height: 1234.5, scroll_y: 6.0 };
-        let net = NetReport { refused: 3, data_served: 1, urls: vec!["http://a/".into(), "file:///x".into()] };
+        let info = Info { title: "عنوان".into(), content_height: 1234.5, scroll_y: 6.0, follow_up: "Show more".into() };
+        let net = NetReport { refused: 3, data_served: 1, urls: vec!["http://a/".into(), "file:///x".into()], fetch: vec![(4, "https://tile.openstreetmap.org/1/0/0.png".into())] };
         let frame = Frame { width: 2, height: 1, rgba: vec![1, 2, 3, 4, 5, 6, 7, 8] };
         let mut buf = vec![];
         write_reply(&mut buf, &Reply::Info(info.clone(), net.clone())).unwrap();
@@ -262,13 +305,26 @@ mod tests {
     }
 
     #[test]
+    fn pointer_and_keys_survive_the_wire() {
+        let mut buf = vec![];
+        write_request(&mut buf, &Request::Pointer { action: 1, x: 12.5, y: 40. }).unwrap();
+        write_request(&mut buf, &Request::Key { key: "a".into(), text: "a".into() }).unwrap();
+        let mut r = &buf[..];
+        assert!(matches!(read_request(&mut r).unwrap(), Some(Request::Pointer { action: 1, x, y }) if x == 12.5 && y == 40.));
+        assert!(matches!(read_request(&mut r).unwrap(), Some(Request::Key { key, text }) if key == "a" && text == "a"));
+        let mut buf = vec![];
+        write_request(&mut buf, &Request::Deliver { id: 9, status: 200, content_type: "image/png".into(), body: vec![1, 2] }).unwrap();
+        assert!(matches!(read_request(&mut &buf[..]).unwrap(), Some(Request::Deliver { id: 9, status: 200, content_type, body }) if content_type == "image/png" && body == [1, 2]));
+    }
+
+    #[test]
     fn a_broken_or_greedy_message_is_an_error_not_an_allocation() {
         // a string that claims to be 4 GB
         let bad = [0u8, 0xff, 0xff, 0xff, 0xff];
         assert!(read_reply(&mut &bad[..]).is_err());
         // a frame whose size does not match its bytes
         let mut buf = vec![];
-        write_reply(&mut buf, &Reply::Frame(Frame { width: 10, height: 10, rgba: vec![0; 8] }, Info { title: String::new(), content_height: 0., scroll_y: 0. }, NetReport::default())).unwrap();
+        write_reply(&mut buf, &Reply::Frame(Frame { width: 10, height: 10, rgba: vec![0; 8] }, Info { title: String::new(), content_height: 0., scroll_y: 0., follow_up: String::new() }, NetReport::default())).unwrap();
         assert!(read_reply(&mut buf.as_slice()).is_err());
         assert!(read_request(&mut &[9u8][..]).is_err(), "an unknown request is refused");
     }

@@ -7,7 +7,9 @@
 //! records as a direct tool call (see `runner`). Memory and time are capped.
 //!
 //! Globals: `tools.<name>(args)` (async; resolves to the tool's text, rejects with its error), `text(value)`,
-//! `console.log(...)`, a top-level `return`, and `ALL_TOOLS` (names and descriptions).
+//! `console.log(...)`, a top-level `return`, `ALL_TOOLS` (names and descriptions), and from Pi: `store(key, value)`
+//! and `load(key)` (JSON values kept for later scripts in the same chat, in memory only), `searchTools(query)` and
+//! `await models()` (the model names the server lists, asked through the caller as the call `__models`).
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -21,6 +23,13 @@ pub const MAX_TIMEOUT: Duration = Duration::from_secs(600);
 const MEMORY_LIMIT: usize = 64 * 1024 * 1024;
 /// Most characters of output given back to the model; the middle of a longer output is cut.
 const MAX_OUTPUT: usize = 20_000;
+
+/// What `store` keeps for one chat: key to JSON text.
+pub type Kv = Arc<Mutex<std::collections::HashMap<String, String>>>;
+/// Most characters `store` keeps for one chat, all values together.
+const KV_LIMIT: usize = 4 * 1024 * 1024;
+/// The call name the script uses for `models()`; never a real tool.
+pub const MODELS_CALL: &str = "__models";
 
 /// A tool call the script made, answered by the caller: `Ok(text)` or `Err(error text)`.
 pub type CallTool = Box<dyn FnMut(&str, Value) -> Result<String, String>>;
@@ -51,6 +60,17 @@ globalThis.text = (v) => __text(typeof v === "string" ? v : JSON.stringify(v, nu
 globalThis.console = { log: (...a) => __lines.push(a.map(x => typeof x === "string" ? x : JSON.stringify(x)).join(" ")) };
 console.info = console.warn = console.error = console.debug = console.log;
 globalThis.tools = {};
+globalThis.store = (k, v) => { const r = __store(String(k), JSON.stringify(v === undefined ? null : v)); if (r) throw new Error(r); };
+globalThis.load = (k) => { const r = __load(String(k)); return r === "" ? undefined : JSON.parse(r); };
+globalThis.searchTools = (q) => {
+  const words = String(q || "").toLowerCase().split(/\s+/).filter(Boolean);
+  return ALL_TOOLS.filter(t => { const h = (t.name + " " + t.description).toLowerCase(); return words.every(w => h.includes(w)); });
+};
+globalThis.models = async () => {
+  const r = JSON.parse(__call("__models", "{}"));
+  if (r.error !== undefined) throw new Error(r.error);
+  return JSON.parse(r.ok);
+};
 for (const t of ALL_TOOLS) {
   tools[t.name.replace(/[^A-Za-z0-9_$]/g, "_")] = async (args) => {
     const r = JSON.parse(__call(t.name, JSON.stringify(args === undefined ? {} : args)));
@@ -60,9 +80,9 @@ for (const t of ALL_TOOLS) {
 }
 "#;
 
-/// Run one script. `tools` lists the callable tools as (name, description); `call` answers each call.
-/// Blocking: run it on a thread of its own.
-pub fn run(script: &str, tools: &[(String, String)], call: CallTool) -> ScriptResult {
+/// Run one script. `tools` lists the callable tools as (name, description); `call` answers each call; `kv`
+/// holds what `store` keeps. Blocking: run it on a thread of its own.
+pub fn run(script: &str, tools: &[(String, String)], kv: Kv, call: CallTool) -> ScriptResult {
     let deadline = Instant::now() + timeout_of(script);
     let out: Arc<Mutex<Vec<String>>> = Arc::default();
     let calls = Arc::new(Mutex::new(0usize));
@@ -103,6 +123,23 @@ pub fn run(script: &str, tools: &[(String, String)], call: CallTool) -> ScriptRe
             .map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
+        let k = kv.clone();
+        g.set(
+            "__store",
+            Function::new(ctx.clone(), move |key: String, val: String| -> String {
+                let mut m = k.lock().unwrap();
+                let used: usize = m.iter().filter(|(n, _)| **n != key).map(|(n, v)| n.len() + v.len()).sum();
+                if used + key.len() + val.len() > KV_LIMIT {
+                    return "store is full (4 MB for this chat)".into();
+                }
+                m.insert(key, val);
+                String::new()
+            })
+            .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        let k = kv.clone();
+        g.set("__load", Function::new(ctx.clone(), move |key: String| k.lock().unwrap().get(&key).cloned().unwrap_or_default()).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         let f = failure.clone();
         g.set("__fail", Function::new(ctx.clone(), move |s: String| *f.lock().unwrap() = Some(s)).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         ctx.eval::<(), _>(PRELUDE).map_err(|e| describe(&ctx, e))?;
@@ -196,7 +233,7 @@ mod tests {
             await tools.mcp__x_y__z();
             return { first: a.split("\n")[0], missing };
         "#;
-        let r = run(script, &tools(), call);
+        let r = run(script, &tools(), Kv::default(), call);
         assert!(r.ok, "{}", r.text);
         assert_eq!(r.calls, 3);
         assert!(r.text.starts_with("Script completed (3 tool calls)"), "{}", r.text);
@@ -208,13 +245,29 @@ mod tests {
     #[test]
     fn errors_and_runaway_scripts_end_in_words() {
         let call = || -> CallTool { Box::new(|_: &str, _: Value| -> Result<String, String> { Ok(String::new()) }) };
-        let r = run("text('before'); throw new Error('boom');", &tools(), call());
+        let r = run("text('before'); throw new Error('boom');", &tools(), Kv::default(), call());
         assert!(!r.ok && r.text.contains("before") && r.text.contains("Script error: boom"), "{}", r.text);
-        let r = run("// @options: {\"timeout_ms\": 300}\nwhile (true) {}", &tools(), call());
+        let r = run("// @options: {\"timeout_ms\": 300}\nwhile (true) {}", &tools(), Kv::default(), call());
         assert!(!r.ok, "{}", r.text);
-        let r = run("this is not javascript", &tools(), call());
+        let r = run("this is not javascript", &tools(), Kv::default(), call());
         assert!(!r.ok && r.text.contains("Script error"), "{}", r.text);
-        assert!(run("return typeof require + typeof fetch + typeof setTimeout", &tools(), call()).text.contains("undefinedundefinedundefined"), "no outside world");
+        assert!(run("return typeof require + typeof fetch + typeof setTimeout", &tools(), Kv::default(), call()).text.contains("undefinedundefinedundefined"), "no outside world");
+    }
+
+    #[test]
+    fn store_load_search_and_models() {
+        let kv = Kv::default();
+        let call = || -> CallTool { Box::new(|name: &str, _: Value| -> Result<String, String> { if name == MODELS_CALL { Ok(r#"["alpha","beta"]"#.into()) } else { Ok(String::new()) } }) };
+        let r = run("store('seen', {n: 2}); return load('seen').n + (load('nothing') === undefined ? 1 : 0)", &tools(), kv.clone(), call());
+        assert!(r.text.contains('3'), "{}", r.text);
+        let r = run("return load('seen').n", &tools(), kv.clone(), call());
+        assert!(r.text.ends_with('2'), "a later script in the same chat sees it: {}", r.text);
+        let r = run("return searchTools('READ file').map(t => t.name).join(',')", &tools(), kv.clone(), call());
+        assert!(r.text.ends_with("read_file"), "{}", r.text);
+        let r = run("return (await models()).join('+')", &tools(), kv.clone(), call());
+        assert!(r.text.ends_with("alpha+beta"), "{}", r.text);
+        let r = run("store('big', 'x'.repeat(5 * 1024 * 1024))", &tools(), kv, call());
+        assert!(!r.ok && r.text.contains("store is full"), "{}", r.text);
     }
 
     #[test]

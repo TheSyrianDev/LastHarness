@@ -206,8 +206,9 @@ async fn main() {
 
     let token = auth::new_token();
     let path = token_file.unwrap_or_else(auth::default_token_path);
-    auth::write_token(&path, &token).unwrap_or_else(|e| fail(format!("cannot write the token file {}: {e}", path.display())));
+    // take the port first: a second lhd that cannot listen must not replace the running core's token
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| fail(format!("cannot listen on {addr}: {e}")));
+    auth::write_token(&path, &token).unwrap_or_else(|e| fail(format!("cannot write the token file {}: {e}", path.display())));
     let port = listener.local_addr().unwrap().port();
     let (provider_url, api_key_for_kv) = (provider.clone(), api_key.clone());
     let state = AppState::new(Provider::new(provider, api_key), settings);

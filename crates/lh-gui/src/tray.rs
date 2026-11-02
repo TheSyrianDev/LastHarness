@@ -11,8 +11,8 @@ impl ksni::Tray for Tray {
         "LastHarness".into()
     }
     fn icon_name(&self) -> String {
-        // a plain stock icon; the real one is part of the visual design
-        "applications-system".into()
+        // the brand app icon, installed under the hicolor theme as "lastharness"
+        "lastharness".into()
     }
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         use ksni::menu::*;

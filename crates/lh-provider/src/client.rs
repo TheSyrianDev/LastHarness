@@ -100,6 +100,15 @@ impl Provider {
         Ok(v["data"].as_array().map(|a| a.iter().filter_map(|m| m["id"].as_str().map(str::to_string)).collect()).unwrap_or_default())
     }
 
+    /// Each model with the modes and load state a llama-swap server reports (other servers: the id only).
+    pub async fn model_details(&self) -> Result<Vec<Value>, Error> {
+        if self.ollama {
+            return Ok(self.ollama_models().await?.into_iter().map(|id| serde_json::json!({"id": id})).collect());
+        }
+        let v: Value = self.get("/models").await?;
+        Ok(v["data"].as_array().map(|a| a.iter().filter_map(details_of).collect()).unwrap_or_default())
+    }
+
     /// What this model supports, asked of the server once and remembered. Asking a llama-swap
     /// server may load the model, which the next chat request needs anyway.
     pub async fn capabilities(&self, model: &str) -> crate::Capabilities {
@@ -382,5 +391,31 @@ mod probe_tests {
         let none = serve(vec![]).await;
         let p = Provider::new(format!("{none}/v1"), None);
         assert_eq!(p.capabilities("m").await, crate::Capabilities::default());
+    }
+}
+
+/// One entry of an OpenAI-style model list, with llama-swap's extra facts when present.
+pub fn details_of(m: &Value) -> Option<Value> {
+    let id = m["id"].as_str()?;
+    let mut d = serde_json::json!({"id": id});
+    if let Some(modes) = m["meta"]["llamaswap"]["modes"].as_array() {
+        d["modes"] = Value::Array(modes.iter().filter(|x| x.is_string()).cloned().collect());
+    }
+    if let Some(dm) = m["meta"]["llamaswap"]["defaultMode"].as_str() {
+        d["default_mode"] = Value::from(dm);
+    }
+    if let Some(st) = m["status"]["value"].as_str() {
+        d["loaded"] = Value::from(st == "ready" || st == "loaded");
+    }
+    Some(d)
+}
+
+#[cfg(test)]
+mod details_tests {
+    #[test]
+    fn llama_swap_modes_and_state_are_kept_and_others_give_the_id() {
+        let m = serde_json::json!({"id": "Q-balanced", "meta": {"llamaswap": {"modes": ["think", "instruct"], "defaultMode": "think"}}, "status": {"value": "ready"}});
+        assert_eq!(super::details_of(&m).unwrap(), serde_json::json!({"id": "Q-balanced", "modes": ["think", "instruct"], "default_mode": "think", "loaded": true}));
+        assert_eq!(super::details_of(&serde_json::json!({"id": "gpt"})).unwrap(), serde_json::json!({"id": "gpt"}));
     }
 }

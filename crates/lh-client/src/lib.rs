@@ -29,6 +29,8 @@ pub enum ServerEvent {
     Error(String),
     /// The assistant opened something beside the chat: a title, how to show it, and the text (or, for an image, a path).
     Show { title: String, kind: String, content: String, path: Option<String> },
+    /// A file write that was allowed without asking, with what changed (a unified diff).
+    Diff { id: String, path: String, diff: String },
     /// Something this client does not know about; ignored.
     Other,
 }
@@ -52,6 +54,7 @@ impl ServerEvent {
             "notice" => Self::Notice(s("message")),
             "error" => Self::Error(s("message")),
             "show" => Self::Show { title: s("title"), kind: s("kind"), content: s("content"), path: v["path"].as_str().map(str::to_string) },
+            "diff" => Self::Diff { id: s("id"), path: s("path"), diff: s("diff") },
             _ => Self::Other,
         }
     }

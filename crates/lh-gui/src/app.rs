@@ -41,6 +41,8 @@ pub struct PanelData {
     pub departments: Vec<Department>,
     pub runs: HashMap<String, Run>,
     pub run_order: Vec<String>,
+    /// Runs a chat started, by run id: the chat's session. The Work tab shows them only with that chat.
+    pub run_sessions: HashMap<String, String>,
     pub pages: Vec<MemoryPage>,
     pub proposals: Vec<Proposal>,
     pub settings: Vec<Setting>,
@@ -115,9 +117,21 @@ pub struct App {
     pub think_scroll: ScrollHandle,
     pub think_follow: lh_gui::follow::Follow,
     pub model_menu: bool,
+    /// The model picker: what is typed, the row the arrows are on, and the model whose settings show.
+    pub model_search: Entity<InputState>,
+    pub picker_sel: usize,
+    pub picker_open: Option<String>,
     pub pending: Option<Pending>,
     pub confirm_delete: Option<u64>,
+    /// The chat whose right-click menu is open.
+    pub chat_menu: Option<u64>,
+    /// Earlier shows every settled chat, not only the newest few.
+    pub earlier_all: bool,
+    /// The local time zone's offset from UTC in seconds, for snooze times.
+    pub tz_offset: i64,
     pub open_blocks: HashSet<(u64, usize)>,
+    /// Work panel steps whose raw arguments are shown: chat key and block index.
+    pub open_steps: HashSet<(u64, usize)>,
     pub hover: Option<SharedString>,
     pub hover_ever: bool,
     pub rtl: bool,
@@ -149,6 +163,24 @@ pub struct App {
     pub palette_input: Entity<InputState>,
     /// The chat list and the side panel sliding open and shut.
     pub left_reveal: lh_gui::motion::Reveal,
+    /// The raised part of the Chat/Assistant/Project switch, and the model slider's thumb.
+    pub mode_glide: lh_gui::motion::Glide,
+    pub tier_glide: lh_gui::motion::Glide,
+    pub ctx_glide: lh_gui::motion::Glide,
+    /// Every glass control's eased energy, release stretch and knob position, by name (see `motion::Eases`).
+    pub glass_fx: std::rc::Rc<std::cell::RefCell<lh_gui::motion::Eases>>,
+    /// The slider thumb held by the mouse: where the pointer went down, where the thumb was then, where it is now.
+    pub slider_drag: Option<(f32, f32, f32)>,
+    /// The side panel's edge is held: where the pointer was pressed and the panel's width then.
+    pub panel_drag: Option<(f32, f32)>,
+    /// The chat on screen and how many blocks it had when it was opened; later ones rise in.
+    pub rise_from: (u64, usize),
+    /// The model slider is showing above the model button.
+    pub slider_open: bool,
+    /// The Chat/Assistant/Project switch's raised part, held: pointer start, thumb start, now.
+    pub mode_drag: Option<(f32, f32, f32)>,
+    /// The context-length slider in the model list, held: pointer start, thumb start, now, and the model for each stop.
+    pub ctx_drag: Option<(f32, f32, f32, Vec<String>)>,
     pub right_reveal: lh_gui::motion::Reveal,
     /// How far the message box is toward the middle (1) or at the bottom (0): the new-chat screen.
     pub centre_reveal: lh_gui::motion::Reveal,
@@ -174,6 +206,14 @@ pub struct App {
     pub setting_list: Option<String>,
     /// The web page drawn inside the Opened tab, while it is shown.
     pub page: Option<crate::page_ui::PageState>,
+    /// The last picture of apps in the chat that were stopped, by place, so they still look right (at most 3).
+    pub page_stills: Vec<(String, std::sync::Arc<RenderImage>, f32)>,
+    /// Apps in the chat stopped because they scrolled far away or the chat changed; they wait for a Run click.
+    pub page_parked: HashSet<String>,
+    /// The app in the chat the person chose to run, as (chat, message). `None`: the newest one runs.
+    pub inline_pick: Option<(u64, usize)>,
+    /// The side panel is showing a web page this frame, so apps in the chat wait (one page runs at a time).
+    pub panel_page_on: bool,
     /// The extra Settings pages (tools, channels, devices, data, activity): what they loaded and their forms.
     pub pg: crate::extra_ui::PgState,
     /// The page shown in Settings, the box that searches all pages, and keyboard focus for the list of pages.
@@ -199,12 +239,18 @@ fn stored_to_chat(chats: &mut Chats, models: &ModelList, s: &StoredChat) {
             if !s.title.is_empty() && c.title == NEW_TITLE {
                 c.title = lh_gui::model::one_line(&s.title);
             }
+            c.last = c.last.max(s.last);
+            if c.project.is_empty() {
+                c.project = s.project.clone();
+            }
         }
         None => {
             if s.messages > 0 {
                 chats.add_stored(&s.id, &s.title, &model);
                 if let Some(c) = chats.by_session(&s.id) {
                     c.mode = Mode::parse(&s.mode);
+                    c.last = s.last;
+                    c.project = s.project.clone();
                 }
             }
         }
@@ -325,6 +371,16 @@ impl App {
             }
         })
         .detach();
+        let model_search = cx.new(|cx| InputState::new(window, cx).placeholder("Search models"));
+        cx.subscribe_in(&model_search, window, |this: &mut App, _input, ev: &InputEvent, _window, cx| match ev {
+            InputEvent::Change => {
+                this.picker_sel = 0;
+                cx.notify();
+            }
+            InputEvent::PressEnter { .. } => this.picker_enter(cx),
+            _ => {}
+        })
+        .detach();
         let palette_input = cx.new(|cx| InputState::new(window, cx).placeholder("Type a command, a chat, a model or a look"));
         cx.subscribe_in(&palette_input, window, |this: &mut App, input, ev: &InputEvent, window, cx| match ev {
             InputEvent::Change => {
@@ -389,9 +445,16 @@ impl App {
             think_scroll: ScrollHandle::new(),
             think_follow: Default::default(),
             model_menu: false,
+            model_search,
+            picker_sel: 0,
+            picker_open: None,
             pending: None,
             confirm_delete: None,
+            chat_menu: None,
+            earlier_all: false,
+            tz_offset: lh_gui::sidebar::local_offset(),
             open_blocks: HashSet::new(),
+            open_steps: HashSet::new(),
             hover: None,
             hover_ever: false,
             rtl: is_rtl,
@@ -412,6 +475,16 @@ impl App {
             palette: None,
             palette_input,
             left_reveal: Default::default(),
+            mode_glide: Default::default(),
+            tier_glide: Default::default(),
+            ctx_glide: Default::default(),
+            glass_fx: Default::default(),
+            slider_drag: None,
+            panel_drag: None,
+            rise_from: (u64::MAX, 0),
+            slider_open: false,
+            mode_drag: None,
+            ctx_drag: None,
             right_reveal: Default::default(),
             centre_reveal: Default::default(),
             name_input,
@@ -425,6 +498,10 @@ impl App {
             setting_inputs: HashMap::new(),
             setting_list: None,
             page: None,
+            page_stills: Vec::new(),
+            page_parked: HashSet::new(),
+            inline_pick: None,
+            panel_page_on: false,
             pg: Default::default(),
             settings_page,
             settings_search,
@@ -435,6 +512,33 @@ impl App {
 
     pub fn layout(&self) -> &Layout {
         &self.prefs.layout
+    }
+
+    /// Pin or unpin a stored chat; a chat with no session yet cannot be pinned.
+    pub fn toggle_pin(&mut self, key: u64, cx: &mut Context<Self>) {
+        if let Some(sid) = self.chats.list.iter().find(|c| c.key == key).and_then(|c| c.session.clone()) {
+            match self.prefs.pinned.iter().position(|p| *p == sid) {
+                Some(i) => {
+                    self.prefs.pinned.remove(i);
+                }
+                None => self.prefs.pinned.push(sid),
+            }
+            self.persist();
+        }
+        self.chat_menu = None;
+        cx.notify();
+    }
+
+    pub fn snooze(&mut self, key: u64, s: lh_gui::sidebar::Snooze, cx: &mut Context<Self>) {
+        if let Some(sid) = self.chats.list.iter().find(|c| c.key == key).and_then(|c| c.session.clone()) {
+            let now = lh_gui::model::unix_now();
+            // old snoozes that are over are dropped while we are here
+            self.prefs.snoozed.retain(|_, until| *until > now);
+            self.prefs.snoozed.insert(sid, s.until(now, self.tz_offset));
+            self.persist();
+        }
+        self.chat_menu = None;
+        cx.notify();
     }
 
     pub fn persist(&mut self) {
@@ -608,6 +712,99 @@ impl App {
         cx.notify();
     }
 
+    /// Give every chat that has not started a model this server offers: the saved choice, else the first.
+    /// A choice saved by the older app (a model name) becomes that model's default entry.
+    fn fix_chat_models(&mut self) {
+        let preferred = self.models.id_for(&self.prefs.model);
+        let first = self.models.names().first().cloned().unwrap_or_default();
+        for c in self.chats.list.iter_mut() {
+            if c.model.is_empty() || (!self.models.has(&c.model) && c.blocks.is_empty() && c.session.is_none()) {
+                c.model = if self.models.has(&preferred) { preferred.clone() } else { first.clone() };
+            }
+        }
+    }
+
+        /// Open or close the model picker. It opens on the chat's model, with its settings showing.
+    pub fn toggle_model_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.slider_open = false;
+        self.model_menu = !self.model_menu;
+        if self.model_menu {
+            let cur = self.chats.current().map(|c| c.model.clone()).unwrap_or_default();
+            self.picker_open = self.models.group_of(&cur).map(|g| g.base.clone());
+            self.picker_sel = self.models.groups().iter().position(|g| Some(&g.base) == self.picker_open.as_ref()).unwrap_or(0);
+            self.model_search.update(cx, |s, cx| {
+                s.set_value("", window, cx);
+                s.focus(window, cx);
+            });
+        }
+        cx.notify();
+    }
+
+    /// The models that match what is typed in the picker.
+    pub fn picker_rows(&self, cx: &Context<Self>) -> Vec<lh_gui::models::Group> {
+        let q = self.model_search.read(cx).value().to_string();
+        self.models.search(&q).into_iter().cloned().collect()
+    }
+
+    pub fn picker_step(&mut self, down: bool, cx: &Context<Self>) {
+        let n = self.picker_rows(cx).len().max(1);
+        self.picker_sel = if down { (self.picker_sel + 1) % n } else { (self.picker_sel + n - 1) % n };
+    }
+
+    /// Enter: the first press shows the model's settings, the second uses it.
+    pub fn picker_enter(&mut self, cx: &mut Context<Self>) {
+        let rows = self.picker_rows(cx);
+        let Some(g) = rows.get(self.picker_sel.min(rows.len().saturating_sub(1))) else { return };
+        if self.picker_open.as_ref() == Some(&g.base) {
+            let cur = self.chats.current().map(|c| c.model.clone()).unwrap_or_default();
+            let choice = if self.models.group_of(&cur).map(|x| &x.base) == Some(&g.base) { cur } else { g.default_entry().id.clone() };
+            self.choose_model(&choice, cx);
+        } else {
+            self.picker_open = Some(g.base.clone());
+        }
+        cx.notify();
+    }
+
+    /// The model on each slider stop, by model name (the group's base), fastest first.
+    pub fn stops(&self) -> [String; lh_gui::tiers::STOPS] {
+        let models: Vec<(String, String)> = self.models.groups().iter().map(|g| (g.base.clone(), g.size.clone())).collect();
+        lh_gui::tiers::fill(&self.prefs.tiers, &models)
+    }
+
+    /// Move the open chat to the model on stop `i` of the slider.
+    pub fn choose_stop(&mut self, i: usize, cx: &mut Context<Self>) {
+        let base = self.stops()[i].clone();
+        let Some(g) = self.models.groups().iter().find(|g| g.base == base) else { return };
+        let id = g.default_entry().id.clone();
+        self.choose_model(&id, cx);
+        self.model_menu = false;
+        cx.notify();
+    }
+
+    /// Put a model on a stop by hand. Choosing the model already there gives the stop back to the automatic fill.
+    pub fn set_stop(&mut self, i: usize, base: &str, cx: &mut Context<Self>) {
+        self.prefs.tiers.resize(lh_gui::tiers::STOPS, String::new());
+        self.prefs.tiers[i] = if self.prefs.tiers[i] == base { String::new() } else { base.to_string() };
+        self.persist();
+        cx.notify();
+    }
+
+    /// Ask the assistant to rank the models from public benchmarks; it answers in a new chat and changes nothing.
+    pub fn rank_models(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let names: Vec<String> = self.models.groups().iter().map(|g| format!("{} ({})", g.label, if g.size.is_empty() { "size unknown" } else { &g.size })).collect();
+        let prompt = format!(
+            "Look up public benchmark results for these local models and rank them from fastest to smartest: {}. \
+             Then propose which model goes on each of the five stops of my model slider (Fastest, Fast, Balanced, Smart, Smartest), \
+             with one line on why for each. Do not change any settings or files.",
+            names.join(", ")
+        );
+        self.model_menu = false;
+        self.new_chat(cx);
+        self.set_mode(Mode::Assistant, cx);
+        self.composer.update(cx, |s, cx| s.set_value(prompt, window, cx));
+        self.send(window, cx);
+    }
+
     pub fn choose_model(&mut self, name: &str, cx: &mut Context<Self>) {
         self.model_menu = false;
         let Some(c) = self.chats.current_mut() else { return };
@@ -748,15 +945,13 @@ impl App {
                 }
                 self.connected = ok;
             }
+            Ev::ModelDetails(infos) => {
+                self.models = ModelList::with_details(infos);
+                self.fix_chat_models();
+            }
             Ev::Models(ids) => {
                 self.models = ModelList::new(ids);
-                let first = self.models.names().first().cloned().unwrap_or_default();
-                let preferred = self.prefs.model.clone();
-                for c in self.chats.list.iter_mut() {
-                    if c.model.is_empty() || (!self.models.has(&c.model) && c.blocks.is_empty() && c.session.is_none()) {
-                        c.model = if self.models.has(&preferred) { preferred.clone() } else { first.clone() };
-                    }
-                }
+                self.fix_chat_models();
             }
             Ev::Title { session, title } => {
                 if let Some(c) = self.chats.by_session(&session) {
@@ -778,6 +973,15 @@ impl App {
                 self.core_models.insert(chat, self.models.name_of(&model));
             }
             Ev::Server { chat, event } => {
+                // the assistant handed work to a department: ask the core for its run a moment later, so the run
+                // is followed and shown with this chat
+                if matches!(&event, ServerEvent::ToolStart { name, .. } if name == "call_department") {
+                    cx.spawn(async move |this: WeakEntity<App>, cx: &mut AsyncApp| {
+                        cx.background_executor().timer(std::time::Duration::from_millis(600)).await;
+                        let _ = this.update(cx, |a, _| a.backend.send(Cmd::Call { tag: "runs".into(), method: "GET".into(), path: "/v1/team/runs".into(), body: None }));
+                    })
+                    .detach();
+                }
                 // a question the person already said "always" to is answered without asking again
                 if let ServerEvent::Ask { id, tool, reason, .. } = &event {
                     if self.always.covers(chat, tool, reason) {
@@ -787,10 +991,12 @@ impl App {
                         }
                     }
                 }
-                // the assistant opened something: it goes to the side panel (of whatever chat is shown)
+                // the assistant showed something: it is drawn in the chat (see `shown_view`) and listed in the Opened
+                // tab, without pushing the side panel open; the newest app is the one that runs
                 if let ServerEvent::Show { title, kind, content, path } = &event {
-                    let c = lh_gui::content::Content::from_show(title, kind, content, path.as_deref());
-                    self.open_content(c, cx);
+                    self.content.push(lh_gui::content::Content::from_show(title, kind, content, path.as_deref()));
+                    self.content_index = self.content.len() - 1;
+                    self.inline_pick = None;
                 }
                 let current = self.chats.current().map(|c| c.key);
                 if let Some(c) = self.chats.by_key(chat) {
@@ -859,6 +1065,10 @@ impl App {
                 if !self.panels.run_order.contains(&run) {
                     self.panels.run_order.push(run.clone());
                 }
+                if !self.panels.runs.contains_key(&run) {
+                    // a department started: the side panel opens on Work so its steps can be followed
+                    self.layout_mut().show_panel(Panel::Work);
+                }
                 self.panels.runs.entry(run.clone()).or_insert_with(|| Run::new(&run, &department, &goal));
             }
             Ev::RunEvent { run, event } => {
@@ -915,6 +1125,11 @@ impl App {
             ("runs", Ok(v)) => {
                 // pick up runs that are still going from before the window opened
                 let runs: Vec<(String, String, String, bool)> = v["runs"].as_array().map(|a| a.iter().map(|r| (r["id"].as_str().unwrap_or("").to_string(), r["department"].as_str().unwrap_or("").to_string(), r["goal"].as_str().unwrap_or("").to_string(), r["finished"] == true)).collect()).unwrap_or_default();
+                for r in v["runs"].as_array().into_iter().flatten() {
+                    if let (Some(id), Some(s)) = (r["id"].as_str(), r["session"].as_str()) {
+                        p.run_sessions.insert(id.into(), s.into());
+                    }
+                }
                 for (id, dept, goal, finished) in runs {
                     if !p.runs.contains_key(&id) && !finished {
                         self.backend.send(Cmd::FollowRun { run: id, department: dept, goal });
@@ -1069,6 +1284,28 @@ impl App {
         cx.notify();
     }
 
+    /// Show a page in the middle: every department, or everything remembered. The chat keeps going behind it.
+    pub fn open_page(&mut self, page: lh_gui::layout::Page, cx: &mut Context<Self>) {
+        self.layout_mut().open_page(page);
+        if self.connected {
+            self.load_panels();
+        }
+        cx.notify();
+    }
+
+    /// Show or hide the side panel, keeping its tab.
+    pub fn toggle_dock(&mut self, cx: &mut Context<Self>) {
+        let p = self.layout().panel;
+        let p = if lh_gui::chrome::DOCK_TABS.contains(&p) { p } else { Panel::Content };
+        self.layout_mut().toggle_panel(p);
+        if self.connected {
+            self.load_panels();
+            self.refresh_tree();
+        }
+        self.persist();
+        cx.notify();
+    }
+
     /// Switch the side panel to another tab and keep it shown.
     pub fn show_in_dock(&mut self, panel: Panel, cx: &mut Context<Self>) {
         self.layout_mut().show_panel(panel);
@@ -1132,7 +1369,7 @@ impl App {
             rtl: self.rtl,
             chats: self.chats.list.iter().filter(|c| !c.is_draft()).map(|c| (c.key, c.title.clone())).collect(),
             current_chat: self.chats.current().map(|c| c.key),
-            models: self.models.names().to_vec(),
+            models: self.models.names().iter().map(|m| (m.clone(), self.models.label_of(m))).collect(),
             current_model: self.chats.current().map(|c| c.model.clone()).unwrap_or_default(),
             looks: self.themes.families(),
             current_look: self.themes.families().iter().position(|f| *f == self.family()).unwrap_or(0),
@@ -1286,3 +1523,7 @@ impl App {
         &self.prefs.layout.page
     }
 }
+
+#[cfg(test)]
+#[path = "shots.rs"]
+mod shots;

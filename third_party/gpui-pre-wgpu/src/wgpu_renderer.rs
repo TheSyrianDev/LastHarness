@@ -25,6 +25,7 @@ const INSTANCE_TEXTURE_TEXEL_SIZE: u64 = 16;
 const STORAGE_BUFFER_SHADERS: &str = concat!(
     include_str!("shaders.wgsl"),
     include_str!("shaders_storage.wgsl"),
+    include_str!("shaders_glass.wgsl"),
 );
 
 /// Shader variant for WebGL2, which has no storage buffers: the shared shader
@@ -134,6 +135,8 @@ struct WgpuPipelines {
     poly_sprites: wgpu::RenderPipeline,
     #[allow(dead_code)]
     surfaces: wgpu::RenderPipeline,
+    /// None on WebGL2, which has no glass shader; glass is skipped there.
+    glass: Option<wgpu::RenderPipeline>,
 }
 
 /// One frame allocation of instance data, ready to bind.
@@ -154,6 +157,7 @@ struct InstanceBindings {
     monochrome_sprites: InstanceBinding,
     subpixel_sprites: InstanceBinding,
     polychrome_sprites: InstanceBinding,
+    glasses: InstanceBinding,
 }
 
 struct WgpuBindGroupLayouts {
@@ -194,6 +198,8 @@ struct WgpuResources {
     path_intermediate_view: Option<wgpu::TextureView>,
     path_msaa_texture: Option<wgpu::Texture>,
     path_msaa_view: Option<wgpu::TextureView>,
+    /// Copy of the frame drawn so far, sampled by glass. Made on first use.
+    glass_backdrop: Option<(wgpu::Texture, wgpu::TextureView)>,
 }
 
 struct CachedTextureBindGroup {
@@ -207,6 +213,7 @@ impl WgpuResources {
         self.path_intermediate_view = None;
         self.path_msaa_texture = None;
         self.path_msaa_view = None;
+        self.glass_backdrop = None;
     }
 }
 
@@ -315,7 +322,7 @@ impl WgpuRenderer {
             .borrow()
             .as_ref()
             .map(|ctx| ctx.instance.clone())
-            .unwrap_or_else(|| WgpuContext::instance(Some(Box::new(window.clone()))));
+            .unwrap_or_else(|| WgpuContext::instance(|| Some(Box::new(window.clone()))));
 
         // Safety: The caller guarantees that the window handle is valid for the
         // lifetime of this renderer. In practice, the RawWindow struct is created
@@ -444,8 +451,11 @@ impl WgpuRenderer {
             );
         }
 
+        // Glass copies the frame drawn so far, which needs COPY_SRC on the surface.
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT
+            | (surface_caps.usages & wgpu::TextureUsages::COPY_SRC);
         let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage,
             format: surface_format,
             width: clamped_width.max(1),
             height: clamped_height.max(1),
@@ -917,6 +927,21 @@ impl WgpuRendererCore {
             &shader_module,
         );
 
+        let glass = (!uses_webgl_instance_data).then(|| {
+            create_pipeline(
+                "glass",
+                "vs_glass",
+                "fs_glass",
+                &layouts.globals,
+                &layouts.instances,
+                Some(&layouts.texture),
+                wgpu::PrimitiveTopology::TriangleStrip,
+                &[Some(color_target.clone())],
+                1,
+                &shader_module,
+            )
+        });
+
         let surfaces = create_pipeline(
             "surfaces",
             "vs_surface",
@@ -940,6 +965,7 @@ impl WgpuRendererCore {
             subpixel_sprites,
             poly_sprites,
             surfaces,
+            glass,
         }
     }
 
@@ -1196,8 +1222,13 @@ impl WgpuRenderer {
             .create_view(&wgpu::TextureViewDescriptor::default());
         let premultiplied_alpha =
             self.surface_config.alpha_mode == wgpu::CompositeAlphaMode::PreMultiplied;
+        let copyable = self
+            .surface_config
+            .usage
+            .contains(wgpu::TextureUsages::COPY_SRC);
         if let Err(error) = core.render_frame(
             scene,
+            copyable.then_some(&frame.texture),
             &frame_view,
             size,
             premultiplied_alpha,
@@ -1353,6 +1384,7 @@ impl WgpuRendererCore {
                 path_intermediate_view: None,
                 path_msaa_texture: None,
                 path_msaa_view: None,
+                glass_backdrop: None,
             },
             atlas,
             path_globals_offset,
@@ -1417,6 +1449,7 @@ impl WgpuRendererCore {
     fn render_frame(
         &mut self,
         scene: &Scene,
+        target_texture: Option<&wgpu::Texture>,
         target_view: &wgpu::TextureView,
         size: Size<DevicePixels>,
         premultiplied_alpha: bool,
@@ -1468,7 +1501,7 @@ impl WgpuRendererCore {
             bytemuck::bytes_of(&gamma_params),
         );
 
-        self.record_frame(scene, target_view, clear_color)
+        self.record_frame(scene, target_texture, target_view, clear_color)
             .inspect_err(|_| {
                 // Queue writes are staged before encoding; flush them even if the frame fails.
                 self.resources.queue.submit(std::iter::empty());
@@ -1478,6 +1511,7 @@ impl WgpuRendererCore {
     fn record_frame(
         &mut self,
         scene: &Scene,
+        frame_texture: Option<&wgpu::Texture>,
         frame_view: &wgpu::TextureView,
         clear_color: wgpu::Color,
     ) -> Result<wgpu::SubmissionIndex> {
@@ -1612,6 +1646,40 @@ impl WgpuRendererCore {
                     // Surfaces are macOS-only for video playback and are not
                     // implemented by the WGPU renderer.
                     PrimitiveBatch::Surfaces(_surfaces) => {}
+                    PrimitiveBatch::Glasses(range) => {
+                        let glasses = &scene.glasses[range.clone()];
+                        if self.resources().pipelines.glass.is_none() {
+                            continue;
+                        }
+                        // Glass samples what is drawn so far: end the pass, copy the
+                        // area under the glass, then carry on in a new pass.
+                        drop(pass);
+                        let backdrop = self.copy_glass_backdrop(&mut encoder, frame_texture, glasses);
+                        pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("main_pass_after_glass_copy"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: frame_view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                                depth_slice: None,
+                            })],
+                            depth_stencil_attachment: None,
+                            ..Default::default()
+                        });
+                        let resources = self.resources();
+                        if let Some(pipeline) = &resources.pipelines.glass {
+                            pass.set_pipeline(pipeline);
+                        }
+                        pass.set_bind_group(0, &resources.globals_bind_group, &[]);
+                        pass.set_bind_group(1, &instance_bindings.glasses.bind_group, &[]);
+                        pass.set_bind_group(2, &backdrop, &[]);
+                        let range = instance_range(range);
+                        let first = instance_bindings.glasses.first_instance;
+                        pass.draw(0..4, first + range.start..first + range.end);
+                    }
                 }
             }
         }
@@ -1658,6 +1726,11 @@ impl WgpuRendererCore {
                 "polychrome_sprites_bind_group",
                 instance_offset,
                 &scene.polychrome_sprites,
+            )?,
+            glasses: self.write_instance_binding(
+                "glasses_bind_group",
+                instance_offset,
+                &scene.glasses,
             )?,
         })
     }
@@ -1730,6 +1803,73 @@ impl WgpuRendererCore {
                 },
             );
         }
+    }
+
+    /// Copies the frame under `glasses` (plus the blur margin) into the backdrop
+    /// texture and returns its bind group. Without a copyable target the backdrop
+    /// stays empty, so glass shows only its tint and rim.
+    fn copy_glass_backdrop(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        frame_texture: Option<&wgpu::Texture>,
+        glasses: &[gpui::Glass],
+    ) -> wgpu::BindGroup {
+        let size = self
+            .resources()
+            .path_intermediate_texture
+            .as_ref()
+            .map(|t| (t.width(), t.height()))
+            .unwrap_or((1, 1));
+        let stale = self
+            .resources()
+            .glass_backdrop
+            .as_ref()
+            .is_none_or(|(t, _)| (t.width(), t.height()) != size);
+        if stale {
+            let texture = self.resources().device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("glass_backdrop"),
+                size: wgpu::Extent3d {
+                    width: size.0,
+                    height: size.1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.target_format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            self.resources_mut().glass_backdrop = Some((texture, view));
+        }
+        let (backdrop, view) = self.resources().glass_backdrop.as_ref().unwrap();
+
+        if let Some(source) = frame_texture
+            && let Some((x0, y0, x1, y1)) = glass_copy_rect(glasses, size)
+        {
+            let origin = wgpu::Origin3d { x: x0, y: y0, z: 0 };
+            encoder.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: source,
+                    mip_level: 0,
+                    origin,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: backdrop,
+                    mip_level: 0,
+                    origin,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: x1 - x0,
+                    height: y1 - y0,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        self.create_texture_bind_group("glass_backdrop_bind_group", view)
     }
 
     fn draw_instances(
@@ -2237,7 +2377,7 @@ impl WgpuRenderer {
             // may need more time to come back (e.g. after suspend/resume).
             std::thread::sleep(std::time::Duration::from_millis(350));
 
-            let instance = WgpuContext::instance(Some(Box::new(window.clone())));
+            let instance = WgpuContext::instance(|| Some(Box::new(window.clone())));
             let surface = create_surface(&instance, window_handle.as_raw())?;
             let new_context =
                 WgpuContext::new_rejecting_software(instance, &surface, self.compositor_gpu)?;
@@ -2399,14 +2539,13 @@ impl WgpuHeadlessRenderer {
     fn render(&mut self, scene: &Scene, size: Size<DevicePixels>) -> anyhow::Result<()> {
         self.check_gpu_errors()?;
         self.ensure_render_target(size)?;
-        let view = self
+        let target = self
             .render_target
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Headless render target was not created"))?
-            .view
-            .clone();
+            .ok_or_else(|| anyhow::anyhow!("Headless render target was not created"))?;
+        let (texture, view) = (target.texture.clone(), target.view.clone());
         self.core
-            .render_frame(scene, &view, size, false, wgpu::Color::BLACK)?;
+            .render_frame(scene, Some(&texture), &view, size, false, wgpu::Color::BLACK)?;
         Ok(())
     }
 
@@ -2547,6 +2686,32 @@ impl gpui::PlatformHeadlessRenderer for WgpuHeadlessRenderer {
 
 fn instance_range(range: Range<usize>) -> Range<u32> {
     range.start as u32..range.end as u32
+}
+
+/// Pixel rect (x0, y0, x1, y1) to copy for a glass batch: the union of the glass
+/// bounds grown by the blur margin the shader samples, clamped to the target.
+fn glass_copy_rect(glasses: &[gpui::Glass], (width, height): (u32, u32)) -> Option<(u32, u32, u32, u32)> {
+    let mut rect: Option<(f32, f32, f32, f32)> = None;
+    for glass in glasses {
+        let margin = glass.blur.0 + 2.0;
+        let b = glass.bounds.intersect(&glass.content_mask.bounds);
+        let r = (
+            b.origin.x.0 - margin,
+            b.origin.y.0 - margin,
+            b.origin.x.0 + b.size.width.0 + margin,
+            b.origin.y.0 + b.size.height.0 + margin,
+        );
+        rect = Some(match rect {
+            None => r,
+            Some(u) => (u.0.min(r.0), u.1.min(r.1), u.2.max(r.2), u.3.max(r.3)),
+        });
+    }
+    let (x0, y0, x1, y1) = rect?;
+    let x0 = x0.floor().clamp(0.0, width as f32) as u32;
+    let y0 = y0.floor().clamp(0.0, height as f32) as u32;
+    let x1 = x1.ceil().clamp(0.0, width as f32) as u32;
+    let y1 = y1.ceil().clamp(0.0, height as f32) as u32;
+    (x1 > x0 && y1 > y0).then_some((x0, y0, x1, y1))
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -2925,5 +3090,98 @@ mod tests {
                 33.0_f32.to_bits(),
             ]
         );
+    }
+
+    /// Rust mirrors of `glass_sdf` and `glass_bend` in shaders_glass.wgsl.
+    fn glass_sdf(p: (f32, f32), half: (f32, f32), r: f32) -> f32 {
+        let q = (p.0.abs() - half.0 + r, p.1.abs() - half.1 + r);
+        (q.0.max(0.0).powi(2) + q.1.max(0.0).powi(2)).sqrt() + q.0.max(q.1).min(0.0) - r
+    }
+
+    fn glass_bend(depth: f32, zone: f32) -> f32 {
+        let t = (1.0 - depth / zone.max(0.001)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    }
+
+    #[test]
+    fn glass_sdf_and_bend_maths() {
+        let half = (20.0, 10.0);
+        assert!(glass_sdf((0.0, 0.0), half, 4.0) < 0.0);
+        assert!((glass_sdf((20.0, 0.0), half, 4.0)).abs() < 1e-4);
+        assert!((glass_sdf((25.0, 0.0), half, 4.0) - 5.0).abs() < 1e-4);
+        // A rounded corner is cut: the box corner lies outside the shape.
+        assert!(glass_sdf((20.0, 10.0), half, 4.0) > 1.0);
+        // The bend is full at the edge, gone in the middle, and falls steadily.
+        assert_eq!(glass_bend(0.0, 10.0), 1.0);
+        assert_eq!(glass_bend(10.0, 10.0), 0.0);
+        assert!(glass_bend(2.0, 10.0) > glass_bend(5.0, 10.0));
+    }
+
+    #[test]
+    fn glass_record_matches_shader_layout() {
+        assert_eq!(std::mem::size_of::<gpui::Glass>(), 20 * 4);
+    }
+
+    #[test]
+    fn glass_copy_rect_grows_by_blur_and_clamps() {
+        let glass = |x: f32, w: f32, blur: f32| {
+            let bounds = Bounds {
+                origin: Point { x: x.into(), y: 4.0.into() },
+                size: Size { width: w.into(), height: 10.0.into() },
+            };
+            gpui::Glass {
+                order: 0,
+                pad: 0,
+                bounds,
+                content_mask: ContentMask { bounds },
+                corner_radius: 0.0.into(),
+                blur: blur.into(),
+                refraction: 0.0.into(),
+                rim: 0.0,
+                tint: gpui::transparent_black(),
+                variant: 0,
+                energy: 0.0,
+            }
+        };
+        assert_eq!(glass_copy_rect(&[], (64, 32)), None);
+        assert_eq!(glass_copy_rect(&[glass(10.0, 10.0, 1.0)], (64, 32)), Some((7, 1, 23, 17)));
+        assert_eq!(
+            glass_copy_rect(&[glass(0.0, 4.0, 0.0), glass(60.0, 10.0, 0.0)], (64, 32)),
+            Some((0, 2, 64, 16))
+        );
+    }
+
+    /// Red left half, blue right half, glass across the seam. Near the glass's
+    /// left edge the lens pulls the backdrop from further in, so blue shows where
+    /// red was painted.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn headless_glass_bends_the_backdrop() -> anyhow::Result<()> {
+        let mut renderer = WgpuHeadlessRenderer::new()?;
+        let mut scene = Scene::default();
+        scene.insert_primitive(solid_quad(0.0, 0.0, 32.0, 32.0, gpui::red()));
+        scene.insert_primitive(solid_quad(32.0, 0.0, 32.0, 32.0, gpui::blue()));
+        let bounds = Bounds {
+            origin: Point { x: 26.0.into(), y: 4.0.into() },
+            size: Size { width: 32.0.into(), height: 24.0.into() },
+        };
+        scene.insert_primitive(gpui::Glass {
+            order: 0,
+            pad: 0,
+            bounds,
+            content_mask: ContentMask { bounds },
+            corner_radius: 6.0.into(),
+            blur: 0.0.into(),
+            refraction: 8.0.into(),
+            rim: 0.0,
+            tint: gpui::transparent_black(),
+        });
+        scene.finish();
+
+        let image = renderer.render_scene_to_image(&scene, device_size(64, 32))?;
+        assert_pixel(&image, 10, 16, RED);
+        assert_pixel(&image, 27, 16, BLUE);
+        assert_pixel(&image, 45, 16, BLUE);
+        Ok(())
     }
 }

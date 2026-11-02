@@ -22,7 +22,7 @@ impl Model for Fake {
     }
 }
 
-fn settings(store: Arc<Store>) -> Settings {
+fn settings(store: Arc<Store>, bypass: bool) -> Settings {
     Settings {
         provider_name: None,
         learn: None,
@@ -34,7 +34,7 @@ fn settings(store: Arc<Store>) -> Settings {
         compact_at: None,
         spend: lh_spend::SpendMeter::new(store.clone(), lh_spend::Config::default(), "test", true),
         store,
-        bypass: false,
+        bypass,
         sudo_enabled: false,
         allow_rules: vec![],
         team: None,
@@ -54,7 +54,7 @@ async fn a_task_is_added_run_unattended_and_removed() {
     l.set_nonblocking(true).unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let app = router(AppState::new(Fake, settings(store.clone())), token.clone(), port);
+    let app = router(AppState::new(Fake, settings(store.clone(), false)), token.clone(), port);
     tokio::spawn(async move { axum::serve(tokio::net::TcpListener::from_std(l).unwrap(), app).await.unwrap() });
     let base = format!("http://127.0.0.1:{port}");
     let http = reqwest::Client::new();
@@ -79,9 +79,37 @@ async fn a_task_is_added_run_unattended_and_removed() {
     // the write asks once per chat, and nobody is there to say yes
     assert_eq!(list["schedules"][0]["last_result"], "ok, but said no to write_file");
     assert!(!project.join("out.txt").exists());
+    assert!(store.recent(10, Some("schedule_changed_files")).unwrap().is_empty(), "nothing changed, so no notice");
 
     let v: Value = call(reqwest::Method::POST, &format!("/v1/schedules/{id}/enabled"), Some(json!({"enabled": false}))).await.unwrap().json().await.unwrap();
     assert_eq!(v["enabled"], false);
     assert_eq!(call(reqwest::Method::DELETE, &format!("/v1/schedules/{id}"), None).await.unwrap().status(), 204);
     assert_eq!(call(reqwest::Method::DELETE, &format!("/v1/schedules/{id}"), None).await.unwrap().status(), 404);
+}
+
+#[tokio::test]
+async fn a_task_that_changed_files_leaves_a_notice() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("p");
+    std::fs::create_dir(&project).unwrap();
+    let store = Arc::new(Store::open(&dir.path().join("lh.db")).unwrap());
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    l.set_nonblocking(true).unwrap();
+    let port = l.local_addr().unwrap().port();
+    let token = auth::new_token();
+    // the user switched permission questions off, so the write goes through
+    let app = router(AppState::new(Fake, settings(store.clone(), true)), token.clone(), port);
+    tokio::spawn(async move { axum::serve(tokio::net::TcpListener::from_std(l).unwrap(), app).await.unwrap() });
+    let base = format!("http://127.0.0.1:{port}");
+    let r = reqwest::Client::new().post(format!("{base}/v1/schedules")).bearer_auth(&token).json(&json!({"name": "notes", "prompt": "write out.txt", "folder": project, "model": "m", "when": "every 1h"})).send().await.unwrap();
+    assert!(r.status().is_success());
+    store.with(|c| c.execute("update schedules set next_run = 0", [])).unwrap();
+    assert_eq!(lh_core::schedules_api::run_due(&store, &base, &token).await, 1);
+    assert_eq!(std::fs::read_to_string(project.join("out.txt")).unwrap(), "hi");
+    let notes = store.recent(10, Some("schedule_changed_files")).unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].detail["name"], "notes");
+    let files = notes[0].detail["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1);
+    assert!(files[0].as_str().unwrap().ends_with("out.txt"));
 }

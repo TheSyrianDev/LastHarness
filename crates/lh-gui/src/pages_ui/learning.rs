@@ -162,14 +162,12 @@ impl App {
         let id = r.id.clone();
         let editing = self.sp.learning.edit_rule.as_deref() == Some(id.as_str());
         let history_open = self.sp.learning.history_rule.as_deref() == Some(id.as_str());
-        let switch = gpui_component::switch::Switch::new(SharedString::from(format!("rule-on-{id}")))
-            .checked(r.active)
-            .on_click({
-                let id = id.clone();
-                cx.listener(move |a, on: &bool, _, cx| {
-                    a.pg_do("rules", "POST", format!("/v1/learn/rules/{id}/status"), Some(json!({"active": *on})), &["rules"], "", cx);
-                })
-            });
+        let switch = {
+            let id = id.clone();
+            self.glass_switch(format!("rule-on-{id}"), r.active, true, "Rule on", false, cx, move |a, on, _, cx| {
+                a.pg_do("rules", "POST", format!("/v1/learn/rules/{id}/status"), Some(json!({"active": on})), &["rules"], "", cx);
+            })
+        };
         let mut tags: Vec<String> = r.scope.clone();
         if r.sensitive {
             tags.push("sensitive, stays on this computer".into());
@@ -246,7 +244,7 @@ impl App {
     fn history_list(&mut self, id: &str, list: Vec<Version>, cx: &mut Context<Self>, back: impl Fn(&mut App, i64, &mut Context<App>) + Clone + 'static) -> AnyElement {
         let p = self.pal.clone();
         if list.is_empty() {
-            return self.pg_small("Loading the history...").into_any_element();
+            return self.pg_small("Loading the history…").into_any_element();
         }
         let rows: Vec<AnyElement> = list
             .into_iter()
@@ -336,7 +334,7 @@ impl App {
         card = card.child(div().flex().flex_wrap().items_center().gap_1().child(show).child(del));
         if open {
             match self.sp.data.get(&format!("skill:{name}")).cloned() {
-                None => card = card.child(self.pg_small("Loading...")),
+                None => card = card.child(self.pg_small("Loading…")),
                 Some(v) => {
                     let files: Vec<&str> = arr(&v, "files").iter().filter_map(Value::as_str).collect();
                     if !files.is_empty() {

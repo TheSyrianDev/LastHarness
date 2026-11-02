@@ -159,7 +159,19 @@ impl App {
             }
         }
         Some(match page {
-            Category::Models => self.models_keys_block(window, cx),
+            Category::Models => {
+                let rank = self.button("rank-models", "Rank my models from benchmarks", crate::ui::Kind::Normal, cx, |a, w, cx| {
+                    a.close_settings(w, cx);
+                    a.rank_models(w, cx);
+                });
+                div().flex().flex_col().gap_3()
+                    .child(div().flex().flex_col().gap_1()
+                        .child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Model slider"))
+                        .child(div().text_xs().text_color(self.pal.muted).child("Five stops from fastest to smartest. The assistant can look up benchmarks and suggest which model goes where; nothing changes until you set it. Set a stop yourself in the model list."))
+                        .child(div().flex().child(rank)))
+                    .child(self.models_keys_block(window, cx))
+                    .into_any_element()
+            }
             Category::Learning => self.learning_block(window, cx),
             _ => self.team_block(window, cx),
         })
@@ -225,11 +237,11 @@ impl App {
 
     pub fn pg_card(&self) -> Div {
         let p = &self.pal;
-        div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
+        div().flex().flex_col().gap_2().p_3().rounded(p.inner).bg(p.sunken).text_color(p.text)
     }
 
     pub fn pg_heading(&self, t: impl Into<SharedString>) -> Div {
-        div().text_color(self.pal.text).pt_2().child(t.into())
+        div().text_color(self.pal.text).font_weight(gpui::FontWeight::MEDIUM).pt_3().child(t.into())
     }
 
     pub fn pg_small(&self, t: impl Into<SharedString>) -> Div {
@@ -244,7 +256,9 @@ impl App {
 
     pub fn pg_error(&self, name: &str) -> Option<AnyElement> {
         let p = &self.pal;
-        self.sp.errors.get(name).map(|e| div().min_w_0().text_sm().text_color(p.danger).child(e.clone()).into_any_element())
+        // the page's banner already says it; the same words again under a section are noise
+        let banner = self.panels.settings_error.as_deref();
+        self.sp.errors.get(name).filter(|e| Some(e.as_str()) != banner).map(|e| div().min_w_0().text_sm().text_color(p.danger).child(e.clone()).into_any_element())
     }
 
     pub fn pg_field(&mut self, label: &str, key: &str, placeholder: &str, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

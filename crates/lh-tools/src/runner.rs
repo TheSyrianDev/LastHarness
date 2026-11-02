@@ -32,6 +32,12 @@ pub trait Model: Send + Sync {
     fn models(&self) -> impl std::future::Future<Output = Result<Vec<String>, Error>> + Send {
         async { Ok(Vec::new()) }
     }
+
+    /// The same list with what the server says about each: `{"id", "modes": [..], "loaded": bool}` when it
+    /// says it (llama-swap does). Default: names only.
+    fn model_details(&self) -> impl std::future::Future<Output = Result<Vec<serde_json::Value>, Error>> + Send {
+        async { Ok(self.models().await?.into_iter().map(|id| serde_json::json!({"id": id})).collect()) }
+    }
 }
 
 impl Model for Provider {
@@ -41,6 +47,10 @@ impl Model for Provider {
 
     async fn models(&self) -> Result<Vec<String>, Error> {
         Provider::models(self).await
+    }
+
+    async fn model_details(&self) -> Result<Vec<serde_json::Value>, Error> {
+        Provider::model_details(self).await
     }
 
     async fn capabilities(&self, model: &str) -> Capabilities {
@@ -114,6 +124,9 @@ pub enum TurnEvent {
     Decision { id: String, tool: String, action: String, outcome: Outcome },
     /// The text that goes back to the model for that call, and how to undo its effect if it has one.
     ToolResult { id: String, text: String, undo: Option<Undo> },
+    /// The diff of a file write that runs without a question (a trusted chat), shown for reading
+    /// only. Sent when `permissions.show_diff` allows it. Never logged.
+    Diff { id: String, path: String, diff: String },
 }
 
 /// Called before every model call. Returns `false` to stop the turn. A worker's pause waits inside it.
@@ -235,6 +248,7 @@ async fn codemode<M: Model, T: Meter, A: Asker>(
 ) -> String {
     let script = args["script"].as_str().unwrap_or("").to_string();
     let list: Vec<(String, String)> = tools.defs().into_iter().filter(|d| d.name != "codemode").map(|d| (d.name, d.description)).collect();
+    let kv = tools.codemode_kv.clone();
     type Ask = (String, Value, std::sync::mpsc::Sender<Result<String, String>>);
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Ask>();
     let mut job = tokio::task::spawn_blocking(move || {
@@ -245,7 +259,7 @@ async fn codemode<M: Model, T: Meter, A: Asker>(
             }
             rrx.recv().unwrap_or_else(|_| Err("the turn was stopped".into()))
         });
-        crate::codemode::run(&script, &list, call)
+        crate::codemode::run(&script, &list, kv, call)
     });
     let mut n = 0;
     loop {
@@ -254,6 +268,12 @@ async fn codemode<M: Model, T: Meter, A: Asker>(
                 let Some((name, args, reply)) = ask else { continue };
                 if name == "codemode" {
                     let _ = reply.send(Err("a script cannot start another script".into()));
+                    continue;
+                }
+                // listing the models changes nothing and leaves no record
+                if name == crate::codemode::MODELS_CALL {
+                    let r = model.models().await.map(|m| serde_json::to_string(&m).unwrap_or_default()).map_err(|e| e.to_string());
+                    let _ = reply.send(r);
                     continue;
                 }
                 n += 1;
@@ -328,7 +348,7 @@ async fn execute<M: Model, T: Meter, A: Asker>(
         }
         Decision::Ask { reason, session_grant } => {
             let detail = match &action {
-                Action::Write(path) => crate::diff::diff(std::fs::read_to_string(path).ok().as_deref(), args["content"].as_str().unwrap_or("")),
+                Action::Write(path) if perms.show_diff().shows(perms.writes_trusted()) => write_diff(path, &args),
                 _ => String::new(),
             };
             let req = AskRequest { tool: name, what: format!("{action:?}"), reason, worker: &opts.worker, detail };
@@ -345,7 +365,14 @@ async fn execute<M: Model, T: Meter, A: Asker>(
                 }
             }
         }
-        Decision::Allow => decision(Outcome::Allowed),
+        Decision::Allow => {
+            decision(Outcome::Allowed);
+            if let Action::Write(path) = &action {
+                if perms.show_diff().shows(perms.writes_trusted()) {
+                    emit(TurnEvent::Diff { id: id.into(), path: path.display().to_string(), diff: write_diff(path, &args) });
+                }
+            }
+        }
     }
     // the user's own hooks, for calls the rules let through
     if let Some(h) = &tools.hooks {
@@ -373,6 +400,10 @@ async fn execute<M: Model, T: Meter, A: Asker>(
         Some(h) => (h.after(name, &args, perms.root(), text).await, undo),
         None => (text, undo),
     }
+}
+
+fn write_diff(path: &std::path::Path, args: &Value) -> String {
+    crate::diff::diff(std::fs::read_to_string(path).ok().as_deref(), args["content"].as_str().unwrap_or(""))
 }
 
 /// Image generation needs the model endpoint, the spending rules and a place to save the file, so it
