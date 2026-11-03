@@ -156,7 +156,19 @@ impl Snooze {
 
 /// The local offset from UTC in seconds, read once from `date +%z`; 0 when that fails.
 pub fn local_offset() -> i64 {
-    let out = std::process::Command::new("date").arg("+%z").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    #[cfg(windows)]
+    let mut c = {
+        use std::os::windows::process::CommandExt;
+        let mut c = std::process::Command::new("powershell");
+        // Windows has no `date +%z`; this prints the same "+0300" form, without opening a window
+        c.args(["-NoProfile", "-Command", "(Get-Date).ToString('zzz').Replace(':','')"]).creation_flags(0x0800_0000);
+        c
+    };
+    #[cfg(not(windows))]
+    let mut c = std::process::Command::new("date");
+    #[cfg(not(windows))]
+    c.arg("+%z");
+    let out = c.output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
     parse_offset(&out)
 }
 

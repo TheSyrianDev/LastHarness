@@ -280,11 +280,16 @@ impl Tool {
                         c.arg("sh");
                         c
                     }
+                    // Windows has no sh: cmd runs the line as it is
+                    None if cfg!(windows) => tokio::process::Command::new("cmd"),
                     None => tokio::process::Command::new("sh"),
                 };
+                if cfg!(windows) && bwrap.is_none() {
+                    command.arg("/C").raw_arg_windows(&cmd);
+                } else {
+                    command.arg("-c").arg(&cmd);
+                }
                 command
-                    .arg("-c")
-                    .arg(&cmd)
                     .current_dir(root)
                     .env_clear()
                     .envs(safe_env());
@@ -344,8 +349,9 @@ pub fn sandbox_args(root: &std::path::Path) -> Vec<std::ffi::OsString> {
 /// messaging token is read from one), and `env` would hand them to the model, so only plain, harmless
 /// ones go through.
 fn safe_env() -> Vec<(String, String)> {
-    const KEEP: &[&str] = &["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TERM", "TZ", "TMPDIR", "DISPLAY", "WAYLAND_DISPLAY", "SSH_AUTH_SOCK", "CARGO_HOME", "RUSTUP_HOME", "GOPATH", "NO_COLOR"];
-    std::env::vars().filter(|(k, _)| KEEP.contains(&k.as_str()) || k.starts_with("LC_")).collect()
+    // the Windows names are what cmd and most programs need to start at all
+    const KEEP: &[&str] = &["SYSTEMROOT", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "Path", "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TERM", "TZ", "TMPDIR", "DISPLAY", "WAYLAND_DISPLAY", "SSH_AUTH_SOCK", "CARGO_HOME", "RUSTUP_HOME", "GOPATH", "NO_COLOR"];
+    std::env::vars().filter(|(k, _)| KEEP.iter().any(|w| w.eq_ignore_ascii_case(k)) || k.starts_with("LC_")).collect()
 }
 
 /// Read a stream, keep the first part and throw the rest away, so a command that prints without end
@@ -369,6 +375,11 @@ async fn read_capped<R: tokio::io::AsyncRead + Unpin>(r: Option<R>) -> Vec<u8> {
 
 /// Stop the command and everything it started.
 fn kill_group(pid: Option<u32>) {
+    #[cfg(windows)]
+    if let Some(p) = pid {
+        let _ = std::process::Command::new("taskkill").args(["/F", "/T", "/PID", &p.to_string()]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+    }
+    #[cfg(not(windows))]
     if let Some(p) = pid {
         let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{p}")]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
     }
@@ -747,5 +758,20 @@ mod sandbox_tests {
         assert!(!net.allows("curl https://notgithub.com"));
         assert!(!net.allows("cargo build"), "no host named: off");
         assert_eq!(SandboxNet::from_settings("bogus", "", "").mode, NetMode::Ask);
+    }
+}
+
+/// `cmd /C` takes the rest of its line as typed, so the command must not be quoted again.
+trait RawArg {
+    fn raw_arg_windows(&mut self, s: &str) -> &mut Self;
+}
+impl RawArg for tokio::process::Command {
+    #[cfg(windows)]
+    fn raw_arg_windows(&mut self, s: &str) -> &mut Self {
+        self.raw_arg(s)
+    }
+    #[cfg(not(windows))]
+    fn raw_arg_windows(&mut self, s: &str) -> &mut Self {
+        self.arg(s)
     }
 }

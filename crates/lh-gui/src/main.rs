@@ -16,6 +16,7 @@ use gpui::*;
 use gpui_component::Root;
 
 fn main() {
+    lh_config::platform_dirs();
     let cfg = match config::Config::from_args(std::env::args().skip(1)) {
         Ok(c) => c,
         Err(e) => {
@@ -23,6 +24,7 @@ fn main() {
             std::process::exit(2);
         }
     };
+    lh_gui::config::start_core_if_missing(&cfg.base, &cfg.token_file);
     tray::spawn();
     gpui_platform::application().run(move |cx| {
         gpui_component::init(cx);

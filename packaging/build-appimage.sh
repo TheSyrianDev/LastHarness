@@ -5,11 +5,11 @@
 set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
-cargo build --release -p lh-gui
+cargo build --release -p lh-gui -p lh-core
 app="$root/target/AppDir"
 rm -rf "$app"
 mkdir -p "$app/usr/bin"
-cp target/release/lastharness-gui "$app/usr/bin/"
+cp target/release/lastharness-gui target/release/lhd "$app/usr/bin/"
 ld="${LINUXDEPLOY:-linuxdeploy}"
 # GPU drivers (Vulkan, Mesa) are never bundled: the app uses the host's.
 ARCH=x86_64 "$ld" --appdir "$app" \

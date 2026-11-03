@@ -23,6 +23,7 @@ fn fail(msg: impl std::fmt::Display) -> ! {
 
 #[tokio::main]
 async fn main() {
+    lh_config::platform_dirs();
     let mut a = std::env::args().skip(1);
     let (mut listen, mut provider, mut key, mut token_file) = ("127.0.0.1:7842".to_string(), None, None, None);
     let (mut store_path, mut spend_path, mut compact_at, mut idle_after) = (None, None, None::<u64>, None::<u64>);
@@ -219,6 +220,9 @@ async fn main() {
     let state = AppState::new(Provider::new(provider, api_key), settings);
     state.set_kv_endpoint(&provider_url, api_key_for_kv);
     state.apply_settings(&cfg, &[]);
+    if !no_sandbox && !cfg!(target_os = "linux") {
+        eprintln!("lhd: WARNING: the sandbox needs bubblewrap, which only Linux has. The model's commands run without it here: they can change any file your user can. Permission prompts still apply.");
+    }
     if no_sandbox {
         state.turn_sandbox_off();
     }

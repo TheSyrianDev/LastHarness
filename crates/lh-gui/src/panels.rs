@@ -892,14 +892,14 @@ impl App {
         self.content_note = None;
         match item.browser_target() {
             None => self.content_note = Some("This page is not a local file, so it cannot be opened.".into()),
-            Some(path) => match std::process::Command::new("xdg-open").arg(&path).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+            Some(path) => match lh_gui::config::desktop_open(&path).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
                 Ok(mut child) => {
                     // reap it when it ends, without waiting here
                     std::thread::spawn(move || {
                         let _ = child.wait();
                     });
                 }
-                Err(e) => self.content_note = Some(format!("Could not start the browser (xdg-open): {e}")),
+                Err(e) => self.content_note = Some(format!("Could not start the browser: {e}")),
             },
         }
         cx.notify();

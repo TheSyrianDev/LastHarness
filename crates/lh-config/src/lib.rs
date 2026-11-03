@@ -147,6 +147,23 @@ pub fn normalize(key: &str, raw: &str) -> Result<String> {
     })
 }
 
+/// Windows has no XDG folders and no `HOME`. Point those variables at the per-user folders once, at start,
+/// so every path built from them lands in `%APPDATA%` (settings) and `%LOCALAPPDATA%` (data, state, token),
+/// never in a relative folder. A variable already set is kept. Elsewhere this does nothing.
+pub fn platform_dirs() {
+    #[cfg(windows)]
+    {
+        let get = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
+        let local = get("LOCALAPPDATA").or_else(|| get("USERPROFILE").map(|h| PathBuf::from(h).join("AppData").join("Local").into_os_string()));
+        let roaming = get("APPDATA").or_else(|| local.clone());
+        for (k, v) in [("HOME", get("USERPROFILE")), ("XDG_CONFIG_HOME", roaming), ("XDG_DATA_HOME", local.clone()), ("XDG_STATE_HOME", local.clone()), ("XDG_RUNTIME_DIR", local)] {
+            if let (None, Some(v)) = (get(k), v) {
+                std::env::set_var(k, v);
+            }
+        }
+    }
+}
+
 /// The settings file. Unknown keys in it are kept as they are and ignored.
 #[derive(Clone, Debug)]
 pub struct ConfigFile {

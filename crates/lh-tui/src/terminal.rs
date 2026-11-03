@@ -68,6 +68,7 @@ fn fetch_branch(client: Arc<Client>, session: String, input: Option<String>, tx:
 
 #[tokio::main]
 pub async fn run() {
+    lh_config::platform_dirs();
     let mut a = std::env::args().skip(1).peekable();
     let (mut url, mut token_file, mut model, mut ask_all, mut incognito) = ("http://127.0.0.1:7842".to_string(), default_token_path(), None, false, false);
     let mut memory_cmd: Option<Vec<String>> = None;
