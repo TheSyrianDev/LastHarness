@@ -13,7 +13,7 @@ A local-first AI harness with a memory that lasts.</p>
 
 <p align="center">
   <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0-or-later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue"></a>
+  <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue"></a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-orange">
 </p>
 
@@ -75,4 +75,4 @@ The browser page is served over HTTPS when `web.listen` is set (for example `lh 
 - Installing a plugin from a link (folders only), and project-level skills.
 - No messaging channel has been tried against a real account; they are tested against mock services.
 
-Tests: `cargo test --workspace` (the real embedding model test is skipped with `-- --skip real_embeddinggemma`). Licence: AGPL-3.0-or-later (see `LICENSE`); `third_party/` keeps its own licences.
+Tests: `cargo test --workspace` (the real embedding model test is skipped with `-- --skip real_embeddinggemma`). Licence: PolyForm Noncommercial 1.0.0 (see `LICENSE` and `COMMERCIAL-LICENSING.md`); `third_party/` keeps its own licences.

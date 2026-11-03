@@ -2,7 +2,7 @@
 name = "lh-pageview-engine"
 version = "0.0.0"
 edition = "2021"
-license = "AGPL-3.0-or-later"
+license = "PolyForm-Noncommercial-1.0.0"
 description = "The page drawing helper program: Blitz inside a process of its own, with no network, no scripts and limits on itself. The app starts it for each open web page (see crates/lh-pageview). This crate is its own cargo workspace on purpose: Blitz's style engine (stylo) does not compile when it is built together with the window toolkit, because the toolkit turns on a feature of the `log` crate that makes one of stylo's derives ambiguous. Build it with `build.sh` (or cargo's --manifest-path)."
 publish = false
 

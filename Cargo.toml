@@ -7,7 +7,7 @@ exclude = ["crates/lh-pageview-engine", "crates/lh-pageview-servo"]
 [workspace.package]
 version = "0.0.0"
 edition = "2021"
-license = "AGPL-3.0-or-later"
+license = "PolyForm-Noncommercial-1.0.0"
 repository = "https://github.com/TheSyrianDev/LastHarness"
 
 [workspace.dependencies]

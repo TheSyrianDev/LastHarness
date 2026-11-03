@@ -8,4 +8,4 @@ repository is a snapshot of development, not a single change.
   (Servo, a large build). Build them with their `build.sh`.
 - Issues and pull requests are welcome. A pull request is applied in the development repository and comes back
   here with the next snapshot.
-- Licence: AGPL-3.0-or-later (see `LICENSE`). The Servo helper is MPL-2.0, and `third_party/` keeps its own licences.
+- Licence: PolyForm Noncommercial 1.0.0 (see `LICENSE` and `COMMERCIAL-LICENSING.md`). The Servo helper is MPL-2.0, and `third_party/` keeps its own licences.
