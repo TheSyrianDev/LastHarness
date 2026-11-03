@@ -24,6 +24,7 @@
       <span id="chat-title" class="chat-title">New chat</span>
       <span id="chat-meta" class="meta"></span>
       <span class="grow"></span>
+      <button type="button" class="icon-btn" id="panel-toggle" aria-label="Show the side panel" title="Side panel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M14 5v14"/></svg></button>
       <button type="button" class="pill" id="private-btn" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Private</span></button>
     </header>
     <div class="scroll" id="scroll">
@@ -53,7 +54,7 @@
     </div>
   </main>
   <aside class="panel" id="panel" aria-label="Side panel" hidden>
-    <div class="panel-head"><span id="panel-title"></span><button type="button" id="panel-close" aria-label="Close the panel">×</button></div>
+    <div class="panel-head"><div class="dock-tabs" id="dock-tabs" role="tablist" aria-label="Side panel sections"></div><span id="panel-title"></span><span class="grow"></span><button type="button" class="icon-btn" id="panel-widen" aria-label="Widen" title="Widen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg></button><button type="button" class="icon-btn" id="panel-close" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="panel-body" id="panel-body"></div>
   </aside>
 </div>

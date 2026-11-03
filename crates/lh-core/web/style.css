@@ -461,3 +461,27 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .slider-block .stop-titles { max-width: none; }
 .slider-block .set-row { min-height: 0; }
 .slider-block .stop-titles input { background: var(--sunken); min-height: 32px; padding-block: 4px; }
+/* side panel as GPUI's right_panel: a floating card, tabs with counts, widen and close; Work lists the chat's steps */
+.app.empty #panel-toggle { display: none; }
+#panel-toggle[aria-pressed="true"] { color: var(--text); }
+.panel { width: 380px; border: 0; border-radius: var(--radius); box-shadow: var(--shadow-1); padding: 8px; gap: 8px; }
+.panel.wide { width: min(640px, 50vw); }
+.panel-head { height: auto; padding: 0; gap: 4px; font-weight: 400; }
+.panel-head #panel-title { font-weight: 500; padding-inline-start: 8px; }
+.panel-head #panel-title:empty { display: none; }
+.panel-head .icon-btn { width: 32px; height: 32px; font-size: 0; color: var(--muted); }
+.panel:not(.dock) #panel-widen { display: none; }
+.dock-tabs { display: flex; gap: 2px; padding: 2px; border-radius: var(--inner); background: color-mix(in srgb, var(--sunken) 60%, transparent); }
+.dock-tabs:empty { display: none; }
+.dock-tab { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 0; border-radius: var(--inner); font-size: 14px; color: var(--muted); background: transparent; }
+.dock-tab[aria-selected="true"] { background: var(--surface); color: var(--text); font-weight: 500; box-shadow: 0 1px 2px #00000014; }
+.dock-tab .n { font-size: 12px; color: var(--muted); font-weight: 400; }
+.panel-body { padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.panel.dock .panel-body button.work-step { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; border: 0; background: transparent; border-radius: var(--inner); text-align: start; font-size: 14px; color: var(--text); }
+.panel.dock .panel-body button.work-step:hover { background: var(--button); }
+.work-step .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.work-step .dot.done { background: color-mix(in srgb, var(--muted) 50%, transparent); }
+.work-step .w { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.work-args { flex-basis: 100%; padding-inline-start: 16px; font: 12px var(--mono, ui-monospace, monospace); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+.work-sec { padding-top: 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.panel-head .dock-tab { font-size: 14px; line-height: 20px; min-height: 0; }

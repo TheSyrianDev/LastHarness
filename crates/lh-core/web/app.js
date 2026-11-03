@@ -25,7 +25,7 @@ const field = (label, input) => h('p', {}, h('label', {}, label + ' ', input));
 // Pages other than the chat open in the side panel; before sign-in they fill the gate.
 function show(title, ...nodes) {
   const host = signedIn ? $('#panel-body') : gate;
-  if (signedIn) { $('#panel').hidden = false; $('#panel-title').textContent = title; }
+  if (signedIn) { $('#panel').hidden = false; $('#panel').classList.remove('dock'); $('#dock-tabs').replaceChildren(); $('#panel-title').textContent = title; }
   host.replaceChildren(h('h2', { tabindex: '-1', id: 'view-title' }, title), ...nodes);
   $('#view-title').focus();
 }
@@ -657,6 +657,35 @@ function message(role, text, opts = {}) {
 // transcript.rs: thinking and tool calls fold into one quiet line, "Worked for 14 s, 3 steps", that opens to the list
 const dur = (t) => t < 60 ? `${t} s` : t % 60 === 0 ? `${t / 60} min` : `${Math.floor(t / 60)} min ${t % 60} s`;
 const stepsWord = (n) => `${n} step${n === 1 ? '' : 's'}`;
+// GPUI's step_words: a tool call as a short line, "Read ~/garden/notes.md"
+const VERBS = { read_file: 'Read', write_file: 'Wrote', edit_file: 'Edited', list_dir: 'Listed', list_files: 'Listed', run_command: 'Ran', bash: 'Ran', shell: 'Ran', web_fetch: 'Opened', fetch: 'Opened', web_search: 'Searched for', search: 'Searched for', recall: 'Looked up', remember: 'Saved' };
+function stepWords(name, args) {
+  let a = {}; try { a = JSON.parse(args || '{}') || {}; } catch { /* not json */ }
+  const t = ['path', 'file', 'command', 'url', 'query', 'name', 'text'].map((k) => a[k]).find((v) => typeof v === 'string');
+  const w = name in VERBS ? VERBS[name] : name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  const s = t ? `${w} ${t.replace(/\s+/g, ' ')}` : w;
+  return s.length > 120 ? s.slice(0, 119) + '…' : s;
+}
+// the side panel with a chat open, as GPUI's right_panel: a row of tabs with counts, widen and close, then Work
+let chatSteps = [];
+function dockOpen() { return !$('#panel').hidden && $('#panel').classList.contains('dock'); }
+function showWork() {
+  $('#panel').hidden = false; $('#panel').classList.add('dock'); $('#panel-title').textContent = '';
+  $('#panel-toggle').setAttribute('aria-pressed', 'true');
+  const n = chatSteps.length;
+  $('#dock-tabs').replaceChildren(h('button', { type: 'button', role: 'tab', 'aria-selected': 'true', class: 'dock-tab' }, 'Work', n ? h('span', { class: 'n' }, String(n)) : null));
+  const body = [];
+  if (n) {
+    body.push(h('div', { class: 'work-sec' }, 'Steps in this chat'));
+    for (const st of [...chatSteps].reverse()) {
+      const args = h('div', { class: 'work-args', hidden: true }, st.args);
+      body.push(h('button', { type: 'button', class: 'work-step', 'aria-label': st.words, onclick: () => { args.hidden = !args.hidden; } },
+        h('span', { class: st.done ? 'dot done' : 'dot' }), h('span', { class: 'w' }, st.words), args));
+    }
+  } else body.push(h('p', { class: 'note' }, 'Nothing is being done for this chat. Tool steps and department work show up here.'));
+  $('#panel-body').replaceChildren(...body);
+}
+function hideDock() { $('#panel').hidden = true; $('#panel').classList.remove('dock'); $('#panel-toggle').setAttribute('aria-pressed', 'false'); }
 function steps() {
   const list = h('div', { class: 'step-list', role: 'list', 'aria-label': 'Steps', hidden: true });
   const chev = svgIcon('M9 6l6 6-6 6', { class: 'chev', 'aria-hidden': 'true' });
@@ -687,7 +716,8 @@ function steps() {
       const head = h('button', { type: 'button', class: 'step-head', 'aria-expanded': 'false', onclick: () => { more.hidden = !more.hidden; head.setAttribute('aria-expanded', String(!more.hidden)); } }, `${name} ${String(args || '').slice(0, 90)}`.trim());
       list.append(h('div', { class: 'step', role: 'listitem' }, head, more));
       label(false);
-      return { result(t) { result.textContent = String(t).slice(0, 4000); } };
+      const st = { words: stepWords(name, args), args: String(args || ''), done: false }; chatSteps.push(st); if (dockOpen()) showWork();
+      return { result(t) { result.textContent = String(t).slice(0, 4000); st.done = true; if (dockOpen()) showWork(); } };
     },
     done() { think = null; if (n) label(true); else box.remove(); },
   };
@@ -724,7 +754,7 @@ function newChat() {
   chat.ctl?.abort();
   chat = { id: null, stored: null, busy: false, ctl: null, mode: 'chat', incognito: false };
   setPrivate(false); greet();
-  log().replaceChildren(); $('#asks').replaceChildren();
+  log().replaceChildren(); $('#asks').replaceChildren(); chatSteps = []; if (dockOpen()) hideDock();
   $('#chat-title').textContent = 'New chat'; $('#chat-meta').textContent = '';
   setEmpty(true); loadChats(); $('#chat-input').focus();
   if (location.hash && location.hash !== '#/chat') location.hash = '#/chat';
@@ -813,7 +843,9 @@ function chatSetup() {
   for (const b of document.querySelectorAll('#modes button')) b.addEventListener('click', () => setMode(b.dataset.mode));
   $('#private-btn').addEventListener('click', () => setPrivate(!chat.incognito));
   for (const b of document.querySelectorAll('#chips button')) b.addEventListener('click', () => { input.value = b.dataset.text; grow(); input.focus(); });
-  $('#panel-close').addEventListener('click', () => { $('#panel').hidden = true; location.hash = '#/chat'; });
+  $('#panel-close').addEventListener('click', () => { const d = dockOpen(); hideDock(); if (!d) location.hash = '#/chat'; });
+  $('#panel-toggle').addEventListener('click', () => (dockOpen() ? hideDock() : showWork()));
+  $('#panel-widen').addEventListener('click', () => $('#panel').classList.toggle('wide'));
   $('#side-toggle').addEventListener('click', () => { const f = $('#app').classList.toggle('folded'); pref('folded', f ? '1' : ''); });
   if (pref('folded')) $('#app').classList.add('folded');
   for (const b of document.querySelectorAll('[data-foot]')) b.addEventListener('click', () => { const g = b.dataset.foot; location.hash = location.hash === `#/${g}` ? '#/chat' : `#/${g}`; });
