@@ -485,3 +485,14 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .work-args { flex-basis: 100%; padding-inline-start: 16px; font: 12px var(--mono, ui-monospace, monospace); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
 .work-sec { padding-top: 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .panel-head .dock-tab { font-size: 14px; line-height: 20px; min-height: 0; }
+#palette { position: fixed; inset: 0; z-index: 40; display: flex; justify-content: center; align-items: flex-start; padding-top: 90px; background: #00000047; }
+.palette-box { width: 560px; max-width: 100%; display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-2), 0 0 0 1px var(--border); }
+.palette-box input { height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--inner); background: var(--sunken); color: var(--text); font: inherit; font-size: 14px; }
+#palette-list { display: flex; flex-direction: column; gap: 2px; }
+.palette-row { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: var(--inner); cursor: pointer; }
+.palette-row:hover { background: var(--button); }
+.palette-row[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.palette-row .g { width: 76px; flex: none; font-size: 12px; color: var(--muted); }
+.palette-row .t { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.palette-row .k, .palette-none { font-size: 12px; color: var(--muted); }
+.palette-none { padding: 6px 8px; font-size: 14px; }

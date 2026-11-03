@@ -731,6 +731,7 @@ async function loadChats() {
   const ul = $('#chat-list');
   let list = [];
   try { list = (await json('/v1/chats')).chats || []; } catch { /* chats may be off */ }
+  chatCache = list;
   ul.replaceChildren(...list.map((c) => {
     const li = h('li', {});
     const row = () => li.replaceChildren(
@@ -849,14 +850,76 @@ function chatSetup() {
   $('#side-toggle').addEventListener('click', () => { const f = $('#app').classList.toggle('folded'); pref('folded', f ? '1' : ''); });
   if (pref('folded')) $('#app').classList.add('folded');
   for (const b of document.querySelectorAll('[data-foot]')) b.addEventListener('click', () => { const g = b.dataset.foot; location.hash = location.hash === `#/${g}` ? '#/chat' : `#/${g}`; });
-  $('#side-search').addEventListener('click', () => { const q = prompt('Search chats'); if (q == null) return; for (const li of $('#chat-list').children) li.hidden = !li.textContent.toLowerCase().includes(q.toLowerCase()); });
+  $('#side-search').addEventListener('click', openPalette);
   addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
     if (e.ctrlKey && e.key.toLowerCase() === 'b') { e.preventDefault(); $('#side-toggle').click(); }
     if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); }
   });
   $('#model-btn').addEventListener('click', modelButton);
   greet(); loadModels(); newChat();
 }
+// The command palette (Ctrl+K), as in GPUI (lh-gui palette.rs): every place and setting by typing a few letters.
+let chatCache = [];
+function paletteEntries() {
+  const e = (group, title, hint, run) => ({ group, title, hint, run });
+  const cur = 'current';
+  const v = [e('Do', 'New chat', 'Ctrl+N', newChat), e('Do', 'Settings', 'Ctrl+Shift+S', () => { location.hash = '#/settings'; }),
+    e('Do', 'Show or hide the chat list', 'Ctrl+B', () => $('#side-toggle').click()), e('Tab', 'Open Work', 'Ctrl+Shift+W', showWork)];
+  for (const c of chatCache) v.push(e('Chat', c.title || 'Untitled', c.id === chat.stored ? cur : '', () => openStored(c)));
+  for (const g of modelGroups || []) { const m = defaultEntry(g); if (m) v.push(e('Model', g.label, g.members.some((x) => x.id === modelChoice.id) ? cur : '', () => setChoice(m.id, ''))); }
+  for (const f of [...new Set(themes.map((t) => t.name))]) v.push(e('Look', f, f === lookFamily() ? cur : '', () => setLook(f)));
+  const dark = (curTheme?.mode || '') === 'dark';
+  v.push(e('Mode', dark ? 'Switch to light' : 'Switch to dark', 'Ctrl+T', () => setLook(null, dark ? 'light' : 'dark')));
+  for (const [m, t] of [['light', 'Light'], ['dark', 'Dark'], ['system', 'Follow the system']]) v.push(e('Mode', t, m === lookMode() ? cur : '', () => setLook(null, m)));
+  const dir = pref('direction') || 'auto';
+  for (const [d, t] of [['auto', 'Follow the desktop language'], ['ltr', 'Left to right'], ['rtl', 'Right to left']]) v.push(e('Direction', t, d === dir ? cur : 'Ctrl+Shift+R', () => { pref('direction', d); applyLayout(); }));
+  const w = pref('chat-width') || '860';
+  for (const x of ['700', '900', '1100', 'full']) v.push(e('Width', `Chat width: ${x === 'full' ? 'Full' : `${x} px`}`, x === w ? cur : '', () => { pref('chat-width', x); applyLayout(); }));
+  return v;
+}
+// every word must appear in the title or the group; the start of the title counts most, then the start of a word
+function paletteFilter(entries, query) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return entries;
+  const scored = [];
+  entries.forEach((en, i) => {
+    const t = en.title.toLowerCase(), g = en.group.toLowerCase(); let score = 0;
+    for (const w of words) {
+      if (t.startsWith(w)) score += 0; else if (t.split(/[^\p{L}\p{N}]+/u).some((x) => x.startsWith(w))) score += 1;
+      else if (t.includes(w)) score += 2; else if (g.includes(w)) score += 3; else return;
+    }
+    scored.push([score, i]);
+  });
+  return scored.sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, i]) => entries[i]);
+}
+function openPalette() {
+  if ($('#palette')) return closePalette();
+  const all = paletteEntries();
+  let rows = all, sel = 0;
+  const input = h('input', { type: 'text', placeholder: 'Type a command, a chat, a model or a look', 'aria-label': 'Type a command, a chat, a model or a look' });
+  const list = h('div', { id: 'palette-list', role: 'listbox', 'aria-label': 'Commands' });
+  const run = (en) => { closePalette(); en.run(); };
+  const draw = () => {
+    if (!rows.length) return list.replaceChildren(h('div', { class: 'palette-none' }, 'Nothing matches what you typed.'));
+    const start = Math.max(0, Math.min(sel - 8, rows.length - 9));
+    list.replaceChildren(...rows.slice(start, start + 9).map((en, k) => h('div', { class: 'palette-row', role: 'option', 'aria-selected': String(start + k === sel), 'aria-label': `${en.group}: ${en.title}`, onclick: () => run(en) },
+      h('span', { class: 'g' }, en.group), h('span', { class: 't' }, en.title), h('span', { class: 'k' }, en.hint))));
+  };
+  input.addEventListener('input', () => { rows = paletteFilter(all, input.value); sel = 0; draw(); });
+  const veil = h('div', { id: 'palette', role: 'dialog', 'aria-label': 'Command palette', onmousedown: (e) => { if (e.target === veil) closePalette(); } }, h('div', { class: 'palette-box' }, input, list));
+  veil.addEventListener('keydown', (e) => {
+    const n = rows.length, k = e.key;
+    if (k === 'ArrowDown' || (e.ctrlKey && k === 'n')) sel = n ? (sel + 1) % n : 0;
+    else if (k === 'ArrowUp' || (e.ctrlKey && k === 'p')) sel = n ? (sel + n - 1) % n : 0;
+    else if (k === 'Escape') return closePalette();
+    else if (k === 'Enter') { if (rows[sel]) run(rows[sel]); return e.preventDefault(); }
+    else return;
+    e.preventDefault(); draw();
+  });
+  document.body.append(veil); draw(); input.focus();
+}
+function closePalette() { if ($('#palette')) { $('#palette').remove(); $('#chat-input')?.focus(); } }
 function question(host, answerPath, what, reason) {
   const allow = h('button', { type: 'button' }, 'Allow');
   const deny = h('button', { type: 'button' }, 'Do not allow');
