@@ -2,6 +2,7 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -24,6 +25,110 @@ jobs:
           LINUXDEPLOY: ${{ github.workspace }}/linuxdeploy
           APPIMAGE_EXTRACT_AND_RUN: '1'
         run: packaging/build-appimage.sh
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
+          name: appimage
+          path: dist/*.AppImage
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
           files: dist/*.AppImage
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p lh-core -p lh-tui -p lh-gui
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "dev-$($env:GITHUB_SHA.Substring(0,7))" }
+          $dir = "dist/LastHarness"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          foreach ($b in 'lastharness-gui','lhd','lh','lastharness') { Copy-Item "target/release/$b.exe" $dir }
+          Copy-Item README.md, LICENSE, COMMERCIAL-LICENSING.md $dir
+          Compress-Archive -Path "$dir/*" -DestinationPath "dist/LastHarness-$ver-windows-x64.zip"
+          Get-ChildItem dist
+      - name: Smoke test
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $d = "dist/LastHarness"
+          $state = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/lh-smoke"
+          $tok = "$state/token"
+          $lhd = Start-Process -FilePath "$d/lhd.exe" -ArgumentList "--listen","127.0.0.1:17842","--token-file",$tok,"--store","$state/lh.db","--provider","http://127.0.0.1:9/v1" -PassThru -RedirectStandardError "$state/lhd.err" -RedirectStandardOutput "$state/lhd.out"
+          $ok = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep 1
+            if (Test-Path $tok) {
+              $t = (Get-Content $tok -Raw).Trim()
+              try {
+                $r = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:17842/v1/health" -Headers @{ Authorization = "Bearer $t" }
+                Write-Host "health: $($r.StatusCode) $($r.Content)"
+                if ($r.StatusCode -eq 200) { $ok = $true; break }
+              } catch { Write-Host "not yet: $_" }
+            }
+          }
+          Get-Content "$state/lhd.err" -ErrorAction SilentlyContinue
+          if (-not $ok) { Write-Host "SMOKE: lhd health FAILED" } else { Write-Host "SMOKE: lhd health OK" }
+          & "$d/lh.exe" --help; Write-Host "SMOKE: lh --help exit $LASTEXITCODE"
+          $gui = Start-Process -FilePath "$d/lastharness-gui.exe" -PassThru -RedirectStandardError "$state/gui.err" -RedirectStandardOutput "$state/gui.out"
+          Start-Sleep 10
+          if ($gui.HasExited) { Write-Host "SMOKE: GUI exited early, code $($gui.ExitCode)" } else { Write-Host "SMOKE: GUI still running after 10 s"; Stop-Process -Id $gui.Id -Force }
+          Get-Content "$state/gui.err" -ErrorAction SilentlyContinue | Select-Object -Last 30
+          Stop-Process -Id $lhd.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.zip
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: dist/*.zip
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p lh-core -p lh-tui -p lh-gui
+      - name: Bundle the app and the disk image
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA:0:7}"; fi
+          app="dist/LastHarness.app"
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          for b in lastharness-gui lhd lh lastharness; do cp "target/release/$b" "$app/Contents/MacOS/"; done
+          cat > "$app/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>LastHarness</string>
+            <key>CFBundleIdentifier</key><string>dev.lastharness.app</string>
+            <key>CFBundleExecutable</key><string>lastharness-gui</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${ver#v}</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict></plist>
+          EOF
+          cp README.md LICENSE COMMERCIAL-LICENSING.md dist/
+          hdiutil create -volname LastHarness -srcfolder dist -ov -format UDZO "LastHarness-$ver-macos-arm64.dmg"
+          mv LastHarness-*.dmg dist/
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.dmg
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: dist/*.dmg
