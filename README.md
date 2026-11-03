@@ -9,7 +9,7 @@
 A local-first AI harness with a memory that lasts.</p>
 
 > [!WARNING]
-> **Alpha.** LastHarness is early software and is only used on one machine so far. Expect rough edges and breaking changes. It runs on Linux only; the Windows and macOS builds compile but have not been run.
+> **Alpha.** LastHarness is early software and is only used on one machine so far. Expect rough edges and breaking changes. It is used on Linux. The Windows and macOS builds are early alpha: they start in CI, but no one has used them day to day yet.
 
 <p align="center">
   <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml/badge.svg"></a>
