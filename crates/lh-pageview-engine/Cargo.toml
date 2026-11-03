@@ -2,13 +2,13 @@
 name = "lh-pageview-engine"
 version = "0.0.0"
 edition = "2021"
-license = "Apache-2.0"
+license = "PolyForm-Noncommercial-1.0.0"
 description = "The page drawing helper program: Blitz inside a process of its own, with no network, no scripts and limits on itself. The app starts it for each open web page (see crates/lh-pageview). This crate is its own cargo workspace on purpose: Blitz's style engine (stylo) does not compile when it is built together with the window toolkit, because the toolkit turns on a feature of the `log` crate that makes one of stylo's derives ambiguous. Build it with `build.sh` (or cargo's --manifest-path)."
 publish = false
 
 [dependencies]
 lh-pageview = { path = "../lh-pageview" }
-# Pinned on purpose (see spikes/html-render/RESULT.md, "Risks"): the Blitz crates and the renderer move together and a
+# Pinned on purpose: the Blitz crates and the renderer move together and a
 # newer one of any of them can stop compiling. blitz 0.3.0-beta.3 exists since 2026-10-12; moving to it is a later job.
 blitz-html = "=0.3.0-beta.2"
 blitz-dom = "=0.3.0-beta.2"

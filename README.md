@@ -1,9 +1,26 @@
-# LastHarness
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastharness-lockup-on-dark.svg">
+    <img alt="LastHarness" src=".github/assets/lastharness-lockup-on-light.svg" width="360">
+  </picture>
+</p>
+
+<p align="center"><em>The last harness you'll need.</em><br>
+A local-first AI harness with a memory that lasts.</p>
+
+> [!WARNING]
+> **Alpha.** LastHarness is early software and is only used on one machine so far. Expect rough edges and breaking changes. It runs on Linux only; the Windows and macOS builds compile but have not been run.
+
+<p align="center">
+  <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue"></a>
+  <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-orange">
+</p>
 
 LastHarness is a local-first AI harness for one person's computer. A core program (`lhd`) holds the conversation, tools, memory and learning, and talks to any model server that speaks the OpenAI chat API (tested with llama.cpp through llama-swap). Front ends are thin clients of the core's local API: a terminal app, a browser page, and messaging channels.
 It remembers across sessions (notes you can read and edit as Markdown), learns your habits as rules you approve, and can hand bigger jobs to departments of role workers that plan, run and check the work.
 Sensitive notes and rules are used only with a model on this machine. Permissions are tiered: reads are free, writes ask once, and anything risky always asks.
-It is not on GitHub or any hosted service yet, and it is Linux only so far.
+It is Linux only so far.
 
 ## Build
 
@@ -22,7 +39,7 @@ target/release/lh              # chat
 target/release/lastharness-gui # or the desktop app (needs the core running)
 ```
 
-The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastharness/themes/` (the six built-in ones, three families each in light and dark, are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat; the keys for everything else are in `docs/milestone-8-report.md`.
+The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastharness/themes/` (the six built-in ones, three families each in light and dark, are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat.
 
 To start the core at every login: `lh service preview`, then `lh service install` (a systemd user service; no sudo; closing the terminal never stops the core).
 
@@ -48,7 +65,6 @@ The browser page is served over HTTPS when `web.listen` is set (for example `lh 
 - Settings: `~/.config/lastharness/config.toml` (optional spending prices in `spend.toml` beside it).
 - Data: `~/.local/share/lastharness/`: `lh.db` (activity log, rules, indexes), `memory/` (your notes as Markdown), `skills/`, `team/` (roles and departments), `mcp.json`, `web/` (the browser door's certificate).
 - Token: `$XDG_RUNTIME_DIR/lastharness/token`.
-- The design: `docs/digest.md` (one page), `docs/spec/lastharness.md`, `docs/roadmap.md`. Reports for each milestone are in `docs/`. Questions waiting for the owner are in `docs/for-omar.md` and `.grill/parked.md`.
 
 ## Not built yet
 
@@ -59,4 +75,4 @@ The browser page is served over HTTPS when `web.listen` is set (for example `lh 
 - Installing a plugin from a link (folders only), and project-level skills.
 - No messaging channel has been tried against a real account; they are tested against mock services.
 
-Tests: `cargo test --workspace` (the real embedding model test is skipped with `-- --skip real_embeddinggemma`). Licence: Apache-2.0.
+Tests: `cargo test --workspace` (the real embedding model test is skipped with `-- --skip real_embeddinggemma`). Licence: PolyForm Noncommercial 1.0.0 (see `LICENSE` and `COMMERCIAL-LICENSING.md`); `third_party/` keeps its own licences.
