@@ -288,6 +288,33 @@ pub const SANDBOX: &str = include_str!("../web/sandbox.html");
 /// The frame for an assistant-made app: its scripts run, but it may fetch nothing and only this site may hold it.
 pub const SANDBOX_CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 
+/// A short id for this build of the page, from a hash of the files it is made of. It changes whenever any of them do.
+pub fn build_id() -> &'static str {
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        for part in [INDEX, APP, STYLE, SANDBOX] {
+            h.update(part.as_bytes());
+            h.update([0]);
+        }
+        h.finalize().iter().take(6).map(|b| format!("{b:02x}")).collect()
+    })
+}
+
+/// The page with its build stamped in: a meta tag the script reads, and the script and style asked for with
+/// `?v=<build>` so no browser can keep a stale copy.
+pub fn index_page() -> &'static str {
+    static PAGE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PAGE.get_or_init(|| {
+        let id = build_id();
+        INDEX
+            .replacen("<head>", &format!("<head>\n<meta name=\"lh-build\" content=\"{id}\">"), 1)
+            .replace("href=\"/style.css\"", &format!("href=\"/style.css?v={id}\""))
+            .replace("src=\"/app.js\"", &format!("src=\"/app.js?v={id}\""))
+    })
+}
+
 fn page(body: &'static str, content_type: &'static str) -> Response {
     let mut r = Response::new(Body::from(body));
     let h = r.headers_mut();
@@ -354,7 +381,7 @@ pub fn sandbox_page() -> Response {
 /// The public part: pages, pairing and sign-in. Nothing here reveals anything private.
 pub fn public_routes(web: Arc<Web>) -> Router {
     Router::new()
-        .route("/", get(|| async { page(INDEX, "text/html; charset=utf-8") }))
+        .route("/", get(|| async { page(index_page(), "text/html; charset=utf-8") }))
         .route("/app.js", get(|| async { page(APP, "text/javascript; charset=utf-8") }))
         .route("/style.css", get(|| async { page(STYLE, "text/css; charset=utf-8") }))
         .route("/sandbox.html", get(|| async { sandbox_page() }))

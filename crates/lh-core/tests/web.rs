@@ -112,6 +112,19 @@ async fn the_pages_come_over_https_with_strict_headers_and_the_api_needs_a_signe
     assert!(csp.contains("default-src 'self'") && csp.contains("frame-ancestors 'none'"), "{csp}");
     assert_eq!(page.headers()["cache-control"], "no-store");
     assert_eq!(r.http.get(format!("{}/app.js", r.https)).send().await.unwrap().status(), 200);
+    // the page carries its build, and asks for the script and style by it, so a new build is never read from a stale copy
+    let id = web::build_id();
+    assert!(id.len() == 12 && id.chars().all(|c| c.is_ascii_hexdigit()), "{id}");
+    let html = page.text().await.unwrap();
+    assert!(html.contains(&format!("<meta name=\"lh-build\" content=\"{id}\">")), "the build stamp is in the page");
+    assert!(html.contains(&format!("src=\"/app.js?v={id}\"")) && html.contains(&format!("href=\"/style.css?v={id}\"")), "script and style are asked for by build");
+    assert_eq!(r.http.get(format!("{}/app.js?v={id}", r.https)).send().await.unwrap().status(), 200);
+    assert_eq!(r.http.get(format!("{}/style.css?v={id}", r.https)).send().await.unwrap().status(), 200);
+    // on a new build the script drops stored keys that were not chosen, and never the device key in IndexedDB
+    let js = r.http.get(format!("{}/app.js", r.https)).send().await.unwrap().text().await.unwrap();
+    let fresh = &js[js.find("function freshBuild()").expect("the build check is there")..];
+    let fresh = &fresh[..fresh.find("\nfreshBuild();").unwrap()];
+    assert!(fresh.contains("localStorage.removeItem") && !fresh.contains("indexedDB") && !fresh.contains("cookie"), "{fresh}");
     for p in ["/v1/models", "/v1/sessions/s1", "/v1/memory/pages", "/v1/devices"] {
         assert_eq!(r.http.get(format!("{}{p}", r.https)).send().await.unwrap().status(), 401, "{p} must need a signed-in device");
     }
