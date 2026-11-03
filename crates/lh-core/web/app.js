@@ -1298,10 +1298,39 @@ async function settingsView() {
         h('button', { type: 'button', class: 'seg ghost', onclick: () => side(30) }, 'Chat list wider')),
       h('p', { class: 'about' }, 'The Omarchy look, and your own looks from the themes folder, show here when the page is opened from the desktop app.'));
   };
+  // Web and phone, as the desktop app has it: the phone link, a pairing window, a PIN, then the paired devices.
+  // A paired browser may not pair others (the core refuses it), so those parts show only where the core allows them.
   async function devices() {
-    const ul = h('ul', {});
-    try { const d = (await json('/v1/devices')).devices; ul.replaceChildren(...d.map((x) => h('li', {}, `${x.name}${x.revoked ? ' (removed)' : ''} `, x.revoked ? null : h('button', { type: 'button', class: 'seg', onclick: async () => { if (confirm(`Remove ${x.name}?`)) { await api(`/v1/devices/${x.id}`, { method: 'DELETE' }); draw(); } } }, 'Remove')))); } catch { /* none */ }
-    return h('div', {}, h('div', { class: 'title' }, 'Paired devices'), h('p', { class: 'about' }, 'Remove any device you do not recognise.'), ul);
+    const out = [];
+    const tailscale = "Turn on \"Reach it from your phone over Tailscale\" above, then restart the app. A sign-in link for your phone appears here.";
+    const ph = await json('/v1/devices/phone').catch(() => null);
+    out.push(sub('Phone'));
+    if (!ph) out.push(muted(tailscale));
+    else if (!ph.link) out.push(muted(ph.enabled === true ? 'The core is not listening on an address a phone can reach. Check that Tailscale is running on this computer, then restart the app.' : tailscale));
+    else out.push(muted("Scan this with your phone's camera. The phone must be signed in to Tailscale too. Its browser warns about the certificate once: check the fingerprint below, then continue. The phone stays signed in and shows up under Paired devices."),
+      h('p', { class: 'about' }, h('code', {}, ph.link)),
+      row(btn('Copy link', () => navigator.clipboard?.writeText(ph.link).then(() => say('Copied.'), () => say('The browser would not copy it.'))), sure('Make a new link', 'Yes, replace the link', () => act('POST', '/v1/devices/phone/rotate'), 'seg')),
+      ph.fingerprint ? muted(`Certificate fingerprint: ${ph.fingerprint}`) : null,
+      muted('Keep the link private: anyone with it on your tailnet can sign in. Make a new link if it was shared by mistake.'));
+    out.push(sub('Paired devices'), muted('A browser or phone can use this app over the address above only after you pair it here. Open pairing for a few minutes, then on the other device open the address and press Pair. It shows a PIN: type that PIN below.'));
+    const pend = await json('/v1/devices/pending').catch(() => null);
+    if (pend) {
+      out.push(row(...[5, 10].map((m) => btn(`Open pairing for ${m} minutes`, () => act('POST', '/v1/devices/open', { minutes: m })))));
+      const [pin, pinF] = fieldIn('PIN shown on the other device', '123456');
+      const accept = () => { const p = pin.value.replace(/[\s-]/g, ''); if (p.length < 4 || !/^[A-Za-z0-9]+$/.test(p)) return say('Type the PIN the other device shows.'); act('POST', '/v1/devices/accept', { pin: p }); };
+      out.push(card(pinF, row(btn('Pair this device', accept, 'seg primary'))));
+      if (pend.fingerprint) out.push(muted(`This computer's certificate fingerprint, to compare with what the other device shows: ${pend.fingerprint}`));
+      for (const w of pend.pending || []) out.push(card(sub(`Waiting to pair: ${w.name}`), muted(`Its key starts ${String(w.key_fingerprint || '').slice(0, 23)}. Waiting ${w.waiting_secs || 0} seconds.`)));
+    } else out.push(muted('Pairing a new device is done on the computer itself: in the desktop app, or with lh devices.'));
+    try {
+      const list = ((await json('/v1/devices')).devices || []).filter((d) => d.revoked !== true);
+      if (!list.length) out.push(muted('No device is paired.'));
+      for (const d of list) out.push(h('div', { class: 'set-card', role: 'group', 'aria-label': `Device ${d.name}` },
+        h('div', { class: 'set-row' }, h('div', { class: 'grow' }, d.name), sure('Remove', 'Yes, remove it', () => act('DELETE', `/v1/devices/${d.id}`))),
+        muted(d.last_seen > 0 ? `Last used ${stamp(d.last_seen)} (UTC)` : 'Not used yet')));
+    } catch (e) { out.push(muted(`The device list could not be read: ${e.message}`)); }
+    out.push(row(btn('Refresh', () => draw(), 'seg ghost')));
+    return out.filter(Boolean);
   }
   // ---- the pages GPUI draws itself, from the same core calls ----
   const muted = (t) => h('p', { class: 'about' }, t);
@@ -1365,7 +1394,7 @@ async function settingsView() {
         e.undoable ? btn('Undo', () => act('POST', `/v1/activity/${e.seq}/undo`, undefined, (r) => (r.result === 'refused' ? `Not undone. ${r.message || ''}` : r.message || 'Undone.'))) : null));
       return [spend, sub('What was done'), muted('Every tool the assistant used, every permission you answered, and every request that left this computer. It is only ever added to. Undo is offered for file changes that are still as the assistant left them.'),
         row(ACT_KINDS.map(([k, l]) => btn(l, () => { actKind = k; draw(); }, actKind === k ? 'seg primary' : 'seg ghost'))),
-        err || (list.length ? h('div', { role: 'list', class: 'set-list' }, list) : muted('Nothing here yet.')), row(btn('Refresh', () => draw()))];
+        err || (list.length ? h('div', { role: 'list', class: 'set-list' }, list) : muted('Nothing here yet.')), row(btn('Refresh', () => draw(), 'seg ghost'))];
     },
     async tools() {
       const [sv, sErr] = await fetchOr('/v1/mcp/servers', 'The server list');
@@ -1377,12 +1406,16 @@ async function settingsView() {
           sure('Remove', 'Yes, remove it', () => act('DELETE', `/v1/mcp/servers/${encodeURIComponent(x.name)}`)))));
       let link = false;
       const [nm, nmF] = fieldIn('Name', 'files');
-      const [cmd, cmdF] = fieldIn('Command (the program and what follows it)', 'npx -y @modelcontextprotocol/server-filesystem ~/notes');
+      const [cmd, cmdF] = fieldIn('Command (the program and what follows it)', 'npx -y @modelcontextprotocol/server-filesystem /home/me/docs');
       const [env, envF] = fieldIn('Name of the environment variable that holds the key (leave empty if none)', 'MY_SERVER_KEY');
       envF.hidden = true;
       const kinds = row(btn('A program on this computer', (e) => setKind(false, e)), btn('A link', (e) => setKind(true, e)));
-      const setKind = (l, e) => { link = l; for (const b of kinds.children) b.setAttribute('aria-pressed', String(b === e?.target)); cmdF.firstChild.textContent = l ? 'Link' : 'Command (the program and what follows it)'; cmd.placeholder = l ? 'https://mcp.example.org/x' : 'npx -y @modelcontextprotocol/server-filesystem ~/notes'; envF.hidden = !l; };
-      kinds.firstChild.setAttribute('aria-pressed', 'true');
+      const setKind = (l, e) => { link = l; for (const b of kinds.children) b.setAttribute('aria-pressed', String(b === e?.target)); cmdF.firstChild.textContent = l ? 'Link' : 'Command (the program and what follows it)'; cmd.placeholder = l ? 'https://mcp.example.org/mcp' : 'npx -y @modelcontextprotocol/server-filesystem /home/me/docs'; envF.hidden = !l; for (const b of kinds.children) b.classList.toggle('primary', b.getAttribute('aria-pressed') === 'true'); preview(); envF.hidden = !l; };
+      kinds.firstChild.setAttribute('aria-pressed', 'true'); kinds.firstChild.classList.add('primary');
+      // what will run, shown exactly, before it is added
+      const willRun = h('p', { class: 'will-run' });
+      const preview = () => { const t = cmd.value.trim().replace(/\s+/g, ' '); willRun.textContent = t ? `It will ${link ? 'connect to' : 'run:'} ${t}` : ''; };
+      cmd.addEventListener('input', preview);
       const add = () => {
         const name = nm.value.trim();
         if (!/^[A-Za-z0-9_-]+$/.test(name)) return say('Give it a name with letters, digits, - or _.');
@@ -1391,14 +1424,18 @@ async function settingsView() {
         else { const w = (cmd.value.match(/"[^"]*"|'[^']*'|\S+/g) || []).map((x) => x.replace(/^["']|["']$/g, '')); if (!w.length) return say('Type the command that starts the server.'); transport = { kind: 'stdio', command: w[0], args: w.slice(1) }; }
         act('POST', '/v1/mcp/servers', { name, transport });
       };
+      const form = h('div', {});
+      const closed = row(btn('Add a server', () => form.replaceChildren(opened)));
+      const opened = card(sub('Add an MCP server'), kinds, nmF, cmdF, envF, willRun, row(btn('Add (it will not run yet)', add, 'seg primary'), btn('Cancel', () => form.replaceChildren(closed), 'seg ghost')));
+      form.append(closed);
       const [tv, tErr] = await fetchOr('/v1/trust', 'The folder list');
       const folders = (tv?.folders || []).map((f) => card(h('div', { class: 'title' }, `${f.folder} · ${f.decision}`), f.exists === false ? muted('This folder is not there any more.') : null,
         (f.mcp || []).map((m) => muted(`It lists ${m.name}: ${m.runs}`)), row(sure('Revoke', 'Yes, forget this folder', () => act('POST', '/v1/trust', { folder: f.folder, decision: 'forget' })))));
       return [sub('MCP servers'), muted('An MCP server gives the assistant more tools. Nothing runs until you approve it, and you see the exact command or link first.'),
         sErr || (servers.length ? servers : muted('No MCP servers yet.')),
-        card(sub('Add a server'), kinds, nmF, cmdF, envF, row(btn('Add (it will not run yet)', add, 'seg primary'))),
+        form,
         sub('Folders that bring their own tools'), muted('A project folder can list servers of its own. They load only after you trust that folder. When you open a chat in such a folder you are asked; your answers are listed here.'),
-        tErr || (folders.length ? folders : muted('No folder has a decision yet.'))];
+        tErr || (folders.length ? folders : muted('No folder has a decision yet.')), row(btn('Refresh', () => draw(), 'seg ghost'))];
     },
     async schedules() {
       const [v, err] = await fetchOr('/v1/schedules', 'The task list');
@@ -1408,12 +1445,12 @@ async function settingsView() {
       const files = (fv?.entries || []).map((e) => muted(`${stamp(e.at)} · ${actSummary(e.kind, e.detail)}`));
       const [w, wF] = fieldIn('When: every 30m, every 2h, every 1d or daily 08:00', 'every 2h');
       const [t, tF] = fieldIn('What to do', 'Summarise new files in my notes folder');
-      const [m, mF] = fieldIn('Model', modelChoice.id || '');
+      const [m, mF] = fieldIn('Model', 'Qwen3.6-35B-A3B-balanced');
       const [f, fF] = fieldIn('Folder (empty for your home folder)', '');
-      const add = () => { if (!w.value.trim() || !t.value.trim() || !m.value.trim()) return say('Fill in when, what to do and the model.'); act('POST', '/v1/schedules', { name: '', prompt: t.value.trim(), folder: f.value.trim() || null, model: m.value.trim(), when: w.value.trim() }); };
+      const add = () => { if (!w.value.trim()) return say('Write when: every 30m, every 2h, every 1d or daily 08:00.'); if (!t.value.trim()) return say('Write what the task should do.'); if (!m.value.trim()) return say('Choose a model for the task.'); act('POST', '/v1/schedules', { name: '', prompt: t.value.trim(), folder: f.value.trim() || null, model: m.value.trim(), when: w.value.trim() }); };
       return [muted('Tasks that start a chat on their own at set times. Nobody is there to answer, so every permission question is answered no.'),
         err || (tasks.length ? tasks : muted('No tasks yet.')), files.length ? [sub('Files changed by tasks'), files] : null,
-        card(sub('Add a task'), wF, tF, mF, fF, row(btn('Add the task', add, 'seg primary'))), row(btn('Refresh', () => draw()))];
+        sub('Add a task'), wF, tF, mF, fF, row(btn('Add the task', add, 'seg primary'), btn('Refresh', () => draw(), 'seg ghost'))];
     },
     async learning() {
       const [pv] = await fetchOr('/v1/learn/proposals', 'Suggestions');
@@ -1475,6 +1512,103 @@ async function settingsView() {
         sub('Roles'), rErr || roles, newOne('New role', 'roles'),
         sub('Model types'), tErr || types, card(sub('New model type'), tnF, tmF, row(btn('New type', addType, 'seg primary')))];
     },
+    // Channels as the desktop app has them: each channel off until its warning is read, then a form to add or edit one
+    async channels() {
+      const out = [muted("Messages on a channel pass through that service's servers. Every channel is off until you have read its warning and switched it on, and only the people you list are answered.")];
+      const [v, err] = await fetchOr('/v1/channels', 'The channel list');
+      if (err) return [...out, err];
+      const kinds = (v.kinds || []).map((k) => ({ kind: k.kind, warning: k.warning || '', fields: [...(k.required || []).map((f) => ({ ...f, required: true })), ...(k.optional || []).map((f) => ({ ...f, required: false }))] }));
+      const list = v.channels || [];
+      const formBox = h('div', {});
+      const closed = row(btn('Add a channel', () => openForm(null)));
+      const openForm = (edit) => {
+        let kind = edit ? edit.kind : kinds[0]?.kind; let assistant = edit?.mode === 'assistant';
+        const draw1 = () => {
+          const k = kinds.find((x) => x.kind === kind);
+          if (!k) return formBox.replaceChildren(muted('The core did not list any kinds of channel.'));
+          const [nm, nmF] = fieldIn('Name', 'family-chat'); const [al, alF] = fieldIn('Who may talk to it (ids, separated by commas)', '123456789, 987654321'); const [md, mdF] = fieldIn('Model that answers', 'a model name from your list');
+          if (edit) { nm.value = edit.name; nm.disabled = true; al.value = (edit.allow || []).join(', '); md.value = edit.model || ''; }
+          const fs = k.fields.map((f) => { const [i, F] = fieldIn(`${f.name}${f.required ? '' : ' (optional)'}: ${f.help || ''}`, f.name.includes('token') ? 'env:NAME' : ''); i.value = edit?.settings?.[f.name] || ''; return [f, i, F]; });
+          const pick = (label, on, fn) => btn(label, fn, on ? 'seg primary' : 'seg');
+          const save = () => {
+            const name = nm.value.trim();
+            if (!/^[A-Za-z0-9_-]+$/.test(name)) return say('Give the channel a name with letters, digits, - or _.');
+            const settings = {};
+            for (const [f, i] of fs) {
+              const val = i.value.trim();
+              if (f.required && !val) return say(`${f.name} needs a value.`);
+              if (f.name.includes('token') && val && !/^(env|secret):/.test(val)) return say(`${f.name} is written as env:NAME or secret:NAME, naming where the key is kept. Never the key itself.`);
+              if (val) settings[f.name] = val;
+            }
+            const body = { allow: al.value.split(',').map((x) => x.trim()).filter(Boolean), model: md.value.trim(), mode: assistant ? 'assistant' : 'chat', settings };
+            if (edit) act('PUT', `/v1/channels/${encodeURIComponent(edit.name)}`, body); else act('POST', '/v1/channels', { name, kind, ...body });
+          };
+          formBox.replaceChildren(card(sub(edit ? `Edit ${edit.name}` : 'Add a channel'),
+            edit ? null : row(...kinds.map((x) => pick(x.kind, x.kind === kind, () => { kind = x.kind; draw1(); }))),
+            nmF, alF, mdF, row(pick('Chat only', !assistant, () => { assistant = false; draw1(); }), pick('With tools, asking in the chat', assistant, () => { assistant = true; draw1(); })),
+            ...fs.map((x) => x[2]), muted('Keys are never typed here. Write where the key is kept, as env:NAME (an environment variable) or secret:NAME.'),
+            row(btn(edit ? 'Save' : 'Add (it starts off)', save, 'seg primary'), btn('Cancel', () => formBox.replaceChildren(closed), 'seg ghost'))));
+        };
+        draw1();
+      };
+      formBox.append(closed);
+      if (!list.length) out.push(muted('No channels yet.'));
+      for (const c of list) {
+        const st = c.status || {};
+        const state = !c.enabled ? 'Off' : st.running ? `On and running. Answered ${st.handled || 0}, ignored ${st.ignored || 0}.` : `On, but not running${st.last_error ? `: ${st.last_error}` : ''}`;
+        const warn = h('div', { class: 'ch-warn', hidden: true }, (kinds.find((k) => k.kind === c.kind) || {}).warning || '');
+        const n = encodeURIComponent(c.name);
+        const buttons = row();
+        const onBtn = btn('Switch on…', () => {
+          if (!(c.allow || []).length) return say('List at least one person who may talk to it.');
+          if (!(c.model || '').trim()) return say('Choose the model that answers.');
+          warn.hidden = false; onBtn.replaceWith(btn('I have read this. Switch it on', () => act('POST', `/v1/channels/${n}/enable`, { acknowledge: true }), 'seg danger'), btn('Leave it off', () => draw(), 'seg ghost'));
+        });
+        buttons.append(c.enabled ? btn('Switch off', () => act('POST', `/v1/channels/${n}/disable`)) : onBtn, btn('Edit', () => openForm(c), 'seg ghost'), sure('Remove', 'Yes, remove it', () => act('DELETE', `/v1/channels/${n}`)));
+        out.push(h('div', { class: 'set-card', role: 'group', 'aria-label': `Channel ${c.name}` },
+          h('div', { class: 'set-row' }, h('div', { class: 'grow' }, `${c.name}  (${c.kind})`), h('span', { class: c.enabled ? 'ch-on' : 'ch-off' }, c.enabled ? 'On' : 'Off')),
+          muted(state), muted(`Answers: ${c.mode === 'assistant' ? 'with tools, asking in the chat' : 'chat only'}. Model: ${c.model || 'none chosen'}. May talk to it: ${(c.allow || []).length ? c.allow.join(', ') : 'nobody yet'}.`),
+          warn, buttons));
+      }
+      return [...out, formBox, row(btn('Refresh', () => draw(), 'seg ghost'))];
+    },
+    // Your data, as the desktop app has it: save a copy to a folder, and look inside a saved copy before bringing it in
+    async data() {
+      const [ex, exF] = fieldIn('Folder for the copy', '/path/to/a/new/folder'); exF.firstChild.remove();
+      const save = async () => {
+        if (!ex.value.trim()) return say('Choose a folder for the copy first.');
+        try {
+          const v = await json('/v1/export', { method: 'POST', body: { dir: ex.value.trim() } });
+          const counts = Object.entries(v.counts || {}).map(([k, n]) => `${k}: ${n}`).join(', ');
+          say(`Saved to ${v.dir || ''}.${counts ? ` ${counts}.` : ''}${v.warning ? ` ${v.warning}` : ''}`);
+        } catch (e) { say(e.message); }
+      };
+      const [im, imF] = fieldIn('Folder that holds a saved copy', '/path/to/a/saved/copy'); imF.firstChild.remove();
+      const found = h('div', {});
+      const replace = new Set(); let replaceStyle = false;
+      const look = async () => {
+        if (!im.value.trim()) return say('Choose the folder that holds a saved copy first.');
+        let p; try { p = await json('/v1/import', { method: 'POST', body: { dir: im.value.trim(), apply: false, overwrite: [], replace_style: false } }); } catch (e) { return say(e.message); }
+        replace.clear(); replaceStyle = false;
+        const named = (a) => (a || []).length ? a.map((i) => (i.exists ? `${i.name} (you have one)` : i.name)).join(', ') : 'none';
+        const lines = [`Rules: ${p.rules?.in_folder || 0} in the folder, ${p.rules?.new || 0} of them new to you.`, `Writing style profile: ${p.style === true ? 'yes' : 'no'}.`, `Memory: ${p.memory_files === true ? 'yes' : 'no'}.`, `Roles: ${named(p.roles)}.`, `Departments: ${named(p.departments)}.`, ...(p.problems || []).map((x) => `Cannot use ${x}.`)];
+        const clashes = [...(p.roles || []), ...(p.departments || [])].filter((n) => n.exists).map((n) => n.name);
+        const has = (p.rules?.in_folder || 0) > 0 || p.style === true || p.memory_files === true || (p.roles || []).length || (p.departments || []).length;
+        const pick = (name) => { const b = btn(`Keep mine: ${name}`, () => { if (replace.has(name)) replace.delete(name); else replace.add(name); const on = replace.has(name); b.textContent = `${on ? 'Replace' : 'Keep mine:'} ${name}`; b.classList.toggle('primary', on); }); return b; };
+        const styleBtn = btn('Keep my writing style', () => { replaceStyle = !replaceStyle; styleBtn.textContent = replaceStyle ? 'Replace my writing style' : 'Keep my writing style'; styleBtn.classList.toggle('primary', replaceStyle); });
+        const apply = async () => {
+          try {
+            const r = await json('/v1/import', { method: 'POST', body: { dir: im.value.trim(), apply: true, overwrite: [...replace].sort(), replace_style: replaceStyle } });
+            say(Object.entries(r.done || {}).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join('; ') : JSON.stringify(v)}`).join('. ') || 'Done.');
+          } catch (e) { say(e.message); }
+        };
+        found.replaceChildren(h('div', { class: 'import-sum' }, h('div', {}, 'In that folder:'), ...lines.map((l) => h('div', {}, l))),
+          clashes.length || p.style === true ? [muted('You already have some of these. Pick any you want the copy to replace:'), row(...clashes.map(pick), p.style === true ? styleBtn : null)] : null,
+          has ? row(btn('Bring it in', apply, 'seg primary')) : null);
+      };
+      return [card(sub('Save a copy of your data'), muted('Writes your memory, rules, writing style, roles and departments to a new folder. The folder must be new or empty. The copy is not encrypted, so keep it somewhere private.'), exF, row(btn('Save a copy', save, 'seg primary'))),
+        card(sub('Bring in a saved copy'), muted('First you see what is in the folder. Nothing changes until you press Bring it in. Your own roles, departments and writing style stay unless you choose to replace them.'), imF, row(btn('Look inside', look)), found)];
+    },
     async hooks() {
       return [muted('Commands run before or after a tool call, kept in hooks.toml on the computer. A command before a tool that fails stops the tool. New chats use the changes.'),
         muted('The browser cannot read or change hooks.toml: the core has no address for it. Change hooks in the desktop app, or edit the file.')];
@@ -1487,7 +1621,7 @@ async function settingsView() {
     const body = id === 'appearance' ? [appearance()] : items.length ? items.map(item) : extra[id] ? [] : [h('p', { class: 'about' }, 'Nothing to set here from the browser yet.')];
     // Models and keys puts its slider block first, as GPUI does
     if (extra[id]) { const more = (await extra[id]()).flat(2).filter(Boolean); if (id === 'models') body.unshift(...more); else body.push(...more); }
-    if (id === 'web') body.push(await devices());
+    if (id === 'web') body.push(...await devices());
     page.replaceChildren(...(err ? [h('div', { class: 'banner' }, err)] : []), h('h3', {}, title), h('p', { class: 'blurb' }, blurb), ...body);
   }
   document.body.append(veil);

@@ -404,7 +404,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .set-entry .grow { flex: 1; min-width: 200px; }
 .set-list { display: flex; flex-direction: column; gap: 6px; }
 .set-field { display: flex; flex-direction: column; gap: 4px; }
-.set-field input { max-width: 520px; }
+.set-field input { width: 100%; }
+.set-field .lbl { font-size: 14px; color: var(--muted); }
 .about.bad { color: var(--danger); }
 .stop-titles { display: flex; flex-direction: column; gap: 6px; max-width: 360px; }
 
@@ -509,3 +510,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .set-inline { display: flex; gap: 4px; align-items: center; }
 .set-inline input { flex: 1; min-width: 0; }
 .settings-page textarea { width: 100%; min-height: 80px; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--inner); background: var(--sunken); color: var(--text); font: inherit; resize: vertical; }
+.will-run { font-size: 14px; color: var(--text); margin: 4px 0; overflow-wrap: anywhere; }
+.will-run:empty { display: none; }
+.ch-on { font-size: 14px; color: var(--accent); }
+.ch-off { font-size: 14px; color: var(--muted); }
+.ch-warn { font-size: 14px; padding: 8px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent); }
+.import-sum { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: var(--inner); background: var(--button); font-size: 14px; }
