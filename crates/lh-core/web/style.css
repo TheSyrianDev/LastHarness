@@ -340,7 +340,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .chats li button.open-chat { display: flex; align-items: center; gap: 8px; font-size: 15px; padding-inline-end: 10px; }
 .chats li .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .chats li .ago { color: var(--muted); font-size: 12px; flex-shrink: 0; }
-.chats li:hover .ago { visibility: hidden; }
 .chats li button[aria-current="true"] { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); box-shadow: none; font-weight: 400; }
 .side-foot { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; }
 .app.folded .chats { width: 52px; }
@@ -496,3 +495,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .palette-row .t { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .palette-row .k, .palette-none { font-size: 12px; color: var(--muted); }
 .palette-none { padding: 6px 8px; font-size: 14px; }
+.chats li.side-sec { padding: 12px 8px 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.chats li.side-sec.danger { color: var(--danger); }
+.chats li .pin { position: absolute; inset-inline-end: 32px; width: 26px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--muted); opacity: 0; }
+.chats li:hover .pin, .chats li .pin:focus-visible { opacity: 1; }
+.earlier-more, .side-empty { font-size: 14px; color: var(--muted); padding: 0 10px; }
+.side-empty { padding: 12px 8px; list-style: none; }

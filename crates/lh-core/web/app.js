@@ -166,10 +166,12 @@ function applyTheme(t) {
   document.documentElement.toggleAttribute('data-glass', !!glass);
   st.setProperty('--glass-blur', glass ? `${(t.material.blur || 6) * 3}px` : '0px');
 }
-const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } };
+// when storage is off (a private window), choices last until the page closes
+const memPrefs = new Map();
+const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { if (v === undefined) return memPrefs.get(k) ?? null; memPrefs.set(k, String(v)); } };
 // The core stamps each build into the page. On a new build, stored keys that are not a choice the person made are
 // dropped, so an old default never hides a new one. The device key lives in IndexedDB and is never touched here.
-const CHOSEN = ['look', 'look-mode', 'chat-width', 'side-width', 'font-latin', 'font-arabic', 'fonts-added', 'width-presets', 'pages-off', 'direction', 'name', 'stops', 'stop-count', 'stop-titles', 'model', 'folded', 'settings-page'];
+const CHOSEN = ['look', 'look-mode', 'chat-width', 'side-width', 'font-latin', 'font-arabic', 'fonts-added', 'width-presets', 'pages-off', 'direction', 'name', 'stops', 'stop-count', 'stop-titles', 'model', 'folded', 'settings-page', 'pinned', 'settle-days'];
 function freshBuild() {
   const id = document.querySelector('meta[name="lh-build"]')?.content;
   if (!id) return;
@@ -727,15 +729,39 @@ function ago(t) {
   const d = Math.max(0, Date.now() / 1000 - (t > 1e12 ? t / 1000 : t));
   return d < 60 ? 'now' : d < 3600 ? `${Math.round(d / 60)}m` : d < 86400 ? `${Math.round(d / 3600)}h` : `${Math.round(d / 86400)}d`;
 }
+// The chat list in sections, as in GPUI (lh-gui sidebar.rs): Needs you, Pinned, Active, one per project folder, Earlier.
+// A chat settles into Earlier after three days without a word; Earlier shows eight until asked for more.
+let earlierAll = false;
+const pinnedChats = () => jsonPref('pinned', []);
+function togglePin(id) { const p = pinnedChats(); const i = p.indexOf(id); if (i < 0) p.push(id); else p.splice(i, 1); pref('pinned', JSON.stringify(p)); loadChats(); }
+function chatSections(list) {
+  const secs = (t) => (t > 1e12 ? t / 1000 : t) || 0;
+  const now = Date.now() / 1000, settle = now - (+pref('settle-days') || 3) * 86400;
+  const needs = [], pins = [], active = [], earlier = [], projects = new Map();
+  for (const c of [...list].sort((a, b) => secs(b.last ?? b.updated) - secs(a.last ?? a.updated))) {
+    const last = secs(c.last ?? c.updated);
+    if (c.id === chat.stored && $('#asks')?.children.length) needs.push(c);
+    else if (pinnedChats().includes(c.id)) pins.push(c);
+    else if (c.project) { const f = c.project.replace(/\/+$/, ''); if (!projects.has(f)) projects.set(f, []); projects.get(f).push(c); }
+    else if (c.live || !last || last >= settle) active.push(c);
+    else earlier.push(c);
+  }
+  const shown = earlierAll ? earlier : earlier.slice(0, 8);
+  const out = [[`Needs you · ${needs.length}`, needs, '', true], ['Pinned', pins], ['Active', active],
+    ...[...projects].map(([f, cs]) => [f.split('/').pop() || f, cs]),
+    [`Earlier · ${earlier.length}`, shown, earlier.length > 8 ? (earlierAll ? 'Show less' : `Show ${earlier.length - 8} more`) : '']];
+  return out.filter(([, cs]) => cs.length);
+}
 async function loadChats() {
   const ul = $('#chat-list');
   let list = [];
   try { list = (await json('/v1/chats')).chats || []; } catch { /* chats may be off */ }
   chatCache = list;
-  ul.replaceChildren(...list.map((c) => {
+  const rowFor = (c) => {
     const li = h('li', {});
     const row = () => li.replaceChildren(
-      h('button', { type: 'button', class: 'open-chat', 'aria-current': String(c.id === chat.stored), onclick: () => openStored(c) }, h('span', { class: 't' }, c.title || 'Untitled'), h('span', { class: 'ago' }, ago(c.updated))),
+      h('button', { type: 'button', class: 'open-chat', 'aria-current': String(c.id === chat.stored), onclick: () => openStored(c) }, h('span', { class: 't' }, (pinnedChats().includes(c.id) ? '★ ' : '') + (c.title || 'Untitled')), h('span', { class: 'ago' }, ago(c.last ?? c.updated))),
+      h('button', { type: 'button', class: 'pin', 'aria-label': pinnedChats().includes(c.id) ? 'Unpin' : 'Pin', title: pinnedChats().includes(c.id) ? 'Unpin' : 'Pin', onclick: () => togglePin(c.id) }, pinnedChats().includes(c.id) ? '★' : '☆'),
       h('button', { type: 'button', class: 'del', 'aria-label': `Delete ${c.title || 'Untitled'}`, title: 'Delete', onclick: () => ask() }, h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' })));
     const ask = () => {
       const yes = h('button', { type: 'button', class: 'btn danger', onclick: async () => {
@@ -746,7 +772,11 @@ async function loadChats() {
     };
     row();
     return li;
-  }));
+  };
+  ul.replaceChildren(...chatSections(list).flatMap(([title, rows, more, danger]) => [
+    h('li', { class: 'side-sec' + (danger ? ' danger' : ''), role: 'presentation' }, title), ...rows.map(rowFor),
+    ...(more ? [h('li', { role: 'presentation' }, h('button', { type: 'button', class: 'earlier-more', onclick: () => { earlierAll = !earlierAll; loadChats(); } }, more))] : [])]));
+  if (!list.length) ul.replaceChildren(h('li', { class: 'side-empty' }, 'No chats yet. What you write stays on this computer.'));
   // the trash icon (drawn here: svg children made with h() would be in the wrong namespace)
   for (const svg of ul.querySelectorAll('.del svg')) svg.replaceWith(s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: 'M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12' })));
   if (list.length && !userName) greet();
