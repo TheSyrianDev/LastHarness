@@ -11,6 +11,57 @@ pub struct Config {
     pub themes: PathBuf,
 }
 
+/// A command that asks the desktop to open a link or file: `xdg-open` on Linux, `open` on macOS, `start` on Windows.
+pub fn desktop_open(target: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[cfg(windows)]
+    let c = {
+        use std::os::windows::process::CommandExt;
+        let mut c = std::process::Command::new("cmd");
+        // the empty "" is the window title `start` expects before the target
+        c.args(["/C", "start", ""]).arg(target).creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let c = {
+        let mut c = std::process::Command::new("open");
+        c.arg(target);
+        c
+    };
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let c = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(target);
+        c
+    };
+    c
+}
+
+/// Start the `lhd` beside this app when nothing answers at `base`, so the app works without a launcher script.
+/// Only for a core on this machine; it keeps running after the app closes, as a service would.
+pub fn start_core_if_missing(base: &str, token_file: &std::path::Path) {
+    let addr = base.trim_start_matches("http://").split('/').next().unwrap_or("").to_string();
+    let Some(sa) = std::net::ToSocketAddrs::to_socket_addrs(&addr).ok().and_then(|mut a| a.next()) else { return };
+    if !sa.ip().is_loopback() || std::net::TcpStream::connect_timeout(&sa, std::time::Duration::from_millis(300)).is_ok() {
+        return;
+    }
+    let Some(lhd) = crate::pages::service::find_lhd() else {
+        eprintln!("lastharness-gui: the core is not running and lhd was not found beside the app or on the path");
+        return;
+    };
+    let mut c = std::process::Command::new(&lhd);
+    c.arg("--listen").arg(&addr).arg("--token-file").arg(token_file);
+    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console window beside the app
+    }
+    match c.spawn() {
+        Ok(_) => eprintln!("lastharness-gui: started {}", lhd.display()),
+        Err(e) => eprintln!("lastharness-gui: cannot start {}: {e}", lhd.display()),
+    }
+}
+
 /// Where `lhd` writes its token by default: the runtime folder if there is one, else the state folder.
 pub fn default_token_path() -> PathBuf {
     if let Some(d) = std::env::var_os("XDG_RUNTIME_DIR") {

@@ -344,14 +344,14 @@ impl App {
         if !openable(url) {
             return;
         }
-        let spawned = std::process::Command::new("xdg-open").arg(url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+        let spawned = lh_gui::config::desktop_open(url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
         match spawned {
             Ok(mut child) => {
                 std::thread::spawn(move || {
                     let _ = child.wait();
                 });
             }
-            Err(e) => self.content_note = Some(format!("Could not start the browser (xdg-open): {e}")),
+            Err(e) => self.content_note = Some(format!("Could not start the browser: {e}")),
         }
         cx.notify();
     }

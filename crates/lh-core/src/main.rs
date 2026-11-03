@@ -23,6 +23,7 @@ fn fail(msg: impl std::fmt::Display) -> ! {
 
 #[tokio::main]
 async fn main() {
+    lh_config::platform_dirs();
     let mut a = std::env::args().skip(1);
     let (mut listen, mut provider, mut key, mut token_file) = ("127.0.0.1:7842".to_string(), None, None, None);
     let (mut store_path, mut spend_path, mut compact_at, mut idle_after) = (None, None, None::<u64>, None::<u64>);
@@ -219,6 +220,9 @@ async fn main() {
     let web = match web_listen {
         None => None,
         Some(w) => {
+    if !no_sandbox && !cfg!(target_os = "linux") {
+        eprintln!("lhd: WARNING: the sandbox needs bubblewrap, which only Linux has. The model's commands run without it here: they can change any file your user can. Permission prompts still apply.");
+    }
             let waddr: SocketAddr = w.parse().unwrap_or_else(|e| fail(format!("web.listen {w}: {e}")));
             let extra: Vec<String> = if waddr.ip().is_unspecified() || waddr.ip().is_loopback() { vec![] } else { vec![waddr.ip().to_string()] };
             let dir = default_store_path().parent().map(|p| p.join("web")).unwrap_or_else(|| std::path::PathBuf::from("web"));
