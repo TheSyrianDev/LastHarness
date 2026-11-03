@@ -1,0 +1,18 @@
+[package]
+name = "lh-learn"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lh-store = { path = "../lh-store" }
+lh-memory = { path = "../lh-memory" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+getrandom = "0.3"
+regex = "1.13.1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt"] }

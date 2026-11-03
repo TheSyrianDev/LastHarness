@@ -1,0 +1,28 @@
+[package]
+name = "lh-pageview-servo"
+version = "0.0.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "The page drawing helper with Servo: the same requests and replies as the Blitz helper (crates/lh-pageview-engine), but pages may run JavaScript. It runs in a process of its own with no network, and refuses every request except the page itself. Its own cargo workspace, like the Blitz helper, because Servo is a very large build. Build it with build.sh."
+publish = false
+
+[dependencies]
+lh-pageview = { path = "../lh-pageview" }
+# pinned: Servo is pre-1.0 and breaks its API from one release to the next (tested with 0.7.0)
+servo = "=0.7.0"
+dpi = "0.1"
+url = "2.5"
+euclid = "0.22"
+rustls = "0.23"
+http = "1.4"
+libc = "0.2"
+
+[[bin]]
+name = "lh-pageview-servo"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+
+# its own workspace: see the description
+[workspace]

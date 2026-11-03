@@ -1,0 +1,44 @@
+# Neutral dark look: white primary buttons, grey bubbles, a plain sans.
+name = "ChatGPT"
+mode = "dark"
+
+[fonts]                         # optional; each is one name or a list tried in order (first installed wins)
+latin = ["Inter", "Noto Sans", "Liberation Sans"]
+arabic = ["Noto Sans Arabic", "Noto Naskh Arabic"]
+mono = ["DejaVu Sans Mono", "Liberation Mono"]
+
+[colors]
+background = "#212121"
+surface = "#303030"
+sunken = "#2A2A2A"
+text = "#ECECEC"
+muted = "#A3A3A3"
+accent = "#FFFFFF"
+accent_text = "#0D0D0D"
+button = "#3A3A3A"
+button_hover = "#454545"
+border = "#3D3D3D"
+danger = "#F07B6D"
+focus_ring = "#FFFFFF"
+warn = "#E5B45E"
+good = "#6fd08c"
+
+[background]
+kind = "solid"
+from = "#212121"
+to = "#212121"
+angle = 0
+image_opacity = 0.6
+
+[shape]
+roundness = 16
+match_window = false
+
+[effects]
+blur = false
+shadow_blur = 0
+shadow_y = 0
+shadow_color = "#00000000"
+
+[animation]
+duration_ms = 140

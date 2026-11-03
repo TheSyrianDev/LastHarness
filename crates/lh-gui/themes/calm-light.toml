@@ -1,0 +1,48 @@
+# Built-in look. Plain placeholder values, not a design. Copy this file to
+# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+name = "Calm"
+mode = "light"          # light or dark
+
+[colors]                        # "#rgb", "#rrggbb" or "#rrggbbaa" (the last two digits are opacity)
+background = "#f5f5f3"
+surface = "#ffffff"       # panels and bubbles
+sunken = "#ecece9"          # input fields
+text = "#1d1d1b"
+muted = "#63635e"
+accent = "#3b6fd4"
+accent_text = "#ffffff"
+button = "#e8e8e4"
+button_hover = "#dcdcd6"
+border = "#dadad5"
+danger = "#c0392b"
+focus_ring = "#3b6fd4"
+warn = "#8a5a00"
+good = "#1e7a3c"
+
+[background]
+kind = "solid"             # solid, gradient or image
+from = "#f5f5f3"
+to = "#f5f5f3"
+angle = 0
+# image = "wallpaper.png"        # relative to this file; used when kind = "image"
+image_opacity = 0.6
+
+[shape]
+roundness = 10                  # corner radius of panels, in pixels
+match_window = false             # true: take the window's own radius when the desktop reports it
+                                 # (Hyprland does); controls inside panels follow the same curve
+
+[effects]
+blur = false                     # ask the desktop to blur what is behind the window
+shadow_blur = 0
+shadow_y = 0
+shadow_color = "#00000000"
+
+[animation]
+duration_ms = 140           # 0 turns hover and press animation off
+
+# [fonts]                       # optional; each is one family name or a list tried in order (first installed wins)
+# latin = ["Source Serif 4", "Noto Serif"]    # text of the window
+# arabic = "Noto Naskh Arabic"                # Arabic script (the explicit fallback of the Latin font)
+# mono = "DejaVu Sans Mono"                   # code blocks and step lists
+# A font chosen in Settings > Appearance wins over these; with none set the app's own defaults apply.

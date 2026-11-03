@@ -1,0 +1,52 @@
+# Built-in look. Liquid glass panels, pop-ups and controls (the [material] table). Copy this file to
+# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+name = "Glass"
+mode = "light"          # light or dark
+
+[colors]                        # "#rgb", "#rrggbb" or "#rrggbbaa" (the last two digits are opacity)
+background = "#f4f7fbdf"
+surface = "#ffffffa6"       # panels and bubbles; the glass is tinted with this
+sunken = "#eef3fabf"          # input fields
+text = "#10202e"
+muted = "#46586a"
+accent = "#1f6fe5"
+accent_text = "#ffffff"
+button = "#d9e4f3cc"         # a cool frost, so a resting button shows on a white panel
+button_hover = "#c9d8eee0"
+border = "#1d3c6424"         # a dark hairline; the glass adds its own bright rim
+danger = "#d23b2e"
+bubble = "#ffffff4d"           # your own messages: clear, neutral glass with a white rim
+focus_ring = "#1f6fe5"
+warn = "#8a5a00"
+good = "#1b7a3a"
+
+[background]
+kind = "gradient"             # solid, gradient or image
+from = "#f6f9fde6"
+to = "#e4eefce6"
+angle = 135
+# image = "wallpaper.png"        # relative to this file; used when kind = "image"
+image_opacity = 0.6
+
+[shape]
+roundness = 20                  # corner radius of panels, in pixels
+match_window = false             # true: take the window's own radius when the desktop reports it
+                                 # (Hyprland does); controls inside panels follow the same curve
+
+[effects]
+blur = true                     # ask the desktop to blur what is behind the window
+shadow_blur = 30
+shadow_y = 10
+shadow_color = "#1a2a4040"
+
+[material]                      # liquid glass; leave the table out for flat surfaces
+panels = "regular"              # the sidebar, the rail and cards: frosted
+side_panel = "clear_tinted"     # the panel on the right: see-through, carried by the surface colour
+popups = "regular_tinted"       # menus and dialogs: frosted and nearly solid, so their words stay clear
+controls = "clear"              # knobs, switches and the segmented thumb: clear drops
+blur = 6                        # pixels; none, regular, clear, regular_tinted or clear_tinted above
+refraction = 8
+rim = 0.75
+
+[animation]
+duration_ms = 220           # 0 turns hover and press animation off

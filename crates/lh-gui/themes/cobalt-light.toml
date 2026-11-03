@@ -1,0 +1,41 @@
+# Built-in look from the LastHarness brand palette "cobalt".
+# Brand colours are used as given; surfaces, buttons and borders are mixes of them, and a few
+# text colours are mixed darker or lighter so text stays readable (the contrast test checks this).
+name = "Cobalt"
+mode = "light"
+
+[colors]
+background = "#f3ede0"
+surface = "#f9f6f0"
+sunken = "#e9e5e0"
+text = "#0f1b45"
+muted = "#1e3595"
+accent = "#2a4bd7"
+accent_text = "#f3ede0"
+button = "#d0d3e9"
+button_hover = "#bec5ee"
+border = "#cbcdde"
+danger = "#8e4f52"
+focus_ring = "#2a4bd7"
+warn = "#746047"
+good = "#1e7a3c"
+
+[background]
+kind = "solid"
+from = "#f3ede0"
+to = "#f3ede0"
+angle = 0
+image_opacity = 0.6
+
+[shape]
+roundness = 10
+match_window = false
+
+[effects]
+blur = false
+shadow_blur = 0
+shadow_y = 0
+shadow_color = "#00000000"
+
+[animation]
+duration_ms = 140

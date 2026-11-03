@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+<script>
+// The frame for a small app the assistant wrote. It runs with an opaque origin (the parent sets
+// sandbox="allow-scripts" without allow-same-origin) and under this page's own policy: no network, nothing
+// from outside. It waits for one message from the window that holds it, then writes the app in.
+addEventListener('message', function (e) {
+  if (e.source !== parent || !e.data || e.data.lh !== 'load' || typeof e.data.html !== 'string') return;
+  var bridge = '<script>(function(){' +
+    'var sent=false;' +
+    'window.lh={followUp:function(t){if(sent)return;sent=true;parent.postMessage({lh:"follow_up",text:String(t).slice(0,2000)},"*");}};' +
+    'function size(){parent.postMessage({lh:"height",h:Math.ceil(document.documentElement.scrollHeight)},"*");}' +
+    'new ResizeObserver(size).observe(document.documentElement);addEventListener("load",size);' +
+    '})();<\/script>';
+  document.open();
+  document.write('<!doctype html><html><head><meta charset="utf-8"><style>' + (e.data.css || '') + '</style>' + bridge + '</head><body>' + e.data.html + '</body></html>');
+  document.close();
+}, { once: true });
+parent.postMessage({ lh: 'ready' }, '*');
+</script>
+</body></html>

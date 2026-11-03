@@ -1,0 +1,55 @@
+[package]
+name = "lh-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "lh_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lastharness-gui"
+path = "src/main.rs"
+
+[dependencies]
+lh-client = { path = "../lh-client" }
+serde.workspace = true
+serde_json.workspace = true
+toml = "0.8"
+unicode-bidi = "0.3"
+ttf-parser = "0.25"
+futures-util.workspace = true
+gpui = { package = "gpui-pre", version = "=0.3.8" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui-component = "0.7.1"
+lh-pageview = { path = "../lh-pageview" }
+# hooks.toml is read and written with the same code the core uses; schedule times are checked the same way too
+lh-tools = { path = "../lh-tools" }
+lh-config = { path = "../lh-config" }
+lh-store = { path = "../lh-store" }
+# fetches pictures and map tiles from allowed sites for apps in the chat (the page helper has no network)
+reqwest.workspace = true
+image = { version = "0.25", default-features = false }
+ksni = { version = "0.3", features = ["blocking"] }
+tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "time", "macros"] }
+
+[dev-dependencies]
+# the whole-screen pictures in src/shots.rs open a test window drawn offscreen
+gpui = { package = "gpui-pre", version = "=0.3.8", features = ["test-support"] }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["test-support"] }
+lh-config = { path = "../lh-config" }
+lh-core = { path = "../lh-core" }
+lh-tools = { path = "../lh-tools" }
+lh-spend = { path = "../lh-spend" }
+lh-memory = { path = "../lh-memory" }
+lh-learn = { path = "../lh-learn" }
+lh-team = { path = "../lh-team" }
+lh-store = { path = "../lh-store" }
+lh-provider = { path = "../lh-provider" }
+tempfile = "3"
+# test-support exposes the offscreen renderer used by tests/glass_shots.rs
+gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.8", features = ["test-support"] }
+axum = "0.8"
+reqwest.workspace = true
+lh-client = { path = "../lh-client" }

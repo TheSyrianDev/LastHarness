@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>What the page tries to load</title>
+<link rel="stylesheet" href="https://example.invalid/remote.css">
+<link rel="stylesheet" href="file:///etc/hostname">
+<style>body{font-family:sans-serif;margin:24px} .box{border:2px solid #c33;padding:10px;margin:8px 0}</style>
+<script src="https://example.invalid/track.js"></script>
+</head><body>
+<h1>Resources this page asks for</h1>
+<div class="box">Remote image: <img src="https://example.invalid/pixel.png" width="40" height="40" alt="remote"></div>
+<div class="box">Local image outside the page's file: <img src="file:///usr/share/pixmaps/archlinux-logo.png" width="40" height="40" alt="local"></div>
+<div class="box">A sibling file: <img src="sibling.png" width="40" height="40" alt="sibling"></div>
+<div class="box">Frame of a local file: <iframe src="file:///etc/hostname" width="300" height="40"></iframe></div>
+<div class="box" style="background:url(https://example.invalid/bg.png)">Background from the web</div>
+<p>If the viewer is safe, none of those loaded and the list of refused requests is printed by the tool.</p>
+</body></html>

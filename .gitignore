@@ -1,0 +1,23 @@
+# Rust
+/target/
+**/target/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local state and secrets
+.env
+.env.*
+*.local
+*.log
+
+# Model files
+*.gguf
+*.onnx
+*.safetensors
+
+# Agent worktrees and local tool state
+/.claude/

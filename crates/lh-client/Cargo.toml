@@ -1,0 +1,11 @@
+[package]
+name = "lh-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lh-provider = { path = "../lh-provider" }
+reqwest.workspace = true
+serde_json.workspace = true
+qrcode = { version = "0.14", default-features = false }

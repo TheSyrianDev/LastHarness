@@ -1,0 +1,20 @@
+[package]
+name = "lh-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lh-provider = { path = "../lh-provider" }
+lh-memory = { path = "../lh-memory" }
+lh-learn = { path = "../lh-learn" }
+tokio = { workspace = true, features = ["process", "fs", "io-util", "time", "rt", "macros", "sync"] }
+rquickjs = "0.9"
+serde_json.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+toml = "1.1.8"
+
+[dev-dependencies]
+tempfile = "3"
+lh-store = { path = "../lh-store" }

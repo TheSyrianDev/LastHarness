@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+# its own workspace: stylo (inside Blitz) does not compile together with the window toolkit, see its Cargo.toml
+exclude = ["crates/lh-pageview-engine", "crates/lh-pageview-servo"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/TheSyrianDev/LastHarness"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# gpui-pre-wgpu 0.3.8 with one change: shaped glyphs keep their x/y offsets (Arabic dots and marks), see
+# third_party/gpui-pre-wgpu/src/cosmic_text_system.rs. Remove when upstream does the same.
+[patch.crates-io]
+# Also adds liquid glass: a glass pipeline that copies the frame drawn so far and bends it (src/shaders_glass.wgsl).
+gpui-pre-wgpu = { path = "third_party/gpui-pre-wgpu" }
+# gpui-pre 0.3.8 with one change: wrapped right-to-left lines break in logical order and each row is bidi-reordered,
+# see third_party/gpui-pre/src/text_system/line_layout_bidi.rs. Remove when upstream does the same.
+# Also adds the `Glass` primitive, `Window::paint_glass` and the `glass()` element (src/scene.rs, src/elements/canvas.rs).
+# And `Div::child_under`, a child painted under the others (a glass layer behind a panel; src/elements/div.rs).
+gpui-pre = { path = "third_party/gpui-pre" }
+# gpui-pre-apple and gpui-pre-windows 0.3.8 unchanged except that they skip the new glass primitive (no glass there yet).
+gpui-pre-apple = { path = "third_party/gpui-pre-apple" }
+gpui-pre-windows = { path = "third_party/gpui-pre-windows" }

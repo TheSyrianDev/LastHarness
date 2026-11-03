@@ -1,0 +1,46 @@
+[package]
+name = "lh-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lhd"
+path = "src/main.rs"
+
+[dependencies]
+lh-provider = { path = "../lh-provider" }
+lh-tools = { path = "../lh-tools" }
+lh-secrets = { path = "../lh-secrets" }
+lh-spend = { path = "../lh-spend" }
+lh-memory = { path = "../lh-memory" }
+lh-learn = { path = "../lh-learn" }
+lh-store = { path = "../lh-store" }
+lh-team = { path = "../lh-team" }
+lh-mcp = { path = "../lh-mcp" }
+lh-config = { path = "../lh-config" }
+lh-channels = { path = "../lh-channels" }
+tokio = { workspace = true, features = ["net", "sync", "signal", "fs"] }
+axum = "0.8"
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+getrandom = "0.3"
+reqwest.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "crypto"] }
+hyper = "1"
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "http1", "http2"] }
+tower = { version = "0.5", features = ["util"] }
+p256 = { version = "0.13", features = ["ecdsa", "jwk"] }
+sha2 = "0.10"
+base64 = "0.22"
+hmac = "0.12"
+
+[dev-dependencies]
+p256 = { version = "0.13", features = ["ecdsa", "jwk", "std"] }
+base64 = "0.22"
+tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3"
+reqwest.workspace = true

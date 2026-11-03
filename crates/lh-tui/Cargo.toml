@@ -1,0 +1,37 @@
+[package]
+name = "lh-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lh"
+path = "src/main.rs"
+
+# the same program under its long name
+[[bin]]
+name = "lastharness"
+path = "src/bin/lastharness.rs"
+
+[dependencies]
+lh-provider = { path = "../lh-provider" }
+lh-client = { path = "../lh-client" }
+lh-config = { path = "../lh-config" }
+lh-secrets = { path = "../lh-secrets" }
+tokio = { workspace = true, features = ["sync", "fs"] }
+reqwest = { workspace = true, features = ["blocking"] }
+
+futures-util.workspace = true
+serde_json.workspace = true
+ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+[dev-dependencies]
+lh-core = { path = "../lh-core" }
+lh-tools = { path = "../lh-tools" }
+lh-spend = { path = "../lh-spend" }
+lh-memory = { path = "../lh-memory" }
+lh-learn = { path = "../lh-learn" }
+lh-store = { path = "../lh-store" }
+tempfile = "3"
+axum = "0.8"

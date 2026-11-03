@@ -1,0 +1,41 @@
+# Built-in look from the LastHarness brand palette "grove".
+# Brand colours are used as given; surfaces, buttons and borders are mixes of them, and a few
+# text colours are mixed darker or lighter so text stays readable (the contrast test checks this).
+name = "Grove"
+mode = "dark"
+
+[colors]
+background = "#15251c"
+surface = "#223524"
+sunken = "#111e16"
+text = "#f2ead6"
+muted = "#d5d8ae"
+accent = "#b2c27c"
+accent_text = "#15251c"
+button = "#2d412a"
+button_hover = "#364d30"
+border = "#33482e"
+danger = "#d78f6a"
+focus_ring = "#b2c27c"
+warn = "#e0a050"
+good = "#6fcf8a"
+
+[background]
+kind = "solid"
+from = "#15251c"
+to = "#15251c"
+angle = 0
+image_opacity = 0.6
+
+[shape]
+roundness = 10
+match_window = false
+
+[effects]
+blur = false
+shadow_blur = 0
+shadow_y = 0
+shadow_color = "#00000000"
+
+[animation]
+duration_ms = 140

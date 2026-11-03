@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5f5f3">
+<title>LastHarness</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='8' y='18' width='38' height='38' rx='15' fill='%2315251c'/><g transform='translate(2.4 -2) rotate(-8 27 37)'><rect x='18.6' y='30.6' width='6' height='11' rx='3' fill='%23f2ead6'/><rect x='30.1' y='31.4' width='4.6' height='10.2' rx='2.3' fill='%23f2ead6'/></g><circle cx='49' cy='15' r='6' fill='%23e0a050'/></svg>">
+</head>
+<body>
+<a href="#chat-input" class="skip">Skip to the message box</a>
+<div class="app" id="app" hidden>
+  <nav class="rail" aria-label="Main">
+    <button type="button" data-go="chats" aria-keyshortcuts="Control+B" title="Chats (Ctrl+B)" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="sr">Chats</span></button>
+    <button type="button" data-go="team" title="Departments" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M3 19c0-3 2-5 5-5s5 2 5 5M11 19c0-3 2-5 5-5s5 2 5 5"/></svg><span class="sr">Departments</span></button>
+    <button type="button" data-go="memory" title="Memory" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg><span class="sr">Memory</span></button>
+    <button type="button" data-go="review" title="Review" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4 10-10"/></svg><span class="sr">Review</span></button>
+    <span class="grow"></span>
+    <button type="button" data-go="settings" title="Settings" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg><span class="sr">Settings</span></button>
+  </nav>
+  <aside class="chats" id="chats" aria-label="Chats">
+    <button type="button" class="new-chat" id="new-chat">New chat</button>
+    <ul id="chat-list"></ul>
+  </aside>
+  <main class="main" id="main" tabindex="-1">
+    <header class="titlebar" role="banner">
+      <span id="chat-title" class="chat-title">New chat</span>
+      <span id="chat-meta" class="meta"></span>
+      <div class="model"><button type="button" id="model-btn" class="model-btn" aria-haspopup="dialog" aria-expanded="false" title="Choose a model"><span id="model-btn-label">Model</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button></div>
+    </header>
+    <div class="scroll" id="scroll">
+      <div class="column" id="log" role="log" aria-live="polite" aria-label="Conversation"></div>
+    </div>
+    <div class="composer-wrap" id="composer-wrap">
+      <div class="column">
+        <!-- the LastHarness mark in the logo pose, from the brand kit -->
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="18" width="38" height="38" rx="15" fill="#15251c"/><g transform="translate(2.4 -2) rotate(-8 27 37)"><rect x="18.6" y="30.6" width="6" height="11" rx="3" fill="#f2ead6"/><rect x="30.1" y="31.4" width="4.6" height="10.2" rx="2.3" fill="#f2ead6"/></g><circle cx="49" cy="15" r="6" fill="#e0a050"/></svg>
+        <h1 class="greeting" id="greeting"></h1>
+        <div id="asks"></div>
+        <form class="composer" id="composer">
+          <label for="chat-input" class="sr">Your message</label>
+          <textarea id="chat-input" rows="1" placeholder="Ask anything…"></textarea>
+          <button type="submit" id="send" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+        </form>
+        <p class="hint">Models can make mistakes. Check important details.</p>
+      </div>
+    </div>
+  </main>
+  <aside class="panel" id="panel" aria-label="Side panel" hidden>
+    <div class="panel-head"><span id="panel-title"></span><button type="button" id="panel-close" aria-label="Close the panel">×</button></div>
+    <div class="panel-body" id="panel-body"></div>
+  </aside>
+</div>
+<p id="status" class="status" role="status" aria-live="polite"></p>
+<div id="gate"><noscript><p>This page needs JavaScript.</p></noscript></div>
+<script src="/app.js"></script>
+</body>
+</html>

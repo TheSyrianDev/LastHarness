@@ -1,0 +1,42 @@
+# Built-in look. Plain placeholder values, not a design. Copy this file to
+# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+name = "Calm"
+mode = "dark"          # light or dark
+
+[colors]                        # "#rgb", "#rrggbb" or "#rrggbbaa" (the last two digits are opacity)
+background = "#1c1c1e"
+surface = "#252528"       # panels and bubbles
+sunken = "#19191b"          # input fields
+text = "#e9e9e6"
+muted = "#9a9a95"
+accent = "#6b9bf0"
+accent_text = "#0d1626"
+button = "#303034"
+button_hover = "#3b3b40"
+border = "#37373b"
+danger = "#ec7a6c"
+focus_ring = "#7aa7f5"
+warn = "#e2b15a"
+good = "#6fcf8a"
+
+[background]
+kind = "solid"             # solid, gradient or image
+from = "#1c1c1e"
+to = "#1c1c1e"
+angle = 0
+# image = "wallpaper.png"        # relative to this file; used when kind = "image"
+image_opacity = 0.6
+
+[shape]
+roundness = 10                  # corner radius of panels, in pixels
+match_window = false             # true: take the window's own radius when the desktop reports it
+                                 # (Hyprland does); controls inside panels follow the same curve
+
+[effects]
+blur = false                     # ask the desktop to blur what is behind the window
+shadow_blur = 0
+shadow_y = 0
+shadow_color = "#00000000"
+
+[animation]
+duration_ms = 140           # 0 turns hover and press animation off

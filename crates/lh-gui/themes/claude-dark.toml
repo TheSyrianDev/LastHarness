@@ -1,0 +1,44 @@
+# Warm dark look with a clay accent and a serif for text.
+name = "Claude"
+mode = "dark"
+
+[fonts]                         # optional; each is one name or a list tried in order (first installed wins)
+latin = ["Source Serif 4", "Source Serif Pro", "Lora", "Noto Serif", "Liberation Serif"]
+arabic = ["Noto Naskh Arabic", "Noto Sans Arabic"]
+mono = ["JetBrains Mono", "DejaVu Sans Mono"]
+
+[colors]
+background = "#262624"
+surface = "#30302E"
+sunken = "#1F1E1D"
+text = "#ECE9E1"
+muted = "#A19E94"
+accent = "#D97757"
+accent_text = "#1F1410"
+button = "#3A3935"
+button_hover = "#46453F"
+border = "#43423D"
+danger = "#EE7E6F"
+focus_ring = "#E08868"
+warn = "#E3B261"
+good = "#7fcf8f"
+
+[background]
+kind = "solid"
+from = "#262624"
+to = "#262624"
+angle = 0
+image_opacity = 0.6
+
+[shape]
+roundness = 14
+match_window = false
+
+[effects]
+blur = false
+shadow_blur = 0
+shadow_y = 0
+shadow_color = "#00000000"
+
+[animation]
+duration_ms = 140
