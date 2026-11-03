@@ -149,8 +149,62 @@ async function pairView() {
 const THEME_VARS = { background: '--bg', surface: '--surface', sunken: '--sunken', text: '--text', muted: '--muted', accent: '--accent', accent_text: '--accent-text', button: '--button', button_hover: '--button-hover', border: '--border', danger: '--danger', bubble: '--bubble', warn: '--warn', good: '--good', focus_ring: '--focus' };
 let themes = [];
 let curTheme = null;
+// The Glass look tinted around up to three picked colours, as in GPUI (lh-gui theme.rs tint_glass): the first leads the
+// accent and the top of the background, the last the bottom, the middle one the panels. The tint backs off until every
+// readability check passes, so it never makes words faint.
+const GLASS_COLS = 24, GLASS_ROWS = 6;
+const rgbOf = (hex) => { let x = String(hex || '').replace('#', ''); if (x.length === 3) x = [...x].map((c) => c + c).join(''); if (x.length === 6) x += 'ff'; const n = (i) => parseInt(x.slice(i, i + 2), 16); return x.length === 8 && !isNaN(n(0)) ? { r: n(0), g: n(2), b: n(4), a: n(6) } : null; };
+const hexOf = (c) => '#' + [c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('') + (c.a === 255 ? '' : c.a.toString(16).padStart(2, '0'));
+const mixC = (a, b, t) => { const k = Math.min(1, Math.max(0, t)); const m = (x, y) => Math.round(x + (y - x) * k); return { r: m(a.r, b.r), g: m(a.g, b.g), b: m(a.b, b.b), a: m(a.a, b.a) }; };
+const overC = (fg, bg) => ({ ...mixC({ ...bg, a: 255 }, { ...fg, a: 255 }, fg.a / 255), a: 255 });
+const lumC = (c) => { const f = (v) => { const x = v / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+const contrastC = (a, b) => { const x = lumC(a), y = lumC(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+function glassField(col, row) {
+  const hh = col / GLASS_COLS, l = 0.85 - 0.55 * row / (GLASS_ROWS - 1), sat = 0.8;
+  const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat, p = 2 * l - q;
+  const ch = (t) => { t = ((t % 1) + 1) % 1; const v = t < 1 / 6 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; return Math.round(v * 255); };
+  return hexOf({ r: ch(hh + 1 / 3), g: ch(hh), b: ch(hh - 1 / 3), a: 255 });
+}
+function readable(c, dark) {
+  const bg = overC(c.background, dark ? { r: 0, g: 0, b: 0, a: 255 } : { r: 255, g: 255, b: 255, a: 255 });
+  const [surface, sunken, button, accent] = [c.surface, c.sunken || c.surface, c.button || c.surface, c.accent].map((x) => overC(x, bg));
+  const checks = [[c.text, surface, 4.5], [c.text, bg, 4.5], [c.text, sunken, 4.5], [c.text, button, 4.5], [c.text, overC(c.bubble || c.surface, bg), 4.5], [c.muted, surface, 4.5], [c.muted, bg, 4.5], [c.muted, sunken, 4.5],
+    [c.accent_text || c.text, accent, 4.5], [c.danger || c.text, surface, 4.5], [c.warn || c.text, surface, 4.5], [c.good || c.text, surface, 4.5], [accent, surface, 3], [c.focus_ring || c.accent, bg, 3]];
+  return checks.every(([fg, back, min]) => contrastC(overC(fg, back), back) >= min);
+}
+function glassTinted(t) {
+  if (!t || t.name !== 'Glass') return t;
+  const picks = jsonPref('glass-colours', []).map(rgbOf).filter(Boolean).slice(0, 3);
+  if (!picks.length || !t.colors) return t;
+  const C = {}; for (const [k, v] of Object.entries(t.colors)) { const c = rgbOf(v); if (c) C[k] = c; }
+  const first = picks[0], last = picks[picks.length - 1], mid = picks[1] || first, dark = t.mode === 'dark';
+  const black = { r: 0, g: 0, b: 0, a: 255 }, white = { r: 255, g: 255, b: 255, a: 255 };
+  const towards = (c, p, k) => ({ ...mixC(c, { ...p, a: c.a }, k), a: c.a });
+  let s = Math.min(1, Math.max(0, +(pref('glass-opacity') ?? 0.5) || 0));
+  if (pref('glass-opacity') === null) s = 0.5;
+  for (;;) {
+    const c = { ...C };
+    c.background = towards(C.background, mixC(first, last, 0.5), s * 0.45);
+    c.surface = towards(C.surface, mid, s * 0.25); c.button = towards(C.button, mid, s * 0.3); c.button_hover = towards(C.button_hover, mid, s * 0.35);
+    const bg = overC(c.background, dark ? black : white), surface = overC(c.surface, bg);
+    let accent = { ...first, a: 255 };
+    for (let i = 0; i < 20 && contrastC(accent, surface) < 3.2; i++) accent = mixC(accent, dark ? white : black, 0.12);
+    c.accent = accent; c.focus_ring = accent;
+    const ink10 = mixC(black, accent, 0.1);
+    c.accent_text = contrastC(white, accent) >= contrastC(ink10, accent) ? white : ink10;
+    const ink = dark ? white : black;
+    for (const k of ['danger', 'warn', 'good', 'muted']) { if (!c[k]) continue; for (let i = 0; i < 12 && !(contrastC(c[k], surface) >= 4.7 && contrastC(c[k], bg) >= 4.7); i++) c[k] = mixC(c[k], ink, 0.08); }
+    if (readable(c, dark) || s <= 0) {
+      if (s <= 0 && !readable(c, dark)) return t;
+      const out = { ...t, colors: { ...t.colors } }; for (const [k, v] of Object.entries(c)) out.colors[k] = hexOf(v);
+      const b = t.background; if (b?.kind === 'gradient') { const f = rgbOf(b.from), to = rgbOf(b.to); out.background = { ...b, from: f ? hexOf(towards(f, first, s * 0.6)) : b.from, to: to ? hexOf(towards(to, last, s * 0.6)) : b.to }; }
+      return out;
+    }
+    s = Math.max(0, s - 0.1);
+  }
+}
 function applyTheme(t) {
-  curTheme = t; if (typeof fontInstalled === 'function') applyLayout();
+  curTheme = t; t = glassTinted(t); if (typeof fontInstalled === 'function') applyLayout();
   const st = document.documentElement.style;
   for (const [k, v] of Object.entries(THEME_VARS)) if (t?.colors?.[k]) st.setProperty(v, t.colors[k]);
   if (t?.shape?.roundness != null) st.setProperty('--radius', `${t.shape.roundness}px`);
@@ -171,7 +225,7 @@ const memPrefs = new Map();
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { if (v === undefined) return memPrefs.get(k) ?? null; memPrefs.set(k, String(v)); } };
 // The core stamps each build into the page. On a new build, stored keys that are not a choice the person made are
 // dropped, so an old default never hides a new one. The device key lives in IndexedDB and is never touched here.
-const CHOSEN = ['look', 'look-mode', 'chat-width', 'side-width', 'font-latin', 'font-arabic', 'fonts-added', 'width-presets', 'pages-off', 'direction', 'name', 'stops', 'stop-count', 'stop-titles', 'model', 'folded', 'settings-page', 'pinned', 'settle-days'];
+const CHOSEN = ['look', 'look-mode', 'chat-width', 'side-width', 'font-latin', 'font-arabic', 'fonts-added', 'width-presets', 'pages-off', 'direction', 'name', 'stops', 'stop-count', 'stop-titles', 'model', 'folded', 'settings-page', 'pinned', 'settle-days', 'glass-colours', 'glass-opacity'];
 function freshBuild() {
   const id = document.querySelector('meta[name="lh-build"]')?.content;
   if (!id) return;
@@ -1212,11 +1266,26 @@ async function settingsView() {
     const DIRS = { auto: 'Direction: follow the desktop language', ltr: 'Direction: left to right', rtl: 'Direction: right to left (mirrored)' };
     const dir = pref('direction') || 'auto';
     const side = (d) => { pref('side-width', String(Math.min(420, Math.max(180, (+pref('side-width') || 260) + d)))); applyLayout(); };
+    // the Glass look's colours: up to three dots on a colour field and how strongly they show (lh-gui panels.rs)
+    const glassBlock = () => {
+      const picks = jsonPref('glass-colours', []);
+      const save = (v) => { pref('glass-colours', JSON.stringify(v)); setLook(); draw(); };
+      const toggle = (hex) => { const v = [...picks]; const i = v.indexOf(hex); if (i >= 0) v.splice(i, 1); else { if (v.length >= 3) v.length = 2; v.push(hex); } save(v); };
+      const field = h('div', { class: 'glass-field', role: 'group', 'aria-label': 'Glass colours' });
+      for (let r = 0; r < GLASS_ROWS; r++) for (let c = 0; c < GLASS_COLS; c++) { const hex = glassField(c, r); field.append(h('button', { type: 'button', class: 'glass-cell', style: `background:${hex}`, 'aria-label': hex, 'aria-pressed': String(picks.includes(hex)), onclick: () => toggle(hex) })); }
+      const op = pref('glass-opacity') === null ? 0.5 : +pref('glass-opacity');
+      return h('div', { class: 'glass-block' },
+        h('div', { class: 'set-row' }, h('span', { class: 'lbl' }, 'Glass colours (up to three)'), picks.map((c) => h('span', { class: 'glass-swatch', style: `background:${c}` })), h('button', { type: 'button', class: 'seg ghost', onclick: () => save([]) }, 'No colours')),
+        field,
+        h('div', { class: 'set-row' }, h('span', { class: 'lbl' }, 'Opacity'), [0.2, 0.4, 0.6, 0.8, 1].map((v) => h('button', { type: 'button', class: Math.abs(op - v) < 0.05 ? 'seg primary' : 'seg', 'aria-pressed': String(Math.abs(op - v) < 0.05), onclick: () => { pref('glass-opacity', String(v)); setLook(); draw(); } }, `${Math.round(v * 100)}%`))),
+        h('p', { class: 'about' }, 'Words stay readable: the tint softens itself when it has to.'));
+    };
     const name = h('input', { type: 'text', placeholder: 'Your name', value: pref('name') || '' });
     name.onchange = () => { pref('name', name.value); userName = name.value; greet(); };
     return h('div', { class: 'set-card' },
       h('label', { class: 'set-row' }, dark, 'Dark mode', following ? h('span', { class: 'note' }, sysDark() ? 'Following the desktop: dark now' : 'Following the desktop: light now') : null), h('label', { class: 'set-row' }, sys, 'Match the desktop'),
       h('div', { class: 'set-row' }, h('span', { class: 'lbl' }, 'Look'), names.map((n) => h('button', { type: 'button', class: 'seg', 'aria-pressed': String(cur.startsWith(n + '/')), onclick: () => pick(n) }, n))),
+      fam === 'Glass' ? glassBlock() : null,
       h('div', { class: 'set-row', role: 'group', 'aria-label': 'Chat width' }, h('span', { class: 'lbl' }, 'Chat width'), width, num, h('span', { class: 'lbl' }, col() === 'full' ? 'Full' : 'px')),
       h('div', { class: 'set-row' }, h('span', { class: 'lbl' }, 'Presets'), ['700', '900', '1100', 'full'].map((w) => chip(w, label(w))), presets.map((p, i) => h('span', { class: 'set-row' }, chip(p.width, `${p.name} · ${label(p.width)}`), h('button', { type: 'button', class: 'seg danger', 'aria-label': `Delete ${p.name}`, onclick: () => { presets.splice(i, 1); pref('width-presets', JSON.stringify(presets)); draw(); } }, '×')))),
       h('div', { class: 'set-row' }, pname, h('button', { type: 'button', class: 'seg', onclick: savePreset }, 'Save this width')),

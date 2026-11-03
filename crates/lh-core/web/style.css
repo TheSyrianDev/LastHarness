@@ -501,3 +501,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .chats li:hover .pin, .chats li .pin:focus-visible { opacity: 1; }
 .earlier-more, .side-empty { font-size: 14px; color: var(--muted); padding: 0 10px; }
 .side-empty { padding: 12px 8px; list-style: none; }
+.glass-block { display: flex; flex-direction: column; gap: 4px; }
+.glass-field { display: grid; grid-template-columns: repeat(24, 14px); width: max-content; border: 1px solid var(--border); border-radius: var(--inner); overflow: hidden; }
+.glass-cell { width: 14px; height: 14px; padding: 0; border: 0; border-radius: 0; display: grid; place-items: center; cursor: pointer; }
+.glass-cell[aria-pressed="true"]::after { content: ''; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; box-shadow: 0 1px 2px #0000004d; }
+.glass-swatch { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border); }
