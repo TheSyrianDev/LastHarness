@@ -1428,16 +1428,16 @@ async function settingsView() {
           r.version > 1 ? btn('Undo last change', () => act('POST', `/v1/learn/rules/${r.id}/rollback`, { version: r.version - 1 }, () => `Went back to version ${r.version - 1}.`)) : null,
           sure('Delete', 'Delete this rule and its history for good?', () => act('DELETE', `/v1/learn/rules/${r.id}`, undefined, () => 'Deleted for good.')))));
       const [sv] = await fetchOr('/v1/learn/style', 'How I talk to you');
-      const [st, stF] = fieldIn('Style', 'For example: Short answers. Plain words. No filler.');
+      const st = h('textarea', { rows: 3, placeholder: 'For example: Short answers. Plain words. No filler.', 'aria-label': 'Style' }); const stF = h('div', { class: 'set-field' }, h('div', { class: 'lbl' }, 'Style'), st);
       st.value = sv?.style?.text || '';
       const [kv2] = await fetchOr('/v1/learn/skills', 'Skills');
       const skills = (kv2?.skills || []).map((k) => card(h('div', { class: 'title' }, k.name), muted(k.error ? `This skill is broken: ${k.error}` : (k.description || '')),
         row(btn('Undo last change', async () => { const v = (await json(`/v1/learn/skills/${encodeURIComponent(k.name)}`)).history || []; const prev = v.map((x) => x.version).sort((a, b) => b - a)[1]; if (prev) await act('POST', `/v1/learn/skills/${encodeURIComponent(k.name)}/rollback`, { version: prev }); else say('There is no earlier version.'); }),
           sure('Delete', 'Delete this skill and its history for good?', () => act('DELETE', `/v1/learn/skills/${encodeURIComponent(k.name)}`)))));
       return [props.length ? [sub('Waiting for you'), props] : null,
-        sub('Rules'), muted('Things the assistant always keeps to. Switch one off to stop it without losing it.'), card(nrF, row(btn('Add rule', addRule, 'seg primary'))), rErr || (rules.length ? rules : muted('No rules yet.')),
-        sub('How I talk to you'), muted('A short note on tone and length. It goes with every chat, so keep it short.'), card(stF, row(btn('Save', () => act('PUT', '/v1/learn/style', { text: st.value }, () => 'Saved. The old text stays in the history.'), 'seg primary'),
-          sv?.style?.version > 1 ? btn('Undo last change', () => act('POST', '/v1/learn/style/rollback', { version: sv.style.version - 1 }, () => `Went back to the text of version ${sv.style.version - 1}.`)) : null)),
+        sub('Rules'), muted('Things the assistant always keeps to. Switch one off to stop it without losing it.'), h('div', { class: 'set-inline' }, nr, btn('Add rule', addRule, 'seg primary')), rErr || (rules.length ? rules : muted('No rules yet.')),
+        sub('How I talk to you'), muted('A short note on tone and length. It goes with every chat, so keep it short.'), stF, row(btn('Save', () => act('PUT', '/v1/learn/style', { text: st.value }, () => 'Saved. The old text stays in the history.'), 'seg primary'),
+          sv?.style?.version > 1 ? btn('Undo last change', () => act('POST', '/v1/learn/style/rollback', { version: sv.style.version - 1 }, () => `Went back to the text of version ${sv.style.version - 1}.`)) : null),
         sub('Skills'), muted('Ready-made know-how the assistant reads when a task needs it.'), skills.length ? skills : muted('No skills yet.')];
     },
     async departments() {

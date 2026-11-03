@@ -506,3 +506,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .glass-cell { width: 14px; height: 14px; padding: 0; border: 0; border-radius: 0; display: grid; place-items: center; cursor: pointer; }
 .glass-cell[aria-pressed="true"]::after { content: ''; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; box-shadow: 0 1px 2px #0000004d; }
 .glass-swatch { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border); }
+.set-inline { display: flex; gap: 4px; align-items: center; }
+.set-inline input { flex: 1; min-width: 0; }
+.settings-page textarea { width: 100%; min-height: 80px; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--inner); background: var(--sunken); color: var(--text); font: inherit; resize: vertical; }
