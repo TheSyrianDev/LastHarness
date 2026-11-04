@@ -525,3 +525,4 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .samp { width: 150px; }
 .home-name { width: 120px; }
 .seg.danger-fill { background: var(--danger); color: var(--accent-text); }
+.mono { font: 13px var(--mono); white-space: pre-wrap; word-break: break-all; }

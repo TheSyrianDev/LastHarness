@@ -1783,8 +1783,19 @@ async function settingsView() {
         card(sub('Bring in a saved copy'), muted('First you see what is in the folder. Nothing changes until you press Bring it in. Your own roles, departments and writing style stay unless you choose to replace them.'), imF, row(btn('Look inside', look)), found)];
     },
     async hooks() {
-      return [muted('Commands run before or after a tool call, kept in hooks.toml on the computer. A command before a tool that fails stops the tool. New chats use the changes.'),
-        muted('The browser cannot read or change hooks.toml: the core has no address for it. Change hooks in the desktop app, or edit the file.')];
+      const [v, err] = await fetchOr('/v1/hooks', 'hooks.toml');
+      const intro = muted(`Commands run before or after a tool call, kept in ${v?.file || 'hooks.toml'}. A command before a tool that fails stops the tool. New chats use the changes.`);
+      if (err) return [intro, err];
+      if (v.error) return [intro, muted(`hooks.toml: ${v.error}`)];
+      const out = [intro];
+      for (const when of ['before', 'after']) {
+        out.push(sub(when === 'after' ? 'After a tool' : 'Before a tool'));
+        const list = v[when] || [];
+        if (!list.length) out.push(muted('None.'));
+        list.forEach((k, i) => out.push(card(h('div', { class: 'mono' }, k.run), muted(`${(k.tools || []).length ? k.tools.join(', ') : 'every tool'} · stops after ${k.timeout_secs} s`))));
+      }
+      out.push(muted('Hooks run programs, so they are added and removed on the computer: in the desktop app, or in the file.'));
+      return out;
     },
   };
   async function draw() {

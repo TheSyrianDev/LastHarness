@@ -40,6 +40,7 @@ mod session;
 pub mod web;
 mod settings_api;
 mod show_tool;
+mod hooks_api;
 mod team_api;
 mod titles;
 mod tree_api;
@@ -377,6 +378,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
 }
 
 /// Only a request that passed its guard counts as activity: this layer sits outside the guard, so it
+        .merge(hooks_api::routes::<M>())
 /// must not wake the core for strangers. See `auth::require`.
 async fn touch_idle(idle: Arc<idle::Idle>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
     let r = next.run(req).await;
