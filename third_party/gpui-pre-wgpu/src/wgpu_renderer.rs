@@ -1226,6 +1226,12 @@ impl WgpuRenderer {
             .surface_config
             .usage
             .contains(wgpu::TextureUsages::COPY_SRC);
+        if !copyable && !scene.glasses.is_empty() {
+            static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                warn!("window surface cannot be copied (no COPY_SRC); liquid glass shows only its tint and rim, no refraction");
+            }
+        }
         if let Err(error) = core.render_frame(
             scene,
             copyable.then_some(&frame.texture),

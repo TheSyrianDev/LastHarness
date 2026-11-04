@@ -168,6 +168,10 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
         tint *= 0.6 + 0.6 * luma;
         ta = 0.35 + 0.65 * ta;
     }
+    // The bevel stays clearer than the body, so the bend of what is behind
+    // (words, edges) shows at the rim even on a nearly solid pop-up. The middle,
+    // where the panel's own words sit, keeps its full tint.
+    ta *= 1.0 - 0.45 * pow(edge, 0.7);
     var rgb = c * (1.0 - ta) + saturate(tint) * ta;
     var alpha = color.a * (1.0 - ta) + ta;
 
@@ -176,14 +180,19 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
     let light_dir = vec2<f32>(-0.6, -0.8);
     let facing = saturate(dot(n, light_dir));
     let away = saturate(-dot(n, light_dir));
+    // Moving or pressed glass catches more light.
+    let lit = glass.rim * (1.0 + 0.9 * energy);
     // Fresnel: the surface turns edge-on at the rim and reflects more there.
-    let fresnel = pow(1.0 - lens.y, 3.0);
+    let fresnel = pow(1.0 - lens.y, 2.0);
     // Specular on the bevel: bright on the lit side, softer opposite.
-    let spec = fresnel * (select(0.10, 0.18, clear) + select(0.45, 0.75, clear) * facing * facing + 0.22 * away * away);
-    // Thin rim line at the very edge, scaled by `rim`.
-    let band = saturate(1.0 - depth / 1.25);
-    let line = band * (0.3 + 0.7 * facing + 0.35 * away);
-    let rim = saturate(glass.rim * (line + spec));
+    let spec = fresnel * (select(0.12, 0.2, clear) + select(0.6, 0.9, clear) * facing * facing + 0.3 * away * away);
+    // A broad sheen across the lit part of the bevel, like light caught in the
+    // curve, reaching well inside the rim and not only the last pixel.
+    let sheen = pow(edge, 0.6) * pow(facing, 1.5) * 0.32 + pow(edge, 0.8) * away * away * 0.1;
+    // Thin rim line at the very edge, two pixels wide.
+    let band = saturate(1.0 - depth / 2.0);
+    let line = band * (0.45 + 0.8 * facing + 0.4 * away);
+    let rim = saturate(lit * (line + spec + sheen));
     // Inner shadow: a soft dark ring just inside the rim, deeper away from the light.
     let ring = saturate(1.0 - abs(depth - 3.0) / 3.0) * saturate(depth / 1.0);
     let shade = ring * (0.05 + 0.10 * (1.0 - facing)) * select(1.0, 1.4, clear) * saturate(glass.rim * 1.5);
