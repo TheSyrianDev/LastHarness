@@ -28,6 +28,7 @@ pub mod runs;
 pub mod setting_names;
 pub mod settings;
 pub mod sidebar;
+pub mod slide;
 pub mod theme;
 pub mod tiers;
 pub mod wheel;

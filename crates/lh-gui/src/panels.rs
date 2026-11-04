@@ -11,6 +11,9 @@ use lh_gui::layout::Panel;
 use lh_gui::runs::{Outcome, Question, Run, StepState};
 use lh_gui::settings;
 use crate::style::PanelExt;
+
+/// The brightness knob's size at rest, in pixels.
+const GLASS_KNOB: f32 = 18.;
 use crate::ui::Kind;
 use lh_gui::model::Block;
 
@@ -418,11 +421,11 @@ impl App {
                 }
                 // the ball under the pointer, else a new ball, else the nearest one comes to the pointer
                 let near = a.prefs.glass_colours.iter().enumerate()
-                    .map(|(i, c)| { let (x, y) = wheel::position(c, r); (i, (x - dx).powi(2) + (y - dy).powi(2)) })
+                    .map(|(i, c)| { let (x, y) = a.glass_placed.position(c, r); (i, (x - dx).powi(2) + (y - dy).powi(2)) })
                     .min_by(|x, y| x.1.total_cmp(&y.1));
                 let i = match near {
                     Some((i, d)) if d <= (BALL / 2. + 2.).powi(2) || a.prefs.glass_colours.len() >= 3 => i,
-                    _ => { a.prefs.glass_colours.push(wheel::colour_at(dx, dy, r, 1.)); a.prefs.glass_colours.len() - 1 }
+                    _ => { let hex = a.glass_placed.place(dx, dy, r, 1.); a.prefs.glass_colours.push(hex); a.prefs.glass_colours.len() - 1 }
                 };
                 a.glass_drag = Some(i);
                 a.glass_sel = i;
@@ -439,7 +442,7 @@ impl App {
         let sel = self.glass_sel.min(picks.len().saturating_sub(1));
         self.glass_sel = sel;
         for (i, c) in picks.iter().enumerate() {
-            let (x, y) = wheel::position(c, SIZE / 2.);
+            let (x, y) = self.glass_placed.position(c, SIZE / 2.);
             let held = self.glass_drag == Some(i);
             let grow = self.swell(&format!("glass-ball-{i}"), held, 4., Some(window));
             let d = BALL + grow;
@@ -455,13 +458,17 @@ impl App {
         }
         // brightness for the selected ball: bright at the top, dark at the bottom, a glass knob like the other sliders
         let bar = picks.get(sel).map(|c| {
-            let full = wheel::with_value(c, 1.);
+            let (h, s) = self.glass_placed.hs(c);
+            let full = { let (r, g, b) = wheel::hsv_to_rgb(h, s, 1.); wheel::to_hex(r, g, b) };
             let v = wheel::value_of(c);
             let held = self.glass_vdrag;
-            let k = 18. + self.swell("glass-value", held, 4., Some(window));
+            let swell = self.swell("glass-value", held, 4., Some(window));
+            let k = GLASS_KNOB + swell;
+            // the knob's edges stay inside the bar (as the other sliders), and a press swells it about its middle
+            let edge = lh_gui::slide::edge_at(1. - v, SIZE, GLASS_KNOB);
             let top = self.glass_bar.clone();
             let mark = gpui::canvas(|_, _, _| (), move |b, _, _, _| top.set(f32::from(b.origin.y))).absolute().top_0().left_0().size_full();
-            let knob = div().absolute().left(px((14. - k) / 2.)).top(px(wheel::value_y(v, SIZE) - k / 2.)).w(px(k)).h(px(k)).rounded_full().bg(dot(c));
+            let knob = div().absolute().left(px((14. - k) / 2.)).top(px(edge - swell / 2.)).w(px(k)).h(px(k)).rounded_full().bg(dot(c));
             let knob = self.glass(knob, "glass-value", held, k / 2.);
             div().id("glass-value").role(Role::Slider).aria_label(if rtl { "السطوع" } else { "Brightness" })
                 .relative().w(px(14.)).h(px(SIZE)).flex_none().rounded_full().cursor_pointer().border_1().border_color(p.border)
@@ -565,7 +572,7 @@ impl App {
     fn glass_move(&mut self, i: usize, dx: f32, dy: f32, window: &mut Window, cx: &mut Context<Self>) {
         let Some(old) = self.prefs.glass_colours.get(i) else { return };
         let v = lh_gui::wheel::value_of(old).max(lh_gui::wheel::MIN_VALUE);
-        let hex = lh_gui::wheel::colour_at(dx, dy, 88., v);
+        let hex = self.glass_placed.place(dx, dy, 88., v);
         if self.prefs.glass_colours[i] != hex {
             self.prefs.glass_colours[i] = hex;
             self.active_theme = self.themes.resolve(&self.prefs.theme, self.dark());
@@ -579,7 +586,9 @@ impl App {
     fn glass_value(&mut self, y: Pixels, window: &mut Window, cx: &mut Context<Self>) {
         let i = self.glass_sel;
         let Some(old) = self.prefs.glass_colours.get(i) else { return };
-        let hex = lh_gui::wheel::with_value(old, lh_gui::wheel::value_at(f32::from(y) - self.glass_bar.get(), 176.));
+        let f = lh_gui::slide::fraction_at(f32::from(y) - self.glass_bar.get(), 176., GLASS_KNOB);
+        let old = old.clone();
+        let hex = self.glass_placed.with_value(&old, 1. - f);
         if self.prefs.glass_colours[i] != hex {
             self.prefs.glass_colours[i] = hex;
             self.active_theme = self.themes.resolve(&self.prefs.theme, self.dark());

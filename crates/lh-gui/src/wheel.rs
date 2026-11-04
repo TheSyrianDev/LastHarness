@@ -99,6 +99,61 @@ pub fn value_y(value: f32, height: f32) -> f32 {
     (1. - value.clamp(0., 1.)) * height
 }
 
+/// Hue and saturation exactly as the user placed a ball, remembered next to the colour they made. Brightness is
+/// saved in 8-bit colour, and reading hue and saturation back from a dark colour loses precision: each brightness
+/// step would nudge the ball a little, so balls crept across the wheel while the slider moved. Keeping the placed
+/// hue and saturation, and only reading them back from the colour when nothing is remembered, holds the ball still.
+#[derive(Clone, Debug, Default)]
+pub struct Placed(Vec<(String, f32, f32)>);
+
+impl Placed {
+    /// The hue and saturation for `hex`: the remembered ones if `hex` is the colour they made, otherwise read back.
+    pub fn hs(&self, hex: &str) -> (f32, f32) {
+        let key = hex.trim().to_ascii_uppercase();
+        if let Some((_, h, s)) = self.0.iter().find(|(k, _, _)| *k == key) {
+            return (*h, *s);
+        }
+        let (r, g, b) = parse_hex(hex).unwrap_or((128, 128, 128));
+        let (h, s, _) = rgb_to_hsv(r, g, b);
+        (h, s)
+    }
+
+    /// Remember that `hex` was made from hue `h` and saturation `s`.
+    pub fn keep(&mut self, hex: &str, h: f32, s: f32) {
+        let key = hex.trim().to_ascii_uppercase();
+        self.0.retain(|(k, _, _)| *k != key);
+        self.0.push((key, h, s));
+        if self.0.len() > 64 {
+            self.0.remove(0);
+        }
+    }
+
+    /// Where the ball for `hex` sits on a wheel of `radius`, using the remembered hue and saturation.
+    pub fn position(&self, hex: &str, radius: f32) -> (f32, f32) {
+        let (h, s) = self.hs(hex);
+        let a = h.to_radians();
+        (a.cos() * s * radius, a.sin() * s * radius)
+    }
+
+    /// The colour under an offset from the centre at brightness `value`, remembering where it was placed.
+    pub fn place(&mut self, dx: f32, dy: f32, radius: f32, value: f32) -> String {
+        let s = ((dx * dx + dy * dy).sqrt() / radius.max(1.)).min(1.);
+        let h = dy.atan2(dx).to_degrees().rem_euclid(360.);
+        let hex = colour_at(dx, dy, radius, value);
+        self.keep(&hex, h, s);
+        hex
+    }
+
+    /// `hex` at brightness `value`, keeping its placed hue and saturation (not the ones read back from 8-bit colour).
+    pub fn with_value(&mut self, hex: &str, value: f32) -> String {
+        let (h, s) = self.hs(hex);
+        let (r, g, b) = hsv_to_rgb(h, s, value.clamp(MIN_VALUE, 1.));
+        let out = to_hex(r, g, b);
+        self.keep(&out, h, s);
+        out
+    }
+}
+
 /// The wheel's pixels, `size` square, RGBA, full brightness. The edge fades over one pixel so the circle is smooth.
 pub fn disc_rgba(size: u32) -> Vec<u8> {
     let mut out = vec![0u8; (size * size * 4) as usize];
@@ -171,6 +226,38 @@ mod tests {
         // never all the way to black, which would lose the hue
         assert_eq!(with_value("#00FF00", 0.), with_value("#00FF00", MIN_VALUE));
         assert_ne!(position(&with_value("#00FF00", 0.), 80.), (0., 0.));
+    }
+
+    #[test]
+    fn balls_stay_put_while_the_brightness_moves() {
+        // regression: dragging the brightness slider used to re-read hue and saturation from the dark 8-bit colour
+        // on every step, and the ball crept across the wheel
+        let mut placed = Placed::default();
+        for &(dx, dy) in &[(61.3_f32, -22.7_f32), (-10.2, 70.9), (3.1, 2.4), (-80., -5.5)] {
+            let start = placed.place(dx, dy, 88., 1.);
+            let at = placed.position(&start, 88.);
+            let mut c = start.clone();
+            for round in 0..5 {
+                for i in (0..=100).rev().chain(0..=100) {
+                    c = placed.with_value(&c, i as f32 / 100.);
+                    let (x, y) = placed.position(&c, 88.);
+                    assert!((x - at.0).abs() < 1e-3 && (y - at.1).abs() < 1e-3, "ball moved at {i} in round {round}");
+                }
+            }
+            assert_eq!(c, start, "full brightness gives the same colour back");
+        }
+    }
+
+    #[test]
+    fn the_old_way_drifted() {
+        // the bug, kept as a check that the test above would catch it
+        let mut c = colour_at(61.3, -22.7, 88., 1.);
+        let at = position(&c, 88.);
+        for i in (4..=100).rev().chain(4..=100) {
+            c = with_value(&c, i as f32 / 100.);
+        }
+        let now = position(&c, 88.);
+        assert!((now.0 - at.0).abs() + (now.1 - at.1).abs() > 0.5);
     }
 
     #[test]

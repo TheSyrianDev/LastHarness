@@ -507,18 +507,25 @@ impl App {
                 }).collect();
                 let at = tiers.iter().position(|t| here && *t == now.tier);
                 let (gnow, dur) = (std::time::Instant::now(), motion::panel(p.anim));
-                if let Some(i) = at {
-                    let slot = if rtl { n - 1 - i } else { i };
-                    self.ctx_glide.go(slot as f32 * STEP, gnow, dur);
+                // held, the thumb eases to the stop nearest the pointer; let go, it rests on the chosen stop
+                let raw = self.ctx_drag.as_ref().map(|d| d.2);
+                let target = match (raw, at) {
+                    (Some(r), _) => Some(lh_gui::slide::snap(r, STEP, n) as f32 * STEP),
+                    (None, Some(i)) => Some((if rtl { n - 1 - i } else { i }) as f32 * STEP),
+                    _ => None,
+                };
+                if let Some(t) = target {
+                    self.ctx_glide.go(t, gnow, dur);
                     if self.ctx_glide.moving(gnow, dur) {
                         window.request_animation_frame();
                     }
                 }
-                let (left, stretch) = match &self.ctx_drag {
-                    Some((_, _, raw, _)) => lh_gui::tiers::thumb_n(*raw, STEP, n, KNOB),
-                    None => (self.ctx_glide.value(gnow, dur), 0.),
+                let drawn = self.ctx_glide.value(gnow, dur);
+                let (left, stretch) = match raw {
+                    Some(r) => { let h = lh_gui::slide::held(r, drawn, STEP, n, KNOB); (h.left, h.stretch) }
+                    None => (drawn, 0.),
                 };
-                let stretch = self.thumb_stretch("ctx-thumb", self.ctx_drag.as_ref().map(|_| stretch), window);
+                let stretch = self.thumb_stretch("ctx-thumb", raw.map(|_| stretch), window);
                 let mut track = div().id("ctx-slider").relative().w(px(STEP * (n - 1) as f32 + KNOB)).h(px(KNOB + 20.))
                     .child(div().absolute().top(px(KNOB / 2. - 1.)).left(px(KNOB / 2.)).w(px(STEP * (n - 1) as f32)).h(px(2.)).rounded_full().bg(p.border));
                 for slot in 0..n {
@@ -540,7 +547,7 @@ impl App {
                 if at.is_some() || self.ctx_drag.is_some() {
                     let held = self.ctx_drag.is_some();
                     let g = self.swell("ctx-thumb", held, 3., Some(window));
-                    let q = lh_gui::tiers::squash(stretch);
+                    let q = lh_gui::slide::squash(stretch);
                     track = track.child(self.glass(div().absolute().top(px(-g + q / 2.)).left(px(left - g)).w(px(KNOB + stretch + g * 2.)).h(px(KNOB + g * 2. - q)).rounded_full(), "ctx-thumb", held, (KNOB - q) / 2. + g)
                         .child(div().size_full().rounded_full().border_2().border_color(p.accent.opacity(if held { 0.5 } else { 0.85 }))));
                 }
@@ -1252,19 +1259,22 @@ impl App {
             let idx = modes.iter().position(|(m, _)| *m == chat.mode).unwrap_or(0);
             let slot = if rtl { modes.len() - 1 - idx } else { idx };
             let (now, dur) = (std::time::Instant::now(), motion::panel(p.anim));
-            self.mode_glide.go(slot as f32 * SEG, now, dur);
+            let raw = self.mode_drag.map(|d| d.2);
+            let target = raw.map(|r| lh_gui::slide::snap(r, SEG, 3)).unwrap_or(slot) as f32 * SEG;
+            self.mode_glide.go(target, now, dur);
             if self.mode_glide.moving(now, dur) {
                 window.request_animation_frame();
             }
             let held = self.mode_drag.is_some();
-            let (left, stretch) = match self.mode_drag {
-                Some((_, _, raw)) => lh_gui::tiers::thumb_n(raw, SEG, 3, MODE_H),
-                None => (self.mode_glide.value(now, dur), 0.),
+            let drawn = self.mode_glide.value(now, dur);
+            let (left, stretch) = match raw {
+                Some(r) => { let h = lh_gui::slide::held(r, drawn, SEG, 3, MODE_H); (h.left, h.stretch) }
+                None => (drawn, 0.),
             };
             let stretch = self.thumb_stretch("mode-thumb", self.mode_drag.map(|_| stretch), window);
             // held, the drop swells a little and stretches toward the pull
             let grow = self.swell("mode-thumb", held, 2., Some(window));
-            let q = lh_gui::tiers::squash(stretch);
+            let q = lh_gui::slide::squash(stretch);
             // the drop sits 2 px inside the bar on every side, and its corner is the bar's less that inset
             let corner = ((f32::from(p.inner) - 2.).max(3.)).min((MODE_H - q) / 2.) + grow;
             let thumb = self.glass(div().absolute().top(px(2. - grow + q / 2.)).left(px(2. + left - grow)).w(px(SEG + stretch + grow * 2.)).h(px(MODE_H + grow * 2. - q)).rounded(px(corner)), "mode-thumb", held, corner);
@@ -1303,15 +1313,23 @@ impl App {
                 let (now, dur) = (std::time::Instant::now(), motion::panel(p.anim));
                 if let Some(i) = at {
                     let slot = if rtl { n - 1 - i } else { i };
-                    self.tier_glide.go(slot as f32 * gap, now, dur);
-                    if self.tier_glide.moving(now, dur) {
-                        window.request_animation_frame();
+                    if self.slider_drag.is_none() {
+                        self.tier_glide.go(slot as f32 * gap, now, dur);
                     }
                 }
-                // held: the stops resist and the thumb stretches toward the pull; let go: it glides to a stop
-                let (knob_left, stretch) = match self.slider_drag {
-                    Some((_, _, raw)) => lh_gui::tiers::thumb_n(raw, gap, n, KNOB),
-                    None => (self.tier_glide.value(now, dur), 0.),
+                // held: the thumb eases to the stop nearest the pointer and stretches toward the pull; let go: it
+                // rests on the chosen stop
+                let raw = self.slider_drag.map(|d| d.2);
+                if let Some(r) = raw {
+                    self.tier_glide.go(lh_gui::slide::snap(r, gap, n) as f32 * gap, now, dur);
+                }
+                if self.tier_glide.moving(now, dur) {
+                    window.request_animation_frame();
+                }
+                let drawn = self.tier_glide.value(now, dur);
+                let (knob_left, stretch) = match raw {
+                    Some(r) => { let h = lh_gui::slide::held(r, drawn, gap, n, SLIDER_KNOB); (h.left, h.stretch) }
+                    None => (drawn, 0.),
                 };
                 let stretch = self.thumb_stretch("model-thumb", self.slider_drag.map(|_| stretch), window);
                 let thumb_at = at.map(|i| if rtl { n - 1 - i } else { i });
@@ -1347,7 +1365,7 @@ impl App {
                     .when(at.is_some() || self.slider_drag.is_some(), |d| {
                         let held = self.slider_drag.is_some();
                         let g = self.swell("model-thumb", held, 3., Some(window));
-                        let q = lh_gui::tiers::squash(stretch);
+                        let q = lh_gui::slide::squash(stretch);
                         d.child(self.glass(div().absolute().top(px(-g + q / 2.)).left(px(knob_left - g)).w(px(KNOB + stretch + g * 2.)).h(px(KNOB + g * 2. - q)).rounded_full(), "model-thumb", held, (KNOB - q) / 2. + g)
                             .child(div().size_full().rounded_full().border_2().border_color(p.accent.opacity(if held { 0.5 } else { 0.85 }))))
                     });
@@ -1600,7 +1618,8 @@ impl Render for App {
                     cx.notify();
                 }
                 if let Some((x0, start, _)) = a.slider_drag {
-                    let x = (start + f32::from(ev.position.x) - x0).clamp(-SLIDER_GAP / 2., SLIDER_GAP * 4.5);
+                    let end = lh_gui::slide::travel(SLIDER_GAP, a.stop_count());
+                    let x = (start + f32::from(ev.position.x) - x0).clamp(-SLIDER_GAP / 2., end + SLIDER_GAP / 2.);
                     a.slider_drag = Some((x0, start, x));
                     cx.notify();
                 }
@@ -1611,8 +1630,7 @@ impl Render for App {
                     cx.notify();
                 }
                 if let Some((_, _, x, ch)) = a.ctx_drag.take() {
-                    let slot = ((x / CTX_GAP).round().max(0.) as usize).min(ch.len().saturating_sub(1));
-                    a.ctx_glide.hold(lh_gui::tiers::thumb_n(x, CTX_GAP, ch.len(), CTX_KNOB).0);
+                    let slot = lh_gui::slide::snap(x, CTX_GAP, ch.len());
                     if let Some(id) = ch.get(slot) {
                         a.choose_model(id, cx);
                         if a.pending.is_none() {
@@ -1622,9 +1640,8 @@ impl Render for App {
                     cx.notify();
                 }
                 if let Some((_, start, x)) = a.mode_drag.take() {
-                    let slot = (x / 88.).round().clamp(0., 2.) as usize;
+                    let slot = lh_gui::slide::snap(x, 88., 3);
                     let i = if a.rtl { 2 - slot } else { slot };
-                    a.mode_glide.hold(lh_gui::tiers::thumb_n(x, 88., 3, MODE_H).0);
                     if (x - start).abs() > 2. {
                         a.set_mode([Mode::Chat, Mode::Assistant, Mode::Project][i], cx);
                     }
@@ -1632,9 +1649,8 @@ impl Render for App {
                 }
                 if let Some((_, _, x)) = a.slider_drag.take() {
                     let n = a.stop_count();
-                    let slot = (x / SLIDER_GAP).round().clamp(0., (n - 1) as f32) as usize;
+                    let slot = lh_gui::slide::snap(x, SLIDER_GAP, n);
                     let i = if a.rtl { n - 1 - slot } else { slot };
-                    a.tier_glide.hold(lh_gui::tiers::thumb_n(x, SLIDER_GAP, n, SLIDER_KNOB).0);
                     a.choose_stop(i, cx);
                     cx.notify();
                 }

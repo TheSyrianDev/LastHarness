@@ -212,6 +212,8 @@ pub struct App {
     /// The ball the brightness slider edits, whether that slider is being dragged, and its top edge in the window.
     pub glass_sel: usize,
     pub glass_vdrag: bool,
+    /// Hue and saturation of each glass ball as it was placed, so brightness changes do not move the balls.
+    pub glass_placed: lh_gui::wheel::Placed,
     pub glass_bar: std::rc::Rc<std::cell::Cell<f32>>,
     /// The setting whose list of options (or models) is open.
     pub setting_list: Option<String>,
@@ -517,6 +519,7 @@ impl App {
             glass_disc: None,
             glass_sel: 0,
             glass_vdrag: false,
+            glass_placed: Default::default(),
             glass_bar: Default::default(),
             setting_list: None,
             page: None,
