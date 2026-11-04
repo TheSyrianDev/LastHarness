@@ -382,3 +382,7 @@ Built as the user asked; no new decisions. A native phone app comes later. New s
 
 - "Start with the computer" stays desktop-only: it only makes sense for an installed app.
 - The Hooks editor is in both the desktop app and the web UI, because hooks are a core function. Only a paired session can change hooks, and each change is logged with the device that made it.
+
+## Web UI look (2026-11-04)
+
+- Web UI redesigned using ui-ux-pro-max, taste, soft, apple-design, shadcn patterns and motion.dev at the user's request; web may now differ from the desktop look; whether the desktop follows is open.

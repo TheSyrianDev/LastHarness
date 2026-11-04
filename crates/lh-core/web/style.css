@@ -539,3 +539,101 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .app.folded .side-logo:hover .logo { opacity: 0; }
 .app.folded .side-logo:hover .open-icon { opacity: 1; inset: 10px; }
 :root[data-glass] body { background-attachment: fixed; }
+
+/* ---- Look and motion layer (web only) ----
+   Component anatomy from shadcn/ui (ui.shadcn.com: 36px controls, 3px focus ring, input borders, popover
+   and card surfaces, xs/sm/lg shadows), materials and type from Apple's guidance, spring motion from
+   motion.dev (motion.js). Colours, rounding and glass still come from the theme: every token below is
+   derived from the theme's own variables, so all themes keep working. */
+:root {
+  --ring: color-mix(in srgb, var(--accent) 50%, transparent);
+  --input: color-mix(in srgb, var(--border) 100%, var(--text) 6%);
+  --hover: color-mix(in srgb, var(--button-hover) 70%, transparent);
+  --shadow-xs: 0 1px 2px color-mix(in srgb, var(--text) 6%, transparent);
+  --shadow-sm: 0 1px 3px color-mix(in srgb, var(--text) 7%, transparent), 0 1px 2px -1px color-mix(in srgb, var(--text) 6%, transparent);
+  --shadow-lg: 0 12px 32px -8px color-mix(in srgb, var(--text) 18%, transparent), 0 4px 8px -4px color-mix(in srgb, var(--text) 8%, transparent);
+  --hairline: inset 0 1px 0 color-mix(in srgb, #fff 9%, transparent);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-drawer: cubic-bezier(.32, .72, 0, 1);
+}
+body { font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; font-feature-settings: "cv11", "ss01"; }
+.meta, .ago, .step-num, .answer-table .num { font-variant-numeric: tabular-nums; }
+.greeting { font-weight: 600; letter-spacing: -0.025em; line-height: 1.15; }
+.settings-top h2, .settings-page > h3 { letter-spacing: -0.015em; }
+.chat-title, .panel-head #panel-title { letter-spacing: -0.005em; }
+.md h1, .md h2, .md h3 { letter-spacing: -0.015em; line-height: 1.25; }
+.about, .blurb, .hint, .kind-hint { text-wrap: pretty; }
+
+/* focus: the shadcn ring, 3px at half strength, never removed */
+:focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
+input:focus-visible, select:focus-visible, textarea:not(.composer textarea):focus-visible { outline: 3px solid var(--ring); outline-offset: 0; border-color: var(--accent) !important; }
+
+/* buttons: 36px tall, medium weight, the press answers on pointer-down */
+.btn, .seg, .panel-body button, .card .actions button { min-height: 36px; padding: 0 14px; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: background-color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out), transform 100ms var(--ease-out); }
+.btn, .panel-body button, .card .actions button { box-shadow: var(--shadow-xs); }
+.btn.primary, .seg.primary { box-shadow: var(--shadow-xs), var(--hairline); }
+.btn.primary:hover, .seg.primary:hover { background: color-mix(in srgb, var(--accent) 90%, var(--text)); }
+.seg.ghost, .ghost { box-shadow: none; }
+.btn:active, .seg:active, .panel-body button:active, .pill:active, .chips button:active, .icon-btn:active, .nav-row:active, .model-btn:active, .composer #send:active:not(:disabled), .new-chat:active { transform: scale(.97); }
+.icon-btn, .nav-row, .new-chat, .pill, .chips button, .model-btn, .chats li button { transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out), transform 100ms var(--ease-out); }
+.icon-btn:hover { background: var(--hover); color: var(--text); }
+.nav-row[aria-pressed="true"] { font-weight: 500; color: var(--text); }
+
+/* fields: the shadcn input, a quiet border on a see-through fill */
+.panel-body input:not([type=checkbox]):not([type=radio]):not([type=range]), .panel-body select, .settings-page input:not([type=checkbox]):not([type=radio]):not([type=range]), .settings-page select, #gate input, .project-dir { min-height: 36px; padding: 0 12px; border: 1px solid var(--input); background: color-mix(in srgb, var(--surface) 60%, transparent); box-shadow: var(--shadow-xs); transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out); }
+.panel-body textarea, .settings-page textarea { padding: 8px 12px; border: 1px solid var(--input); box-shadow: var(--shadow-xs); }
+::placeholder { color: color-mix(in srgb, var(--muted) 85%, transparent); }
+
+/* the switch: shadcn's proportions (32 by 18), thumb glides */
+.switch { width: 32px; height: 18px; border-radius: 999px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 6%, transparent); }
+.switch::after { top: 2px; width: 14px; height: 14px; box-shadow: 0 1px 2px color-mix(in srgb, #000 25%, transparent); transition: inset-inline-start 180ms var(--ease-drawer); }
+.switch:checked::after { inset-inline-start: 16px; }
+
+/* cards and popovers: soft, tinted shadows; overlays scale from where they open */
+.set-card { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 55%, transparent); }
+.card { box-shadow: var(--shadow-sm); }
+.picker, .slider-card { box-shadow: var(--shadow-lg), var(--hairline); }
+.picker { transform-origin: top right; } .composer .picker { transform-origin: bottom right; }
+[dir="rtl"] .picker { transform-origin: top left; } [dir="rtl"] .composer .picker { transform-origin: bottom left; }
+.slider-card { transform-origin: bottom center; }
+.settings-win { box-shadow: var(--shadow-lg), 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent); }
+.settings-veil { background: color-mix(in srgb, #000 28%, transparent); }
+.picker li { transition: background-color 100ms var(--ease-out); }
+
+/* the composer: a lifted sheet that shows the ring while you type */
+.composer { transition: box-shadow var(--dur) var(--ease-out); }
+.composer:focus-within { box-shadow: 0 12px 32px -10px color-mix(in srgb, var(--text) 16%, transparent), 0 0 0 1px color-mix(in srgb, var(--accent) 40%, var(--border)), 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
+.composer #send { box-shadow: var(--shadow-xs); transition: opacity var(--dur), transform 100ms var(--ease-out); }
+.mode-thumb { transition: transform 260ms var(--ease-drawer); }
+
+/* the chat column scrolls under a soft edge, not a hard line */
+.titlebar { position: relative; z-index: 1; }
+.titlebar::after { content: ""; position: absolute; inset: 100% 0 auto; height: 12px; pointer-events: none; background: linear-gradient(var(--bg), transparent); }
+.app.empty .titlebar::after { display: none; }
+.msg.user .body { box-shadow: var(--shadow-xs); }
+.status { box-shadow: var(--shadow-lg); padding: 8px 14px; animation: pop 160ms var(--ease-out); }
+
+/* glass: a bright top edge where light catches the material */
+:root[data-glass] .chats, :root[data-glass] .composer, :root[data-glass] .panel, :root[data-glass] #picker, :root[data-glass] .slider-card { box-shadow: var(--shadow-lg), inset 0 1px 0 color-mix(in srgb, #fff 18%, transparent), inset 0 0 0 1px color-mix(in srgb, #fff 6%, transparent); }
+
+/* motion.js draws the entrances; keep the CSS ones only where it is missing */
+.mo .picker, .mo .slider-card, .mo .settings-veil, .mo .settings-win { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active, .seg:active, .panel-body button:active, .pill:active, .chips button:active, .icon-btn:active, .nav-row:active, .model-btn:active, .composer #send:active, .new-chat:active { transform: none; }
+  .status { animation: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-glass] .chats, :root[data-glass] .composer, :root[data-glass] .panel, :root[data-glass] #picker, :root[data-glass] .slider-card { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--surface); }
+}
+@media (prefers-contrast: more) {
+  :root { --input: var(--text); --ring: var(--accent); }
+  .set-card, .card, .picker, .slider-card, .composer { box-shadow: 0 0 0 1px var(--text); }
+}
+@media (max-width: 600px) {
+  /* the composer bar wraps on a phone instead of pushing the send button off the screen */
+  .composer .bar { flex-wrap: wrap; row-gap: 6px; } .composer .bar .model { margin-inline-start: auto; } .composer { min-width: 0; max-width: 100%; }
+  .btn, .seg, .panel-body button, .nav-row, .icon-btn { min-height: 44px; }
+  .icon-btn { min-width: 44px; }
+  .panel-body input:not([type=checkbox]):not([type=radio]):not([type=range]), .panel-body select, .settings-page input:not([type=checkbox]):not([type=radio]):not([type=range]), .settings-page select { min-height: 44px; font-size: 16px; }
+}

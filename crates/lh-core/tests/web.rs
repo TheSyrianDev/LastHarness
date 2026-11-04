@@ -119,6 +119,8 @@ async fn the_pages_come_over_https_with_strict_headers_and_the_api_needs_a_signe
     assert!(html.contains(&format!("<meta name=\"lh-build\" content=\"{id}\">")), "the build stamp is in the page");
     assert!(html.contains(&format!("src=\"/app.js?v={id}\"")) && html.contains(&format!("href=\"/style.css?v={id}\"")), "script and style are asked for by build");
     assert_eq!(r.http.get(format!("{}/app.js?v={id}", r.https)).send().await.unwrap().status(), 200);
+    assert!(html.contains(&format!("src=\"/motion.js?v={id}\"")), "motion.js is asked for by build");
+    assert_eq!(r.http.get(format!("{}/motion.js", r.https)).send().await.unwrap().status(), 200);
     assert_eq!(r.http.get(format!("{}/style.css?v={id}", r.https)).send().await.unwrap().status(), 200);
     // on a new build the script drops stored keys that were not chosen, and never the device key in IndexedDB
     let js = r.http.get(format!("{}/app.js", r.https)).send().await.unwrap().text().await.unwrap();
@@ -500,4 +502,18 @@ fn the_look_drives_rounding_and_glass_and_the_folded_mark_opens_the_list() {
     assert!(css.contains("var(--glass-fill"));
     assert!(html.contains("id=\"side-logo\"") && js.contains("#side-logo"));
     assert!(css.contains(".side-foot { margin-top: auto; }"));
+}
+
+#[test]
+fn motion_is_vendored_and_stills_when_asked() {
+    let js = include_str!("../web/app.js");
+    let css = include_str!("../web/style.css");
+    let html = include_str!("../web/index.html");
+    let motion = include_str!("../web/motion.js");
+    assert!(motion.contains("Motion"), "motion.js is the motion.dev build");
+    assert!(html.contains("<script src=\"/motion.js\"></script>"), "served from lhd, not a CDN");
+    assert!(!html.contains("https://"), "nothing loads from the internet");
+    assert!(js.contains("prefers-reduced-motion") && css.contains("prefers-reduced-motion"));
+    assert!(css.contains("prefers-reduced-transparency"));
+    assert!(include_str!("../../../THIRD-PARTY-NOTICES.md").contains("motion.js"));
 }

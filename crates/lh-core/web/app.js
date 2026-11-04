@@ -572,6 +572,19 @@ function stopSlider(cls, labels, at, choose, aria) {
 }
 function closeSlider() { $('#slider-card')?.remove(); $('#model-btn').classList.remove('on'); removeEventListener('pointerdown', outsideSlider); }
 function outsideSlider(e) { if (!e.target.closest('#slider-card, #model-btn')) closeSlider(); }
+// Springs from motion.dev (motion.js, window.Motion): critically damped, so nothing overshoots. Overlays
+// grow from where they open and the CSS entrance stays as the fallback. Reduced motion or a theme with no
+// animation gets a short fade instead.
+const springs = window.Motion?.animate;
+if (springs) document.documentElement.classList.add('mo');
+function arrive(el, from = { y: 6, scale: 0.97 }) {
+  if (!springs || !el) return;
+  const still = getComputedStyle(document.documentElement).getPropertyValue('--dur').trim() === '0ms';
+  if (still) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { springs(el, { opacity: [0, 1] }, { duration: 0.15 }); return; }
+  const k = Object.fromEntries(Object.entries(from).map(([a, v]) => [a, [v, a === 'scale' ? 1 : 0]]));
+  springs(el, { opacity: [0, 1], ...k }, { type: 'spring', bounce: 0, duration: 0.32 });
+}
 function openSlider() {
   const st = stops(); const n = st.length;
   const at = st.indexOf(parseModel(modelChoice.id).base);
@@ -584,7 +597,7 @@ function openSlider() {
   const labels = st.map((b, i) => ({ text: stopTitle(i), aria: `${stopTitle(i)}: ${b ? displayName(b) : ''}` }));
   const card = h('div', { class: 'slider-card', id: 'slider-card', role: 'dialog', 'aria-label': 'Model slider' }, head,
     h('div', { class: 'slider-well' }, stopSlider('model-stops', labels, at, choose, 'Model slider')));
-  $('#model-btn').after(card); $('#model-btn').classList.add('on');
+  $('#model-btn').after(card); $('#model-btn').classList.add('on'); arrive(card, { y: 6, scale: 0.97 });
   card.querySelector('.stop[aria-checked="true"]')?.focus({ preventScroll: true });
   setTimeout(() => addEventListener('pointerdown', outsideSlider), 0);
 }
@@ -661,7 +674,7 @@ function openPicker() {
     else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.target.closest('.stops')) { e.preventDefault(); active = (active + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % Math.max(rows.length, 1); mark(); showDetail(rows[active]); list.querySelectorAll('[role=option]')[active]?.scrollIntoView({ block: 'nearest' }); }
     else if (e.key === 'Enter' && e.target === q && rows[active]) { e.preventDefault(); list.querySelectorAll('[role=option]')[active]?.click(); closePicker(); btn.focus(); }
   });
-  btn.after(pop); btn.setAttribute('aria-expanded', 'true');
+  btn.after(pop); btn.setAttribute('aria-expanded', 'true'); arrive(pop, { y: pop.closest('.composer') ? 6 : -6, scale: 0.97 });
   render();
   const g0 = modelGroups.find((g) => g.base === openBase) || modelGroups[0];
   if (g0) { active = Math.max(0, rows.indexOf(g0)); showDetail(g0); mark(); list.querySelector('.open')?.scrollIntoView({ block: 'nearest' }); }
@@ -1214,6 +1227,7 @@ async function settingsView() {
       h('div', { class: 'settings-top' }, h('h2', {}, 'Settings'), h('span', { class: 'kbd' }, 'Esc'), h('button', { type: 'button', class: 'ghost', onclick: close }, 'Back to chat')),
       h('div', { class: 'settings-main' }, nav, page)));
   veil.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  queueMicrotask(() => { arrive(veil, {}); arrive(veil.firstChild, { y: 10, scale: 0.985 }); });
   const pages = () => {
     const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
     const hit = (id) => SET_INFO.some((i) => i[1] === id && words.every((w) => `${i[2]} ${i[3]} ${i[0]}`.toLowerCase().includes(w)));

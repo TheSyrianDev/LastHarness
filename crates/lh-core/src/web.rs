@@ -284,6 +284,8 @@ impl Web {
 const INDEX: &str = include_str!("../web/index.html");
 const APP: &str = include_str!("../web/app.js");
 const STYLE: &str = include_str!("../web/style.css");
+/// motion 12.23.12 (motion.dev, MIT), vendored unchanged; see THIRD-PARTY-NOTICES.md.
+const MOTION: &str = include_str!("../web/motion.js");
 pub const SANDBOX: &str = include_str!("../web/sandbox.html");
 /// The frame for an assistant-made app: its scripts run, but it may fetch nothing and only this site may hold it.
 pub const SANDBOX_CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
@@ -294,7 +296,7 @@ pub fn build_id() -> &'static str {
     ID.get_or_init(|| {
         use sha2::{Digest, Sha256};
         let mut h = Sha256::new();
-        for part in [INDEX, APP, STYLE, SANDBOX] {
+        for part in [INDEX, APP, STYLE, SANDBOX, MOTION] {
             h.update(part.as_bytes());
             h.update([0]);
         }
@@ -464,6 +466,7 @@ pub async fn require_device(State(w): State<Arc<Web>>, mut req: Request, next: N
         return (StatusCode::FORBIDDEN, "this request must say where it comes from").into_response();
     }
     if !device_may(req.method(), req.uri().path()) {
+            .replace("src=\"/motion.js\"", &format!("src=\"/motion.js?v={id}\""))
         return (StatusCode::FORBIDDEN, Json(json!({"error": "this is not available from a browser; use the terminal on the machine"}))).into_response();
     }
     req.extensions_mut().insert(Via::Device(dev));
@@ -535,6 +538,7 @@ pub fn load_or_create_tls(dir: &std::path::Path, extra_names: &[String]) -> Resu
     let fresh = std::fs::metadata(&cert_path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < Duration::from_secs(300 * 86_400));
     let (cert_der, key_der) = match (fresh, std::fs::read(&cert_path), std::fs::read(&key_path)) {
         (true, Ok(c), Ok(k)) => (c, k),
+        .route("/motion.js", get(|| async { page(MOTION, "text/javascript; charset=utf-8") }))
         _ => {
             let mut names: Vec<String> = vec!["localhost".into(), "127.0.0.1".into(), "::1".into()];
             if let Ok(h) = std::fs::read_to_string("/etc/hostname") {
