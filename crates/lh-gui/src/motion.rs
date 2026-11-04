@@ -96,6 +96,19 @@ impl Eases {
         self.0.get(key).map_or(or, |g| g.value(now, dur))
     }
 
+    /// Where `key` is heading, if it was ever set.
+    pub fn target(&self, key: &str) -> Option<f32> {
+        self.0.get(key).map(|g| g.to)
+    }
+
+    /// Remember a drop's place (left edge and width) under `key` and say whether it is where it was last paint.
+    pub fn at_rest(&mut self, key: &str, x: f32, w: f32) -> bool {
+        let g = self.0.entry(key.to_string()).or_default();
+        let still = g.started.is_some() && (g.from - x).abs() < 0.25 && (g.to - w).abs() < 0.25;
+        *g = Glide { from: x, to: w, started: Some(Instant::now()) };
+        still
+    }
+
     /// Stand `key` still at `v`, as a thumb is while it is held by hand.
     pub fn hold(&mut self, key: &str, v: f32) {
         self.0.entry(key.to_string()).or_default().hold(v);

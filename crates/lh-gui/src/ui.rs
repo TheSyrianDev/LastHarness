@@ -66,7 +66,6 @@ fn slide(shown: f32, full: f32, child: AnyElement) -> AnyElement {
     div().w(px(shown)).h_full().flex_none().overflow_hidden().child(div().w(px(full)).h_full().flex_none().flex().child(child)).into_any_element()
 }
 
-/// An icon drawn as lines, so no picture files are needed. `lines` are on a 24 by 24 grid.
 /// Draw an icon: the theme's own SVG when it has one by this name, else the app's line drawing.
 pub(crate) fn icon_view(p: &crate::style::Pal, icon: icons::Icon, color: Hsla, size: f32) -> AnyElement {
     if let Some(svg_bytes) = lh_gui::icons::resolve(&icon, &p.icons) {
@@ -101,12 +100,16 @@ pub(crate) fn icon_view(p: &crate::style::Pal, icon: icons::Icon, color: Hsla, s
     .into_any_element()
 }
 
-/// Line icons on a 24 by 24 grid, drawn by the app in one stroke weight.
 /// Pixels between two stops of the model slider.
 const SLIDER_GAP: f32 = 60.;
 /// Pixels between two stops of the context-length slider.
 const CTX_GAP: f32 = 64.;
+/// The model slider's ball, the context slider's ball and the mode switch's drop, in pixels tall.
+const SLIDER_KNOB: f32 = 22.;
+const CTX_KNOB: f32 = 18.;
+const MODE_H: f32 = 28.;
 
+/// Line icons on a 24 by 24 grid, drawn by the app in one stroke weight.
 pub(crate) mod icons {
     pub use lh_gui::icons::Icon;
     pub type Lines = Icon;
@@ -198,8 +201,9 @@ impl App {
         let p = &self.pal;
         let dur = motion::press(p.anim);
         let key = format!("{id}/energy");
+        let place = format!("{id}/place");
         // the energy as of the last paint, for what is decided at layout (the shadow's lift)
-        let lift = self.glass_fx.borrow().now(&key, std::time::Instant::now(), dur, if held { 1. } else { 0. }).clamp(0., 1.);
+        let lift = self.glass_fx.borrow().now(&format!("{id}/swell"), std::time::Instant::now(), dur, 0.).clamp(0., 1.);
         let dark = p.dark;
         let rim = if dark { 0.3 } else { 0.85 };
         let surface = p.surface;
@@ -208,9 +212,16 @@ impl App {
         // the energy is settled at paint, where the drop's real bounds and the pointer are known: pressed while held,
         // hover while the pointer is over it (the empty hover style below makes GPUI repaint when it enters or leaves)
         let lens = gpui::canvas(|_, _, _| (), move |bounds, _, window, _| {
-            let target = if held { gpui::glass_energy::PRESSED } else if bounds.contains(&window.mouse_position()) { gpui::glass_energy::HOVER } else { gpui::glass_energy::REST };
-            let (energy, moving) = fx.borrow_mut().to(&key, target, std::time::Instant::now(), dur);
-            if moving {
+            let mut fx = fx.borrow_mut();
+            // while the drop itself glides (released, on its way to a stop) the pointer sweeping over it is not a
+            // hover: the target would flip between hover and rest every frame and the lens would flicker
+            let still = fx.at_rest(&place, f32::from(bounds.origin.x), f32::from(bounds.size.width));
+            let hover = bounds.contains(&window.mouse_position());
+            let target = if held { gpui::glass_energy::PRESSED } else if !still { fx.target(&key).unwrap_or(gpui::glass_energy::REST).min(gpui::glass_energy::HOVER) } else if hover { gpui::glass_energy::HOVER } else { gpui::glass_energy::REST };
+            let (energy, moving) = fx.to(&key, target, std::time::Instant::now(), dur);
+            drop(fx);
+            // one more frame after the drop stops, so hover is judged again where it came to rest
+            if moving || !still {
                 window.request_animation_frame();
             }
             let e = energy.clamp(0., 1.);
@@ -231,9 +242,13 @@ impl App {
 
     /// How much a glass thumb swells, up to `max` pixels: it follows the drop's eased energy, so it grows as it is
     /// pressed and settles back after, instead of jumping by `max`.
-    pub(crate) fn swell(&self, id: &str, held: bool, max: f32) -> f32 {
-        let dur = motion::press(self.pal.anim);
-        let e = self.glass_fx.borrow().now(&format!("{id}/energy"), std::time::Instant::now(), dur, if held { 1. } else { 0. });
+    pub(crate) fn swell(&self, id: &str, held: bool, max: f32, window: Option<&mut Window>) -> f32 {
+        // its own glide, set at layout from `held` alone: hover never changes a thumb's size, and the first frame of
+        // a press starts from rest instead of from a full swell (it used to read the energy key before paint set it)
+        let (e, moving) = self.glass_fx.borrow_mut().to(&format!("{id}/swell"), if held { 1. } else { 0. }, std::time::Instant::now(), motion::press(self.pal.anim));
+        if let (true, Some(window)) = (moving, window) {
+            window.request_animation_frame();
+        }
         max * e.clamp(0., 1.)
     }
 
@@ -483,7 +498,7 @@ impl App {
             if tiers.len() > 1 {
                 // the same slider as the model slider: stops that hold, a thumb that stretches, a glide on release
                 const STEP: f32 = CTX_GAP;
-                const KNOB: f32 = 18.;
+                const KNOB: f32 = CTX_KNOB;
                 let n = tiers.len();
                 let choices: Vec<String> = (0..n).map(|slot| {
                     let i = if rtl { n - 1 - slot } else { slot };
@@ -500,7 +515,7 @@ impl App {
                     }
                 }
                 let (left, stretch) = match &self.ctx_drag {
-                    Some((_, _, raw, _)) => lh_gui::tiers::knob_n(*raw, STEP, n),
+                    Some((_, _, raw, _)) => lh_gui::tiers::thumb_n(*raw, STEP, n, KNOB),
                     None => (self.ctx_glide.value(gnow, dur), 0.),
                 };
                 let stretch = self.thumb_stretch("ctx-thumb", self.ctx_drag.as_ref().map(|_| stretch), window);
@@ -524,8 +539,9 @@ impl App {
                 }
                 if at.is_some() || self.ctx_drag.is_some() {
                     let held = self.ctx_drag.is_some();
-                    let g = self.swell("ctx-thumb", held, 3.);
-                    track = track.child(self.glass(div().absolute().top(px(-g)).left(px(left - g)).w(px(KNOB + stretch + g * 2.)).h(px(KNOB + g * 2.)).rounded_full(), "ctx-thumb", held, KNOB / 2. + g)
+                    let g = self.swell("ctx-thumb", held, 3., Some(window));
+                    let q = lh_gui::tiers::squash(stretch);
+                    track = track.child(self.glass(div().absolute().top(px(-g + q / 2.)).left(px(left - g)).w(px(KNOB + stretch + g * 2.)).h(px(KNOB + g * 2. - q)).rounded_full(), "ctx-thumb", held, (KNOB - q) / 2. + g)
                         .child(div().size_full().rounded_full().border_2().border_color(p.accent.opacity(if held { 0.5 } else { 0.85 }))));
                 }
                 col = col.child(div().flex().flex_col().gap_1p5().child(div().text_xs().text_color(p.muted).child(if rtl { "طول السياق" } else { "Context length" })).child(div().px_1().child(track)));
@@ -555,9 +571,10 @@ impl App {
             }
             {
                 let stops = self.stops();
-                let chips = (0..lh_gui::tiers::STOPS).map(|i| {
+                let titles: Vec<String> = (0..self.stop_count()).map(|i| self.stop_title(i)).collect();
+                let chips = (0..titles.len()).map(|i| {
                     let base = g.base.clone();
-                    self.button(format!("pick-stop-{i}"), lh_gui::tiers::stop_name(i, rtl), if stops[i] == g.base { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| a.set_stop(i, &base, cx))
+                    self.button(format!("pick-stop-{i}"), titles[i].clone(), if lh_gui::tiers::is_shown_stop(&stops, &g.base, i) { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| a.set_stop(i, &base, cx))
                 }).collect();
                 col = col.child(section(if rtl { "مكانه على المنزلق" } else { "Its stop on the slider" }, chips));
             }
@@ -571,9 +588,9 @@ impl App {
                 .role(Role::Dialog)
                 .aria_label(if rtl { "اختر نموذجًا" } else { "Choose a model" })
                 .absolute()
-                .bottom(px(120.))
-                .left(relative(0.5))
-                .ml(px(-300.))
+                .bottom(px(40.))
+                .when(rtl, |d| d.left(px(0.)))
+                .when(!rtl, |d| d.right(px(0.)))
                 .w(px(600.))
                 .max_h(px(560.))
                 .overflow_hidden()
@@ -904,7 +921,7 @@ impl App {
             Block::User(t) => {
                 let is_rtl = rtl::paragraph_is_rtl(t);
                 div().flex().w_full().when(!rtl, |d| d.justify_end()).when(rtl, |d| d.justify_start()).child(
-                    div().id(SharedString::from(format!("u{key}-{i}"))).role(Role::Label).max_w(relative(0.8)).px_3().py_2().rounded(p.inner).bg(p.button).text_color(p.text).when(is_rtl, |d| d.text_right()).child(t.clone()),
+                    div().id(SharedString::from(format!("u{key}-{i}"))).role(Role::Label).max_w(relative(0.8)).px_3().py_2().rounded(p.inner).bg(p.bubble).when(p.material.panels != lh_gui::theme::GlassKind::None, |d| d.border_2().border_color(gpui::white().opacity(if p.dark { 0.35 } else { 0.85 }))).text_color(p.text).when(is_rtl, |d| d.text_right()).child(t.clone()),
                 ).into_any_element()
             }
             Block::Assistant { .. } | Block::Tool { .. } => div().into_any_element(),
@@ -1241,13 +1258,16 @@ impl App {
             }
             let held = self.mode_drag.is_some();
             let (left, stretch) = match self.mode_drag {
-                Some((_, _, raw)) => lh_gui::tiers::knob_n(raw, SEG, 3),
+                Some((_, _, raw)) => lh_gui::tiers::thumb_n(raw, SEG, 3, MODE_H),
                 None => (self.mode_glide.value(now, dur), 0.),
             };
             let stretch = self.thumb_stretch("mode-thumb", self.mode_drag.map(|_| stretch), window);
             // held, the drop swells a little and stretches toward the pull
-            let grow = self.swell("mode-thumb", held, 3.);
-            let thumb = self.glass(div().absolute().top(px(2. - grow)).left(px(2. + left - grow)).w(px(SEG + stretch + grow * 2.)).h(px(28. + grow * 2.)).rounded(px((f32::from(p.inner) - 2.).max(3.) + grow)), "mode-thumb", held, (f32::from(p.inner) - 2.).max(3.) + grow);
+            let grow = self.swell("mode-thumb", held, 2., Some(window));
+            let q = lh_gui::tiers::squash(stretch);
+            // the drop sits 2 px inside the bar on every side, and its corner is the bar's less that inset
+            let corner = ((f32::from(p.inner) - 2.).max(3.)).min((MODE_H - q) / 2.) + grow;
+            let thumb = self.glass(div().absolute().top(px(2. - grow + q / 2.)).left(px(2. + left - grow)).w(px(SEG + stretch + grow * 2.)).h(px(MODE_H + grow * 2. - q)).rounded(px(corner)), "mode-thumb", held, corner);
             let seg: Vec<AnyElement> = modes
                 .into_iter()
                 .map(|(m, label)| {
@@ -1269,6 +1289,8 @@ impl App {
             bar.push(div().id("chat-kind").role(Role::Group).aria_label("Kind of chat").relative().flex().text_sm().p(px(2.)).rounded(p.inner).bg(p.sunken.opacity(0.7)).child(thumb).children(if rtl { seg.into_iter().rev().collect::<Vec<_>>() } else { seg }).into_any_element());
         }
         let mut slider_card: Option<AnyElement> = None;
+        // the model pill sits in the composer row just left of the send button, so the picker opens beside it
+        let mut model_pill: Option<AnyElement> = None;
         let model_label = { let l = self.models.label_of(&chat.model); if l.is_empty() { chat.model.clone() } else { l } };
         if !model_label.is_empty() {
             let stops = self.stops();
@@ -1276,7 +1298,8 @@ impl App {
             let at = lh_gui::tiers::stop_of(&stops, &base);
             if stops.iter().any(|s| !s.is_empty()) {
                 let gap = SLIDER_GAP;
-                let n = lh_gui::tiers::STOPS;
+                let n = self.stop_count();
+                let titles: Vec<String> = (0..n).map(|i| self.stop_title(i)).collect();
                 let (now, dur) = (std::time::Instant::now(), motion::panel(p.anim));
                 if let Some(i) = at {
                     let slot = if rtl { n - 1 - i } else { i };
@@ -1287,15 +1310,15 @@ impl App {
                 }
                 // held: the stops resist and the thumb stretches toward the pull; let go: it glides to a stop
                 let (knob_left, stretch) = match self.slider_drag {
-                    Some((_, _, raw)) => lh_gui::tiers::knob(raw, gap),
+                    Some((_, _, raw)) => lh_gui::tiers::thumb_n(raw, gap, n, KNOB),
                     None => (self.tier_glide.value(now, dur), 0.),
                 };
                 let stretch = self.thumb_stretch("model-thumb", self.slider_drag.map(|_| stretch), window);
                 let thumb_at = at.map(|i| if rtl { n - 1 - i } else { i });
-                const KNOB: f32 = 22.;
+                const KNOB: f32 = SLIDER_KNOB;
                 let dots: Vec<AnyElement> = (0..n).map(|i| {
                     let slot = if rtl { n - 1 - i } else { i };
-                    let name = format!("{}: {}", lh_gui::tiers::stop_name(i, rtl), self.models.label_of(&stops[i]));
+                    let name = format!("{}: {}", titles[i], self.models.label_of(&stops[i]));
                     div().id(SharedString::from(format!("stop-{i}"))).role(Role::Button).aria_label(name).absolute().left(px(slot as f32 * gap)).top(px(0.)).size(px(KNOB)).flex().items_center().justify_center().cursor_pointer()
                         .on_mouse_down(MouseButton::Left, cx.listener(move |a, ev: &MouseDownEvent, _, cx| {
                             // the thumb's own stop starts a drag; another stop is chosen and the thumb glides there
@@ -1315,7 +1338,7 @@ impl App {
                     let slot = if rtl { n - 1 - i } else { i };
                     let on = at == Some(i);
                     div().absolute().top(px(KNOB + 6.)).left(px(slot as f32 * gap + KNOB / 2. - 30.)).w(px(60.)).flex().justify_center().text_xs()
-                        .text_color(if on { p.text } else { p.muted }).child(lh_gui::tiers::stop_name(i, rtl)).into_any_element()
+                        .text_color(if on { p.text } else { p.muted }).child(titles[i].clone()).into_any_element()
                 }).collect();
                 let track = div().id("model-slider").role(Role::Group).aria_label(if rtl { "منزلق النموذج" } else { "Model slider" }).relative().w(px(gap * (n - 1) as f32 + KNOB)).h(px(KNOB + 22.))
                     .child(div().absolute().top(px(KNOB / 2. - 1.)).left(px(KNOB / 2.)).w(px(gap * (n - 1) as f32)).h(px(2.)).rounded_full().bg(p.border))
@@ -1323,11 +1346,12 @@ impl App {
                     .children(names)
                     .when(at.is_some() || self.slider_drag.is_some(), |d| {
                         let held = self.slider_drag.is_some();
-                        let g = self.swell("model-thumb", held, 4.);
-                        d.child(self.glass(div().absolute().top(px(-g)).left(px(knob_left - g)).w(px(KNOB + stretch + g * 2.)).h(px(KNOB + g * 2.)).rounded_full(), "model-thumb", held, KNOB / 2. + g)
+                        let g = self.swell("model-thumb", held, 3., Some(window));
+                        let q = lh_gui::tiers::squash(stretch);
+                        d.child(self.glass(div().absolute().top(px(-g + q / 2.)).left(px(knob_left - g)).w(px(KNOB + stretch + g * 2.)).h(px(KNOB + g * 2. - q)).rounded_full(), "model-thumb", held, (KNOB - q) / 2. + g)
                             .child(div().size_full().rounded_full().border_2().border_color(p.accent.opacity(if held { 0.5 } else { 0.85 }))))
                     });
-                let title = at.map(|i| format!("{} · {model_label}", lh_gui::tiers::stop_name(i, rtl))).unwrap_or(model_label.clone());
+                let title = at.map(|i| format!("{} · {model_label}", titles[i])).unwrap_or(model_label.clone());
                 if self.slider_open {
                     let head = div().id("slider-name").role(Role::Button).aria_label(if rtl { "اختر نموذجًا بنفسك" } else { "Pick a model yourself" })
                         .flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1p5().px_2().py_1().rounded(p.inner).cursor_pointer().hover(|s| s.bg(p.button))
@@ -1344,16 +1368,21 @@ impl App {
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(head)
                         .child(div().px_4().pt_2().pb_1().rounded(p.inner).bg(p.sunken.opacity(0.8)).child(track));
-                    slider_card = Some(self.appear(div().absolute().bottom(px(40.)).left(relative(0.5)).ml(px(-200.)).w(px(400.)).flex().justify_center().elevated(&p, 2).child(card), "slider-card"));
+                    // held at the pill's start edge (left, or right in Arabic), which stays put when a longer model name widens
+                    // the pill; `anchored` keeps the card inside the window on narrow windows
+                    let at = if rtl { gpui::Anchor::BottomRight } else { gpui::Anchor::BottomLeft };
+                    let held = div().absolute().bottom(px(40.)).when(rtl, |d| d.right_0()).when(!rtl, |d| d.left_0())
+                        .child(gpui::anchored().anchor(at).snap_to_window_with_margin(px(8.)).child(self.appear(div().w(px(400.)).flex().justify_center().elevated(&p, 2).child(card), "slider-card")));
+                    slider_card = Some(held.into_any_element());
                 }
                 let pill = self.pill("model", None, title, Some(icons::chevron_down()), self.slider_open, cx, |a, _, cx| {
                     a.slider_open = !a.slider_open;
                     a.model_menu = false;
                     cx.notify();
                 });
-                bar.push(div().relative().child(pill).children(slider_card.take()).into_any_element());
+                model_pill = Some(div().relative().child(pill).children(slider_card.take()).into_any_element());
             } else {
-                bar.push(self.pill("model", None, model_label, Some(icons::chevron_down()), false, cx, |a, w, cx| a.toggle_model_menu(w, cx)));
+                model_pill = Some(self.pill("model", None, model_label, Some(icons::chevron_down()), false, cx, |a, w, cx| a.toggle_model_menu(w, cx)));
             }
         }
         let kind_hint = fresh.then(|| match chat.mode {
@@ -1366,13 +1395,15 @@ impl App {
             .bg(if chat.busy { p.danger } else { p.text }).hover(|s| s.opacity(0.85))
             .on_click(cx.listener(|a, _, w, cx| a.send(w, cx)))
             .child(icon_view(&p, if chat.busy { icons::stop() } else { icons::send() }, if p.dark { hsla(0., 0., 0.08, 1.) } else { hsla(0., 0., 1., 1.) }, 18.));
-        // after a minute or two thousand tokens of thinking: a calm hint beside Stop. Nothing is ever stopped for the person.
+        // after a minute or a couple of thousand tokens of thinking: a calm hint beside Stop. Nothing is ever stopped for the person.
         let hint = snap.filter(|s| is_long(*s)).map(|_| div().id("still-thinking").role(Role::Status).aria_label(hint_text(rtl)).text_xs().text_color(p.muted).max_w(px(150.)).pb_1p5().when(rtl, |d| d.text_right()).child(hint_text(rtl)));
         let lift = vec![
             BoxShadow { color: hsla(0., 0., 0., if p.dark { 0.45 } else { 0.10 }), offset: point(px(0.), px(10.)), blur_radius: px(30.), spread_radius: px(-8.), inset: false },
             BoxShadow { color: if chat.incognito { p.accent.opacity(0.7) } else { p.border.opacity(0.9) }, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(1.), inset: false },
         ];
-        let composer = div().relative().flex().flex_col().gap_2().px_3().pt_2().pb_2().rounded(p.radius).bg(p.surface).shadow(lift)
+        // the picker is drawn from the model pill, above it and anchored to its end, so it opens beside its button
+        let picker = self.menus(window, cx);
+        let composer = div().relative().flex().flex_col().gap_2().px_3().pt_2().pb_2().rounded(p.radius).glass_fill(&p, p.radius).shadow(lift)
             .children(slider_card)
             .child(Textarea::new(&self.composer).appearance(false).aria_label("Message"))
             .when(fresh && chat.mode == Mode::Project, |d| d.child(Input::new(&self.project_input)))
@@ -1381,6 +1412,7 @@ impl App {
                     .children(bar)
                     .child(div().flex_1().min_w_0().px_2().truncate().text_xs().text_color(p.muted).when(rtl, |d| d.text_right()).children(kind_hint))
                     .children(hint)
+                    .children(model_pill.map(|pill| div().relative().child(pill).children(picker).into_any_element()))
                     .child(action),
             );
         // the conversation reads in one column in the middle; the person chooses how wide
@@ -1434,7 +1466,7 @@ impl App {
             let items: Vec<AnyElement> = lh_gui::greeting::suggestions(rtl)
                 .into_iter()
                 .map(|(label, text)| {
-                    div().id(SharedString::from(format!("suggest-{label}"))).role(Role::Button).aria_label(label).cursor_pointer().px_3p5().py_1p5().rounded(p.inner).bg(p.surface.opacity(0.6)).text_sm().text_color(p.muted)
+                    div().id(SharedString::from(format!("suggest-{label}"))).role(Role::Button).aria_label(label).cursor_pointer().px_3p5().py_1p5().relative().rounded(p.inner).glass_fill(&p, p.inner).text_sm().text_color(p.muted)
                         .hover(|s| s.bg(p.button))
                         .on_click(cx.listener(move |a, _, w, cx| {
                             a.composer.update(cx, |s, cx| {
@@ -1494,7 +1526,6 @@ impl Render for App {
         }
 
         let top = self.top_bar(cx);
-        let menus = self.menus(window, cx);
         // the chat list and the side panel slide (ease out, 220 ms); with no animation they simply appear
         let (now, dur) = (std::time::Instant::now(), motion::panel(p.anim));
         let (left_now, right_now) = (self.left_reveal.width(left_w, now, dur), self.right_reveal.width(right_w, now, dur));
@@ -1581,7 +1612,7 @@ impl Render for App {
                 }
                 if let Some((_, _, x, ch)) = a.ctx_drag.take() {
                     let slot = ((x / CTX_GAP).round().max(0.) as usize).min(ch.len().saturating_sub(1));
-                    a.ctx_glide.hold(lh_gui::tiers::knob_n(x, CTX_GAP, ch.len()).0);
+                    a.ctx_glide.hold(lh_gui::tiers::thumb_n(x, CTX_GAP, ch.len(), CTX_KNOB).0);
                     if let Some(id) = ch.get(slot) {
                         a.choose_model(id, cx);
                         if a.pending.is_none() {
@@ -1593,16 +1624,17 @@ impl Render for App {
                 if let Some((_, start, x)) = a.mode_drag.take() {
                     let slot = (x / 88.).round().clamp(0., 2.) as usize;
                     let i = if a.rtl { 2 - slot } else { slot };
-                    a.mode_glide.hold(lh_gui::tiers::knob_n(x, 88., 3).0);
+                    a.mode_glide.hold(lh_gui::tiers::thumb_n(x, 88., 3, MODE_H).0);
                     if (x - start).abs() > 2. {
                         a.set_mode([Mode::Chat, Mode::Assistant, Mode::Project][i], cx);
                     }
                     cx.notify();
                 }
                 if let Some((_, _, x)) = a.slider_drag.take() {
-                    let slot = (x / SLIDER_GAP).round().clamp(0., 4.) as usize;
-                    let i = if a.rtl { 4 - slot } else { slot };
-                    a.tier_glide.hold(lh_gui::tiers::knob(x, SLIDER_GAP).0);
+                    let n = a.stop_count();
+                    let slot = (x / SLIDER_GAP).round().clamp(0., (n - 1) as f32) as usize;
+                    let i = if a.rtl { n - 1 - slot } else { slot };
+                    a.tier_glide.hold(lh_gui::tiers::thumb_n(x, SLIDER_GAP, n, SLIDER_KNOB).0);
                     a.choose_stop(i, cx);
                     cx.notify();
                 }
@@ -1692,7 +1724,7 @@ impl Render for App {
                 }
             }));
         // the rail, the chat list, the chat under its title bar, and the side panel; right to left mirrors the order
-        let main = div().relative().flex().flex_col().flex_1().h_full().overflow_hidden().child(top).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle)).children(menus);
+        let main = div().relative().flex().flex_col().flex_1().h_full().overflow_hidden().child(top).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle));
         let settings = self.settings_view(window, cx);
         let palette = self.palette_view(cx);
         root.children(p.image_layer())
