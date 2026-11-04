@@ -284,3 +284,8 @@ Benchmaxx (the Strata engine session) proposed working together, and this sessio
 - **Phones: Tauri 2 mobile with the shared HTML front end, or the native SwiftUI and Compose apps in the spec?** Recommended answer: Tauri 2 mobile, after a spike (Android build, pairing, Arabic text).
 - **Keep the Servo page viewer?** With a web view, opened pages and small apps can use sandboxed frames, so `lh-pageview` and `lh-pageview-servo` may no longer be needed. Recommended answer: keep them until the web front end shows opened content, then retire them.
 - **Plain JS or a framework for the front end?** Recommended answer: stay with plain JS (as in Milestone 6) and add small libraries (for charts) as local files, no build step.
+
+## Web UI (parked 2026-11-04)
+
+- Web UI is parked at git tag `web-ui-archive` (commit d493a91). Code stays in crates/lh-core/web.
+- Left open: popups compare (model menu, slider, delete confirm); close compares of Spending, Updates and reports, More, Chats and speed; browser Hooks editing (read-only now, security call); whether the desktop app follows the web redesign.
