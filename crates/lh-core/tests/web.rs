@@ -489,3 +489,15 @@ fn the_hooks_page_uses_the_core() {
     let js = include_str!("../web/app.js");
     assert!(js.contains("'/v1/hooks'") && js.contains("Before a tool") && js.contains("After a tool"));
 }
+
+#[test]
+fn the_look_drives_rounding_and_glass_and_the_folded_mark_opens_the_list() {
+    let js = include_str!("../web/app.js");
+    let css = include_str!("../web/style.css");
+    let html = include_str!("../web/index.html");
+    assert!(js.contains("'--inner'") && js.contains("'--glass-fill'"));
+    assert!(!css.contains("border-radius: 8px;"), "corners follow the look");
+    assert!(css.contains("var(--glass-fill"));
+    assert!(html.contains("id=\"side-logo\"") && js.contains("#side-logo"));
+    assert!(css.contains(".side-foot { margin-top: auto; }"));
+}

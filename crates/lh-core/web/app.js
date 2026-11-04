@@ -207,7 +207,7 @@ function applyTheme(t) {
   curTheme = t; t = glassTinted(t); if (typeof fontInstalled === 'function') applyLayout();
   const st = document.documentElement.style;
   for (const [k, v] of Object.entries(THEME_VARS)) if (t?.colors?.[k]) st.setProperty(v, t.colors[k]);
-  if (t?.shape?.roundness != null) st.setProperty('--radius', `${t.shape.roundness}px`);
+  if (t?.shape?.roundness != null) { st.setProperty('--radius', `${t.shape.roundness}px`); st.setProperty('--inner', `${Math.max(3, t.shape.roundness - 8)}px`); }
   // motion as the desktop app has it: a press answers in 140 ms and a panel moves in 220 ms, easing out; a look with
   // duration 0 turns both off
   const still = t?.animation?.duration_ms === 0;
@@ -219,6 +219,9 @@ function applyTheme(t) {
   const glass = t?.material?.panels && t.material.panels !== 'none';
   document.documentElement.toggleAttribute('data-glass', !!glass);
   st.setProperty('--glass-blur', glass ? `${(t.material.blur || 6) * 3}px` : '0px');
+  // the Opacity choice: how much of the backdrop shows through the frosted panels
+  const op = pref('glass-opacity') === null ? 0.5 : Math.min(1, Math.max(0, +pref('glass-opacity') || 0));
+  st.setProperty('--glass-fill', `${Math.round(88 - op * 50)}%`);
 }
 // when storage is off (a private window), choices last until the page closes
 const memPrefs = new Map();
@@ -412,7 +415,7 @@ function appCss() {
   const cs = getComputedStyle(document.documentElement);
   const v = Object.values(THEME_VARS).concat('--radius').map((k) => `${k}:${cs.getPropertyValue(k).trim()}`).join(';');
   return `:root{${v};color-scheme:${cs.colorScheme || 'light'}}*{box-sizing:border-box}html,body{margin:0;background:transparent;color:var(--text);font:15px/1.5 ${cs.fontFamily}}` +
-    'button,input,select,textarea{font:inherit;color:inherit;background:var(--sunken);border:1px solid var(--border);border-radius:8px;padding:6px 10px}' +
+    'button,input,select,textarea{font:inherit;color:inherit;background:var(--sunken);border:1px solid var(--border);border-radius:var(--inner);padding:6px 10px}' +
     'button{background:var(--button);cursor:pointer}button:hover{background:var(--button-hover)}input[type=range]{padding:0;accent-color:var(--accent)}' +
     'table{border-collapse:collapse}th,td{border-top:1px solid var(--border);padding:6px 10px;text-align:start}a{color:var(--accent)}svg text{fill:currentColor}';
 }
@@ -933,6 +936,8 @@ function chatSetup() {
   $('#panel-widen').addEventListener('click', () => $('#panel').classList.toggle('wide'));
   $('#side-toggle').addEventListener('click', () => { const f = $('#app').classList.toggle('folded'); pref('folded', f ? '1' : ''); });
   if (pref('folded')) $('#app').classList.add('folded');
+  // folded, the mark is the open button, as in the desktop app
+  $('#side-logo').addEventListener('click', () => { if ($('#app').classList.contains('folded')) $('#side-toggle').click(); });
   for (const b of document.querySelectorAll('[data-foot]')) b.addEventListener('click', () => { const g = b.dataset.foot; location.hash = location.hash === `#/${g}` ? '#/chat' : `#/${g}`; });
   $('#side-search').addEventListener('click', openPalette);
   addEventListener('keydown', (e) => {
