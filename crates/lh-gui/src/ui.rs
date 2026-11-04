@@ -1386,10 +1386,10 @@ impl App {
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(head)
                         .child(div().px_4().pt_2().pb_1().rounded(p.inner).bg(p.sunken.opacity(0.8)).child(track));
-                    // held at the pill's start edge (left, or right in Arabic), which stays put when a longer model name widens
+                    // held at the pill's end edge (right, or left in Arabic), which stays put when a longer model name widens
                     // the pill; `anchored` keeps the card inside the window on narrow windows
-                    let at = if rtl { gpui::Anchor::BottomRight } else { gpui::Anchor::BottomLeft };
-                    let held = div().absolute().bottom(px(40.)).when(rtl, |d| d.right_0()).when(!rtl, |d| d.left_0())
+                    let at = if rtl { gpui::Anchor::BottomLeft } else { gpui::Anchor::BottomRight };
+                    let held = div().absolute().bottom(px(40.)).when(rtl, |d| d.left_0()).when(!rtl, |d| d.right_0())
                         .child(gpui::anchored().anchor(at).snap_to_window_with_margin(px(8.)).child(self.appear(div().w(px(400.)).flex().justify_center().elevated(&p, 2).child(card), "slider-card")));
                     slider_card = Some(held.into_any_element());
                 }
