@@ -385,7 +385,7 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     assert!(first.starts_with("You are Qwen3.6-35B-A3B (34.7B), served by llama-swap, an endpoint made by someone else, not a harness. You work in LastHarness"), "{first}");
     assert_eq!(reqs[1].messages[0], reqs[0].messages[0], "the same bytes on the next turn");
 
-    // switching model: refused while idle sessions are fine, and the next turn names the new model
+    // switching model: an unknown session is 404, a known one is 204, and the next turn names the new model
     assert_eq!(s.post("/v1/sessions/nope/model", json!({"model": "x"})).send().await.unwrap().status(), 404);
     assert_eq!(s.post(&format!("/v1/sessions/{id}/model"), json!({"model": "gpt-4o"})).send().await.unwrap().status(), 204);
     turn("three").await;
@@ -426,4 +426,21 @@ async fn show_opens_text_and_a_file_beside_the_chat_but_only_from_inside_the_fol
     assert!(results[0].contains("Opened \"The plan\""), "{results:?}");
     assert!(results[2].contains("outside this session's folder"), "the refusal is told to the model: {results:?}");
     assert!(events.iter().all(|e| e["type"] != "ask"), "showing needs no permission question");
+}
+
+#[tokio::test]
+async fn no_sandbox_is_per_session_and_logged() {
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = l.local_addr().unwrap().port();
+    let token = auth::new_token();
+    let store = std::sync::Arc::new(lh_store::Store::open_memory().unwrap());
+    let settings = Settings { provider_name: None, learn: None, maintain_when_idle: false, memory: None, image_model: None, web: Default::default(), idle_after: Duration::ZERO, compact_at: Some(0), store: store.clone(), spend: free_meter(), bypass: false, sudo_enabled: false, allow_rules: vec![], team: None, mcp: None, ask_all: false, config: None };
+    let app = router(AppState::new(Script::new(vec![]), settings), token.clone(), port);
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let s = Server { base: format!("http://127.0.0.1:{port}"), token, http: reqwest::Client::new() };
+    let d = tempfile::tempdir().unwrap();
+    s.post("/v1/sessions", json!({"model":"m","project_dir":d.path()})).send().await.unwrap();
+    assert!(store.recent(50, Some("sandbox_off")).unwrap().is_empty(), "the sandbox is on by default");
+    s.post("/v1/sessions", json!({"model":"m","project_dir":d.path(),"no_sandbox":true})).send().await.unwrap();
+    assert_eq!(store.recent(50, Some("sandbox_off")).unwrap().len(), 1);
 }

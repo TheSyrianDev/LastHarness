@@ -60,7 +60,7 @@ impl Learn {
         if all.iter().any(|p| p.kind == kind && p.status != "rejected" && payload_key(p.kind, &p.payload) == key) {
             return Ok(None);
         }
-        // The same wish worded differently: no second suggestion. If the first is still waiting, it
+        // The same suggestion worded differently: no second suggestion. If the first is still waiting, it
         // gains the new quotes, and "seen again in other sessions" makes it a repeat.
         let wish = wish_words(kind, &payload);
         if !wish.is_empty() {

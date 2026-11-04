@@ -294,7 +294,52 @@ async fn codemode<M: Model, T: Meter, A: Asker>(
     }
 }
 
+/// May this sandboxed command use the network? Returns the answer and how it was reached
+/// (`tools.net`). A bypassed session answers yes without asking; the sandbox itself stays on.
 #[allow(clippy::too_many_arguments)]
+async fn sandbox_net<M: Model, T: Meter, A: Asker>(model: &M, meter: &T, cmd: &str, tools: &ToolSet, perms: &Permissions, asker: &A, opts: &TurnOptions) -> (bool, &'static str) {
+    use crate::NetMode;
+    let net = &tools.net;
+    match net.mode {
+        NetMode::On => return (true, "on"),
+        NetMode::Allowlist => return (net.allows(cmd), "allowlist"),
+        NetMode::Auto => {
+            if let Some(v) = classify_net(model, meter, &net.model, cmd).await {
+                return (v, "auto");
+            }
+        }
+        NetMode::Ask => {}
+    }
+    if perms.effective_mode() == crate::Mode::Bypass {
+        return (true, "bypass");
+    }
+    let hosts = crate::hosts_in(cmd);
+    let detail = if hosts.is_empty() { String::new() } else { format!("Hosts named: {}", hosts.join(", ")) };
+    let req = AskRequest { tool: "sandbox_network", what: format!("Network access for: {cmd}"), reason: "The command runs in the sandbox. Allow it to use the network this time?".into(), worker: &opts.worker, detail };
+    (matches!(asker.ask(&req).await, Answer::Yes), "ask")
+}
+
+/// `auto`: a small model answers YES or NO. None when there is no model, it fails, or the answer is unclear.
+async fn classify_net<M: Model, T: Meter>(model: &M, meter: &T, name: &str, cmd: &str) -> Option<bool> {
+    if name.is_empty() {
+        return None;
+    }
+    let ask = "A shell command will run in a sandbox. Does it need network access to do its job (downloads, package installs, git fetch or clone, API calls)? Answer only YES or NO.";
+    let mut req = ChatRequest { model: name.to_string(), messages: vec![Message::user(format!("{ask}\n\nCommand: {}", cmd.chars().take(2000).collect::<String>()))], max_tokens: Some(8), ..Default::default() };
+    req.sampling.extra.insert("chat_template_kwargs".into(), serde_json::json!({"enable_thinking": false}));
+    if !matches!(meter.before(&req).await, MeterVerdict::Allow) {
+        return None;
+    }
+    let resp = tokio::time::timeout(std::time::Duration::from_secs(30), model.complete(&req, &mut |_| {})).await.ok()?.ok()?;
+    meter.after(&req, resp.usage).await;
+    let t = resp.text.trim().to_ascii_uppercase();
+    match (t.starts_with("YES"), t.starts_with("NO")) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        _ => None,
+    }
+}
+
 async fn execute<M: Model, T: Meter, A: Asker>(
     model: &M,
     meter: &T,
@@ -390,6 +435,23 @@ async fn execute<M: Model, T: Meter, A: Asker>(
         if tool == Tool::GenerateImage {
             generate_image(model, meter, asker, opts, tools, perms.root(), &args).await
         } else {
+            let mut args = args.clone();
+            if tool == Tool::RunCommand {
+                if let Some(o) = args.as_object_mut() {
+                    o.remove(crate::NET_ARG); // only the runner sets it
+                }
+                if tools.sandboxed() {
+                    let cmd = args["command"].as_str().unwrap_or("").to_string();
+                    let (net, how) = sandbox_net(model, meter, &cmd, tools, perms, asker, opts).await;
+                    emit(TurnEvent::Decision { id: id.into(), tool: "sandbox_network".into(), action: format!("{how}: {cmd}"), outcome: match (net, how) {
+                        (true, "ask") => Outcome::AllowedByUser,
+                        (true, _) => Outcome::Allowed,
+                        (false, "ask") => Outcome::Declined,
+                        (false, _) => Outcome::Denied(format!("network off ({how})")),
+                    } });
+                    args[crate::NET_ARG] = Value::Bool(net);
+                }
+            }
             match tool.run(&args, perms.root(), tools).await {
                 Ok(out) => (out.text, out.undo),
                 Err(e) => fail(format!("Error: {e}")),

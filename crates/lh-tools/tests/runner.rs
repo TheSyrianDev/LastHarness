@@ -355,3 +355,83 @@ return t.split("\n").filter(l => l.startsWith("g")).join(",") + " | " + wrote;"#
     assert!(!d.path().join("b.txt").exists());
     assert_eq!(events, ["1 codemode", "1.1 read_file", "1.2 write_file"], "each inner call is shown");
 }
+
+/// One sandboxed `cat /proc/net/dev` under the given network rules; returns its output and how often the user was asked.
+async fn net_run(net: SandboxNet, extra: Vec<Response>, answer: Answer, bypass: bool) -> Option<(String, usize)> {
+    if !std::path::Path::new("/usr/bin/bwrap").is_file() {
+        return None; // nothing to test without bubblewrap
+    }
+    // not under /tmp: the sandbox has a private /tmp
+    let d = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let mut perms = Permissions::new(d.path()).unwrap();
+    perms.allow_rules = vec!["cat /proc/net/dev".into()]; // only the network question is left to ask
+    if bypass {
+        perms.mode = Mode::Bypass;
+    }
+    let mut script = vec![tools_reply(vec![call("1", "run_command", r#"{"command":"cat /proc/net/dev"}"#)])];
+    script.extend(extra);
+    script.push(text_reply("done"));
+    let model = Script::new(script);
+    let tools = ToolSet::new([Tool::RunCommand]).with_sandbox(true).with_sandbox_net(net);
+    let (u, mut r) = (user(answer), req());
+    run_turn(&model, &NoMeter, &mut r, &tools, &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    Some((tool_results(&r).join("\n"), u.asked.load(Ordering::SeqCst)))
+}
+fn has_net(out: &str) -> bool {
+    out.lines().filter_map(|l| l.split_once(':')).any(|(i, _)| i.trim() != "lo" && !i.contains(' '))
+}
+
+#[tokio::test]
+async fn sandbox_network_ask_mode() {
+    let Some((out, asked)) = net_run(SandboxNet::default(), vec![], Answer::No, false).await else { return };
+    assert!(!has_net(&out), "{out}");
+    assert_eq!(asked, 1, "asked about the network");
+    let (out, _) = net_run(SandboxNet::default(), vec![], Answer::Yes, false).await.unwrap();
+    let host = std::fs::read_to_string("/proc/net/dev").unwrap().lines().filter_map(|l| l.split_once(':')).count();
+    assert!(has_net(&out) || host == 1, "{out}");
+}
+
+#[tokio::test]
+async fn bypass_answers_the_network_question_but_keeps_the_sandbox() {
+    let Some((out, asked)) = net_run(SandboxNet::default(), vec![], Answer::No, true).await else { return };
+    assert_eq!(asked, 0);
+    assert!(out.starts_with("exit code 0"), "{out}");
+}
+
+#[tokio::test]
+async fn sandbox_network_on_and_allowlist_modes() {
+    let Some((_, asked)) = net_run(SandboxNet::from_settings("on", "", ""), vec![], Answer::No, false).await else { return };
+    assert_eq!(asked, 0);
+    // the command names no host, so the allowlist keeps the network off without asking
+    let (out, asked) = net_run(SandboxNet::from_settings("allowlist", "github.com", ""), vec![], Answer::Yes, false).await.unwrap();
+    assert_eq!(asked, 0);
+    assert!(!has_net(&out), "{out}");
+}
+
+#[tokio::test]
+async fn sandbox_network_auto_mode() {
+    let auto = SandboxNet::from_settings("auto", "", "small");
+    let Some((out, asked)) = net_run(auto.clone(), vec![text_reply("NO")], Answer::Yes, false).await else { return };
+    assert_eq!(asked, 0, "the model decided");
+    assert!(!has_net(&out), "{out}");
+    // an unclear answer falls back to asking
+    let (_, asked) = net_run(auto, vec![text_reply("maybe")], Answer::No, false).await.unwrap();
+    assert_eq!(asked, 1);
+    // no model set: ask
+    let (_, asked) = net_run(SandboxNet::from_settings("auto", "", ""), vec![], Answer::No, false).await.unwrap();
+    assert_eq!(asked, 1);
+}
+
+#[tokio::test]
+async fn the_model_cannot_grant_itself_the_network() {
+    if !std::path::Path::new("/usr/bin/bwrap").is_file() {
+        return;
+    }
+    let d = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let perms = Permissions::new(d.path()).unwrap();
+    let model = Script::new(vec![tools_reply(vec![call("1", "run_command", r#"{"command":"cat /proc/net/dev","__lh_sandbox_net":true}"#)]), text_reply("done")]);
+    let tools = ToolSet::new([Tool::RunCommand]).with_sandbox(true).with_sandbox_net(SandboxNet::from_settings("allowlist", "", ""));
+    let (u, mut r) = (user(Answer::Yes), req());
+    run_turn(&model, &NoMeter, &mut r, &tools, &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    assert!(!has_net(&tool_results(&r).join("\n")));
+}

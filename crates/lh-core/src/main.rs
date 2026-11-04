@@ -6,7 +6,7 @@
 //!     [--provider-name NAME] [--no-memory] [--maintain-when-idle]
 //!     [--learn propose|silent|off] [--learn-threshold N] [--skills-dir PATH] [--skill-min-calls N] [--memory-dir PATH] [--trust local|own|any]
 //!     [--embed-server PATH --embed-model FILE.gguf [--embed-libs DIRS] [--embed-name NAME]]
-//!     [--embed-url URL --embed-name NAME [--embed-allow-cloud]] [--allow-sudo] [--allow "git status"]... [--dangerously-skip-permissions]
+//!     [--embed-url URL --embed-name NAME [--embed-allow-cloud]] [--allow-sudo] [--allow "git status"]... [--dangerously-skip-permissions] [--no-sandbox]
 
 use std::net::SocketAddr;
 
@@ -36,6 +36,7 @@ async fn main() {
     let (mut learn_mode, mut learn_threshold, mut skills_dir, mut skill_calls) = (None::<String>, None::<usize>, None::<std::path::PathBuf>, 6usize);
     let (mut no_memory, mut memory_dir, mut trust) = (false, None::<std::path::PathBuf>, None::<String>);
     let (mut embed_server, mut embed_model, mut embed_libs, mut embed_name, mut embed_url, mut embed_cloud) = (None::<String>, None::<String>, None::<String>, None::<String>, None::<String>, false);
+    let mut no_sandbox = false;
     let mut flags = (false, false, Vec::<String>::new()); // bypass, sudo, allow rules
     while let Some(arg) = a.next() {
         let mut val = || a.next().unwrap_or_else(|| fail(format!("{arg} needs a value")));
@@ -72,6 +73,10 @@ async fn main() {
             "--image-model" => image_model = Some(val()),
             "--allow" => flags.2.push(val()),
             "--allow-sudo" => flags.1 = true,
+            "--no-sandbox" => {
+                no_sandbox = true;
+                eprintln!("{}", NO_SANDBOX_WARNING);
+            }
             "--dangerously-skip-permissions" => {
                 eprintln!("WARNING: all permission prompts are off. You accept the risk; the project is not responsible for the outcome.");
                 flags.0 = true;
@@ -203,7 +208,7 @@ async fn main() {
     let web_store = store.clone();
     let channel_store = store.clone();
     let schedule_store = store.clone();
-    let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false, use_proxy: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2, team, mcp, ask_all: false, config: Some(config_path) };
+    let settings = Settings { provider_name, learn, maintain_when_idle: maintain_idle, memory, image_model, web: lh_tools::WebConfig { searxng_url: searxng, allow_private: false, use_proxy: false }, idle_after: std::time::Duration::from_secs(idle_after), compact_at, store, spend, bypass: flags.0, sudo_enabled: flags.1, allow_rules: flags.2, team, mcp, ask_all: false, config: Some(config_path.clone()) };
 
     let token = auth::new_token();
     let path = token_file.unwrap_or_else(auth::default_token_path);
@@ -215,25 +220,49 @@ async fn main() {
     let state = AppState::new(Provider::new(provider, api_key), settings);
     state.set_kv_endpoint(&provider_url, api_key_for_kv);
     state.apply_settings(&cfg, &[]);
-    // the browser's door: off unless an address is given
-    let web_listen = web_listen.or_else(|| cfg.get_opt("web.listen"));
-    let web = match web_listen {
-        None => None,
-        Some(w) => {
     if !no_sandbox && !cfg!(target_os = "linux") {
         eprintln!("lhd: WARNING: the sandbox needs bubblewrap, which only Linux has. The model's commands run without it here: they can change any file your user can. Permission prompts still apply.");
     }
-            let waddr: SocketAddr = w.parse().unwrap_or_else(|e| fail(format!("web.listen {w}: {e}")));
-            let extra: Vec<String> = if waddr.ip().is_unspecified() || waddr.ip().is_loopback() { vec![] } else { vec![waddr.ip().to_string()] };
-            let dir = default_store_path().parent().map(|p| p.join("web")).unwrap_or_else(|| std::path::PathBuf::from("web"));
-            let tls = lh_core::web::load_or_create_tls(&dir, &extra).unwrap_or_else(|e| fail(e));
-            let wl = tokio::net::TcpListener::bind(waddr).await.unwrap_or_else(|e| fail(format!("cannot listen on {waddr}: {e}")));
-            let w = lh_core::web::Web::new(web_store, tls.fingerprint.clone());
-            eprintln!("lhd: browser UI at https://{}  (certificate fingerprint {})", wl.local_addr().unwrap(), tls.fingerprint);
-            eprintln!("lhd: a new browser pairs with a PIN: `lh devices`");
-            tokio::spawn(lh_core::web::serve_tls(wl, lh_core::web_router(state.clone(), w.clone()), tls.acceptor));
-            Some(w)
+    if no_sandbox {
+        state.turn_sandbox_off();
+    }
+    // the browser's door: off unless an address is given
+    let web_listen = web_listen.or_else(|| cfg.get_opt("web.listen"));
+    let tailscale = cfg.get("web.tailscale") == "true";
+    let web = if web_listen.is_none() && !tailscale {
+        None
+    } else {
+        let waddr: Option<SocketAddr> = web_listen.as_ref().map(|w| w.parse().unwrap_or_else(|e| fail(format!("web.listen {w}: {e}"))));
+        // the Tailscale door: opt-in, on the tailnet address only (never 0.0.0.0), same port as web.listen
+        let ts = tailscale.then(|| match lh_core::web::tailscale_ipv4() {
+            Ok(ip) => Some(SocketAddr::new(ip.into(), waddr.map(|a| a.port()).unwrap_or(7843))),
+            Err(e) => {
+                eprintln!("lhd: web.tailscale is on but {e}; the phone access stays closed");
+                None
+            }
+        }).flatten();
+        let mut extra: Vec<String> = waddr.iter().chain(ts.iter()).filter(|a| !a.ip().is_unspecified() && !a.ip().is_loopback()).map(|a| a.ip().to_string()).collect();
+        extra.dedup();
+        let dir = default_store_path().parent().map(|p| p.join("web")).unwrap_or_else(|| std::path::PathBuf::from("web"));
+        let tls = lh_core::web::load_or_create_tls(&dir, &extra).unwrap_or_else(|e| fail(e));
+        let w = lh_core::web::Web::new(web_store, tls.fingerprint.clone());
+        let router = lh_core::web_router(state.clone(), w.clone());
+        let mut phone_urls = vec![];
+        for a in waddr.iter().chain(ts.iter()) {
+            let wl = tokio::net::TcpListener::bind(a).await.unwrap_or_else(|e| fail(format!("cannot listen on {a}: {e}")));
+            let at = wl.local_addr().unwrap();
+            if !at.ip().is_loopback() {
+                phone_urls.push(format!("https://{at}"));
+            }
+            eprintln!("lhd: browser UI at https://{at}  (certificate fingerprint {})", tls.fingerprint);
+            tokio::spawn(lh_core::web::serve_tls(wl, router.clone(), tls.acceptor.clone()));
         }
+        // tailscale first: it is the address a phone can reach from anywhere
+        phone_urls.sort_by_key(|u| !ts.is_some_and(|t| u.contains(&t.ip().to_string())));
+        let login_path = config_path.parent().map(|p| p.join("phone-login-token")).unwrap_or_else(|| std::path::PathBuf::from("phone-login-token"));
+        w.enable_login(login_path, phone_urls).unwrap_or_else(|e| fail(e));
+        eprintln!("lhd: a new browser pairs with a PIN (`lh devices`); a phone signs in with `lh devices phone`");
+        Some(w)
     };
     // messaging channels: the runner talks to this core through its own local API, like any other client
     lh_core::channels::spawn_runner(channel_store, format!("http://127.0.0.1:{port}"), token.clone());
@@ -262,3 +291,6 @@ fn default_team_dir() -> std::path::PathBuf {
 fn default_skills_dir() -> std::path::PathBuf {
     default_store_path().parent().map(|p| p.join("skills")).unwrap_or_else(|| std::path::PathBuf::from("skills"))
 }
+
+/// Printed when lhd starts with `--no-sandbox`.
+const NO_SANDBOX_WARNING: &str = "WARNING: --no-sandbox turns the sandbox off. The model's commands can change any file your user can, not only the chat's folder, and reach the network freely. Permission prompts still apply.";

@@ -272,7 +272,12 @@ impl Tool {
                 let mut command = match &bwrap {
                     Some(b) => {
                         let mut c = tokio::process::Command::new(b);
-                        c.args(sandbox_args(root)).arg("sh");
+                        c.args(sandbox_args(root));
+                        // the runner decides network access for each run (see `SandboxNet`); absent means off
+                        if args.get(NET_ARG).and_then(Value::as_bool) != Some(true) {
+                            c.arg("--unshare-net");
+                        }
+                        c.arg("sh");
                         c
                     }
                     // Windows has no sh: cmd runs the line as it is
@@ -284,11 +289,13 @@ impl Tool {
                 } else {
                     command.arg("-c").arg(&cmd);
                 }
-                let mut child = command
+                command
                     .current_dir(root)
                     .env_clear()
-                    .envs(safe_env())
-                    .process_group(0)
+                    .envs(safe_env());
+                #[cfg(unix)]
+                command.process_group(0);
+                let mut child = command
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -329,8 +336,8 @@ fn find_bwrap() -> Option<std::path::PathBuf> {
 }
 
 /// The sandbox: the whole system read-only, the chat's folder writable, a private /tmp, its own /dev and /proc.
-/// The network stays on, since builds and package tools need it; web access by the model goes through the web
-/// tools and their own rules. The process dies with the core.
+/// Network access is decided per run by `tools.sandbox_network` (see `SandboxNet`); without it the run gets
+/// `--unshare-net`. The process dies with the core.
 pub fn sandbox_args(root: &std::path::Path) -> Vec<std::ffi::OsString> {
     let mut a: Vec<std::ffi::OsString> = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"].iter().map(Into::into).collect();
     a.extend(["--bind".into(), root.as_os_str().to_owned(), root.as_os_str().to_owned()]);
@@ -412,6 +419,78 @@ impl std::fmt::Debug for OutboundGuard {
     }
 }
 
+/// Set by the runner on a `run_command` call's arguments: `true` gives the sandboxed run the network.
+pub const NET_ARG: &str = "__lh_sandbox_net";
+
+/// `tools.sandbox_network`: may a sandboxed command use the network?
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum NetMode {
+    /// Ask the user for each run (the default).
+    #[default]
+    Ask,
+    /// Only when every host the command names is on the list; otherwise off.
+    Allowlist,
+    /// Always.
+    On,
+    /// A small local model decides for each run; when it fails or is unsure, ask.
+    Auto,
+}
+
+impl NetMode {
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "ask" => Self::Ask,
+            "allowlist" => Self::Allowlist,
+            "on" => Self::On,
+            "auto" => Self::Auto,
+            _ => return None,
+        })
+    }
+}
+
+/// Network rules for sandboxed commands.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SandboxNet {
+    pub mode: NetMode,
+    /// Domains for `allowlist`; `example.com` also covers `api.example.com`.
+    pub allow: Vec<String>,
+    /// The model `auto` asks. Empty: `auto` asks the user.
+    pub model: String,
+}
+
+impl SandboxNet {
+    /// From the settings values: the mode, a comma or space separated list, the model.
+    pub fn from_settings(mode: &str, allow: &str, model: &str) -> Self {
+        let allow = allow.split([',', ' ', '\n']).map(|d| d.trim().trim_start_matches("*.").trim_start_matches('.').to_ascii_lowercase()).filter(|d| !d.is_empty()).collect();
+        Self { mode: NetMode::parse(mode).unwrap_or_default(), allow, model: model.trim().to_string() }
+    }
+    /// Allowlist check: the command names at least one host and every one is on the list.
+    pub fn allows(&self, cmd: &str) -> bool {
+        let hosts = hosts_in(cmd);
+        !hosts.is_empty() && hosts.iter().all(|h| self.allow.iter().any(|d| h == d || h.ends_with(&format!(".{d}"))))
+    }
+}
+
+/// Host names a command text mentions: in URLs (`https://host/...`, `git@host:`) and bare words that look
+/// like domains (`pip download x --index example.org`). Text-based, so a host built at run time is missed.
+pub fn hosts_in(cmd: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for word in cmd.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '(' | ')' | ';' | '|' | '&' | '<' | '>' | '`')) {
+        let w = word.split_once("://").map_or(word, |(_, rest)| rest);
+        let w = w.rsplit_once('@').map_or(w, |(_, h)| h);
+        let host: String = w.split(['/', ':', '?', '#']).next().unwrap_or("").trim_end_matches('.').to_ascii_lowercase();
+        let parts: Vec<&str> = host.split('.').collect();
+        let tld = parts.last().copied().unwrap_or("");
+        let looks = parts.len() >= 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')) && tld.len() >= 2 && tld.chars().all(|c| c.is_ascii_alphabetic());
+        // file names such as notes.txt or main.rs are not hosts unless written as a URL
+        let file_like = !word.contains("://") && !word.contains('@') && matches!(tld, "txt" | "rs" | "py" | "js" | "ts" | "md" | "json" | "toml" | "sh" | "lock" | "html" | "css" | "c" | "h" | "go" | "yml" | "yaml" | "log" | "tar" | "gz" | "zip" | "lua" | "rb" | "java" | "cfg" | "ini" | "csv" | "xml" | "png" | "jpg" | "svg");
+        if looks && !file_like && !out.contains(&host) {
+            out.push(host);
+        }
+    }
+    out
+}
+
 /// The tools one worker may use. Anything not listed does not exist for it.
 #[derive(Clone, Debug, Default)]
 pub struct ToolSet {
@@ -424,6 +503,7 @@ pub struct ToolSet {
     extras: Vec<std::sync::Arc<dyn ExtraTool>>,
     pub(crate) hooks: Option<std::sync::Arc<crate::Hooks>>,
     sandbox: bool,
+    pub(crate) net: SandboxNet,
     /// Language servers started for this chat (see `lsp`).
     pub(crate) lsp: std::sync::Arc<crate::lsp::Lsp>,
     /// What codemode scripts in this chat keep with `store` (see `codemode`). Memory only, gone with the chat.
@@ -443,13 +523,22 @@ impl ToolSet {
         self.sandbox = on;
         self
     }
+    /// Network rules for sandboxed commands (see `SandboxNet`).
+    pub fn with_sandbox_net(mut self, net: SandboxNet) -> Self {
+        self.net = net;
+        self
+    }
+    /// Is the sandbox in force for commands (asked for and bubblewrap present)?
+    pub fn sandboxed(&self) -> bool {
+        self.sandbox && find_bwrap().is_some()
+    }
     /// Commands to run before and after tool calls (see `hooks`).
     pub fn with_hooks(mut self, hooks: std::sync::Arc<crate::Hooks>) -> Self {
         self.hooks = (!hooks.is_empty()).then_some(hooks);
         self
     }
     pub fn new(tools: impl IntoIterator<Item = Tool>) -> Self {
-        Self { guard: OutboundGuard::default(), tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None, extras: vec![], hooks: None, sandbox: false, lsp: Default::default(), codemode_kv: Default::default() }
+        Self { guard: OutboundGuard::default(), tools: tools.into_iter().collect(), web: crate::WebConfig::default(), image_model: None, memory: None, skills: None, extras: vec![], hooks: None, sandbox: false, net: SandboxNet::default(), lsp: Default::default(), codemode_kv: Default::default() }
     }
     /// Check what web, image and MCP tools send out against this function before they run.
     pub fn with_outbound_guard(mut self, g: GuardFn) -> Self {
@@ -639,6 +728,36 @@ mod sandbox_tests {
         assert!(root.join("inside").exists(), "{}", out.text);
         assert!(!outer.path().join("outside").exists(), "{}", out.text);
         assert!(out.text.contains("Read-only file system"), "{}", out.text);
+    }
+
+    #[tokio::test]
+    async fn the_network_is_cut_unless_the_runner_allows_it() {
+        if find_bwrap().is_none() {
+            return;
+        }
+        let root = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let set = ToolSet::new([Tool::RunCommand]).with_sandbox(true);
+        // /proc is the sandbox's own, so it lists the interfaces of its network namespace: only `lo` when cut off
+        let cmd = "grep : /proc/net/dev | cut -d: -f1 | tr -d ' ' | sort | tr '\\n' ' '";
+        let off = Tool::RunCommand.run(&json!({"command": cmd}), root.path(), &set).await.unwrap();
+        let on = Tool::RunCommand.run(&json!({"command": cmd, NET_ARG: true}), root.path(), &set).await.unwrap();
+        assert_eq!(off.text.lines().nth(1).unwrap_or("").trim(), "lo", "{}", off.text);
+        let host = std::fs::read_to_string("/proc/net/dev").unwrap().lines().filter_map(|l| l.split_once(':')).count();
+        assert_eq!(on.text.lines().nth(1).unwrap_or("").split_whitespace().count(), host, "{}", on.text);
+    }
+
+    #[test]
+    fn hosts_and_the_allowlist() {
+        assert_eq!(hosts_in("curl -sL https://api.github.com/repos && git clone git@gitlab.com:a/b.git"), vec!["api.github.com", "gitlab.com"]);
+        assert!(hosts_in("cat notes.txt && cargo build && python main.py").is_empty());
+        let net = SandboxNet::from_settings("allowlist", "github.com, *.crates.io", "");
+        assert_eq!(net.mode, NetMode::Allowlist);
+        assert!(net.allows("curl https://api.github.com/x"));
+        assert!(net.allows("wget static.crates.io/f"));
+        assert!(!net.allows("curl https://evil.com/?q=github.com.evil.org"));
+        assert!(!net.allows("curl https://notgithub.com"));
+        assert!(!net.allows("cargo build"), "no host named: off");
+        assert_eq!(SandboxNet::from_settings("bogus", "", "").mode, NetMode::Ask);
     }
 }
 

@@ -67,6 +67,60 @@ pub struct Web {
     challenges: Mutex<HashMap<String, (String, Instant)>>,
     sessions: Mutex<HashMap<String, (String, Instant)>>,
     pub fingerprint: String,
+    /// The phone login token (see `load_or_create_login_token`) and where it is kept. None: login by token is off.
+    login: Mutex<Option<(String, std::path::PathBuf)>>,
+    login_failed: Mutex<(u32, Option<Instant>)>,
+    /// Addresses a phone can open, e.g. `https://100.101.102.103:7843`.
+    phone_urls: Mutex<Vec<String>>,
+}
+
+/// A token sign-in lasts this long; the phone scans the code again after that (or after removal).
+const LOGIN_SESSION_TTL: Duration = Duration::from_secs(30 * 86_400);
+
+fn sha_hex(s: &str) -> String {
+    Sha256::digest(s.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Read the phone login token from `path`, or make a new random one there, readable only by this user.
+pub fn load_or_create_login_token(path: &std::path::Path) -> Result<String, String> {
+    if let Ok(t) = std::fs::read_to_string(path) {
+        let t = t.trim().to_string();
+        if t.len() >= 32 {
+            return Ok(t);
+        }
+    }
+    write_login_token(path, &rand_hex(32))
+}
+
+fn write_login_token(path: &std::path::Path, t: &str) -> Result<String, String> {
+    let err = |e: std::io::Error| format!("cannot write the phone login token {}: {e}", path.display());
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d).map_err(err)?;
+    }
+    let _ = std::fs::remove_file(path);
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    std::io::Write::write_all(&mut opts.open(path).map_err(err)?, t.as_bytes()).map_err(err)?;
+    Ok(t.to_string())
+}
+
+/// This machine's Tailscale IPv4 address, from `tailscale ip -4`. Only an address in Tailscale's range
+/// (100.64.0.0/10) is accepted, so a surprise answer cannot open the door on another network.
+pub fn tailscale_ipv4() -> Result<std::net::Ipv4Addr, String> {
+    let out = std::process::Command::new("tailscale").args(["ip", "-4"]).output().map_err(|e| format!("cannot run `tailscale ip -4`: {e}"))?;
+    if !out.status.success() {
+        return Err("`tailscale ip -4` failed; is Tailscale up? (`tailscale status`)".into());
+    }
+    parse_tailscale_ip(&String::from_utf8_lossy(&out.stdout)).ok_or_else(|| "`tailscale ip -4` gave no Tailscale address".into())
+}
+
+pub fn parse_tailscale_ip(out: &str) -> Option<std::net::Ipv4Addr> {
+    out.lines().filter_map(|l| l.trim().parse::<std::net::Ipv4Addr>().ok()).find(|ip| ip.octets()[0] == 100 && (ip.octets()[1] & 0xc0) == 64)
 }
 
 fn rand_hex(n: usize) -> String {
@@ -115,7 +169,67 @@ pub fn proof_for(pin: &str, jwk: &Value) -> Option<String> {
 
 impl Web {
     pub fn new(store: Arc<Store>, fingerprint: String) -> Arc<Self> {
-        Arc::new(Self { open_until: Mutex::new(None), store, pairing: Mutex::default(), challenges: Mutex::default(), sessions: Mutex::default(), fingerprint })
+        Arc::new(Self { open_until: Mutex::new(None), store, pairing: Mutex::default(), challenges: Mutex::default(), sessions: Mutex::default(), fingerprint, login: Mutex::new(None), login_failed: Mutex::default(), phone_urls: Mutex::default() })
+    }
+
+    /// Turn on sign-in by the phone login token kept at `path`.
+    pub fn enable_login(&self, path: std::path::PathBuf, phone_urls: Vec<String>) -> Result<(), String> {
+        let t = load_or_create_login_token(&path)?;
+        *self.login.lock().unwrap() = Some((t, path));
+        *self.phone_urls.lock().unwrap() = phone_urls;
+        Ok(())
+    }
+
+    /// What the machine's own apps show to pair a phone: the addresses and the link with the token.
+    /// The token is after `#`, so a browser never sends it in a request line or a log.
+    pub fn phone_info(&self) -> Value {
+        let login = self.login.lock().unwrap();
+        let urls = self.phone_urls.lock().unwrap().clone();
+        let link = match (&*login, urls.first()) {
+            (Some((t, _)), Some(u)) => Some(format!("{u}/#login={t}")),
+            _ => None,
+        };
+        json!({"enabled": login.is_some(), "urls": urls, "link": link, "fingerprint": self.fingerprint})
+    }
+
+    /// Make a new token. The old link stops working; phones already signed in stay until removed.
+    pub fn rotate_login(&self) -> Result<(), String> {
+        let mut l = self.login.lock().unwrap();
+        let Some((_, path)) = l.clone() else { return Err("phone login is off".into()) };
+        *l = Some((write_login_token(&path, &rand_hex(32))?, path));
+        Ok(())
+    }
+
+    /// Sign in with the login token. A match makes a device (listed and removable like any other) and a
+    /// session for it. Wrong tokens are counted; after a few the door stays shut for a minute.
+    pub fn login_with_token(&self, given: &str, name: &str) -> Result<String, (StatusCode, &'static str)> {
+        {
+            let mut f = self.login_failed.lock().unwrap();
+            if f.1.is_some_and(|t| t > Instant::now()) {
+                return Err((StatusCode::TOO_MANY_REQUESTS, "too many wrong tries; wait a minute"));
+            }
+            let ok = self.login.lock().unwrap().as_ref().is_some_and(|(t, _)| same(t.as_bytes(), given.trim().as_bytes()));
+            if !ok {
+                f.0 += 1;
+                if f.0 >= MAX_FAILED_PINS {
+                    *f = (0, Some(Instant::now() + LOCKOUT));
+                }
+                return Err((StatusCode::UNAUTHORIZED, "that login link is not valid (it may have been replaced)"));
+            }
+            *f = (0, None);
+        }
+        let session = rand_hex(32);
+        let id = format!("d{}", rand_hex(8));
+        let name: String = name.trim().chars().filter(|c| !c.is_control()).take(60).collect();
+        let name = if name.is_empty() { "Phone".to_string() } else { name };
+        // the device keeps only a hash of its session, so a token sign-in survives a restart of the core
+        let key = json!({"login": sha_hex(&session)}).to_string();
+        self.store
+            .with(|c| c.execute("insert into devices(id, name, public_key, created, last_seen, revoked) values (?1, ?2, ?3, ?4, ?4, 0)", (&id, &name, &key, now())))
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "could not save the device"))?;
+        let _ = self.store.log("device", &id, "user", &json!({"op": "paired", "name": name, "by": "login token"}));
+        self.sessions.lock().unwrap().insert(session.clone(), (id, Instant::now() + LOGIN_SESSION_TTL));
+        Ok(session)
     }
 
     fn device_key(&self, id: &str) -> Option<Value> {
@@ -127,6 +241,17 @@ impl Web {
     /// Who a session cookie belongs to, if it is good.
     pub fn session_device(&self, token: &str) -> Option<String> {
         let mut s = self.sessions.lock().unwrap();
+        if !s.contains_key(token) {
+            // a token sign-in from before a restart: its device holds the session's hash
+            use lh_store::rusqlite::OptionalExtension;
+            let key = json!({"login": sha_hex(token)}).to_string();
+            let (id, created): (String, i64) = self.store.with(|c| c.query_row("select id, created from devices where public_key = ?1 and revoked = 0", [&key], |r| Ok((r.get(0)?, r.get(1)?))).optional()).ok()??;
+            let left = LOGIN_SESSION_TTL.as_secs() as i64 - (now() - created);
+            if left <= 0 {
+                return None;
+            }
+            s.insert(token.to_string(), (id, Instant::now() + Duration::from_secs(left as u64)));
+        }
         let (dev, exp) = s.get(token)?.clone();
         if exp < Instant::now() || self.device_key(&dev).is_none() {
             s.remove(token);
@@ -155,7 +280,7 @@ impl Web {
     }
 
     /// Start taking pairing requests for a while. Without this, `/pair/start` refuses everyone, so a stranger
-    /// on the network cannot fill the waiting list or make noise.
+    /// on the network cannot fill the waiting list or flood the core with requests.
     pub fn open_pairing(&self, for_how_long: Duration) {
         *self.open_until.lock().unwrap() = Some(Instant::now() + for_how_long);
     }
@@ -217,7 +342,7 @@ impl Web {
             1 => {
                 p.failed = 0;
                 let x = p.pending.remove(hits[0]);
-                let id = format!("d_{}", rand_hex(6));
+                let id = format!("d{}", rand_hex(6));
                 let key = x.public_key.to_string();
                 self.store.with(|c| c.execute("insert into devices(id, name, public_key, created) values (?1, ?2, ?3, ?4)", (&id, &x.name, &key, now()))).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                 let _ = self.store.log("device", &id, "user", &json!({"op": "paired", "name": x.name}));
@@ -286,6 +411,33 @@ const APP: &str = include_str!("../web/app.js");
 const STYLE: &str = include_str!("../web/style.css");
 /// motion 12.23.12 (motion.dev, MIT), vendored unchanged; see THIRD-PARTY-NOTICES.md.
 const MOTION: &str = include_str!("../web/motion.js");
+/// The desktop app's built-in looks, so the browser page offers the same ones.
+const THEMES: [&str; 14] = [
+    include_str!("../../lh-gui/themes/calm-light.toml"),
+    include_str!("../../lh-gui/themes/calm-dark.toml"),
+    include_str!("../../lh-gui/themes/chatgpt-light.toml"),
+    include_str!("../../lh-gui/themes/chatgpt-dark.toml"),
+    include_str!("../../lh-gui/themes/claude-light.toml"),
+    include_str!("../../lh-gui/themes/claude-dark.toml"),
+    include_str!("../../lh-gui/themes/cobalt-light.toml"),
+    include_str!("../../lh-gui/themes/cobalt-dark.toml"),
+    include_str!("../../lh-gui/themes/glass-light.toml"),
+    include_str!("../../lh-gui/themes/glass-dark.toml"),
+    include_str!("../../lh-gui/themes/grove-light.toml"),
+    include_str!("../../lh-gui/themes/grove-dark.toml"),
+    include_str!("../../lh-gui/themes/matte-light.toml"),
+    include_str!("../../lh-gui/themes/matte-dark.toml"),
+];
+
+/// The looks as JSON, read once: a file that does not parse is left out.
+fn themes_json() -> &'static str {
+    static J: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    J.get_or_init(|| {
+        let list: Vec<serde_json::Value> = THEMES.iter().filter_map(|t| toml::from_str::<serde_json::Value>(t).ok()).collect();
+        json!({ "themes": list }).to_string()
+    })
+}
+
 pub const SANDBOX: &str = include_str!("../web/sandbox.html");
 /// The frame for an assistant-made app: its scripts run, but it may fetch nothing and only this site may hold it.
 pub const SANDBOX_CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
@@ -314,6 +466,7 @@ pub fn index_page() -> &'static str {
             .replacen("<head>", &format!("<head>\n<meta name=\"lh-build\" content=\"{id}\">"), 1)
             .replace("href=\"/style.css\"", &format!("href=\"/style.css?v={id}\""))
             .replace("src=\"/app.js\"", &format!("src=\"/app.js?v={id}\""))
+            .replace("src=\"/motion.js\"", &format!("src=\"/motion.js?v={id}\""))
     })
 }
 
@@ -385,7 +538,9 @@ pub fn public_routes(web: Arc<Web>) -> Router {
     Router::new()
         .route("/", get(|| async { page(index_page(), "text/html; charset=utf-8") }))
         .route("/app.js", get(|| async { page(APP, "text/javascript; charset=utf-8") }))
+        .route("/motion.js", get(|| async { page(MOTION, "text/javascript; charset=utf-8") }))
         .route("/style.css", get(|| async { page(STYLE, "text/css; charset=utf-8") }))
+        .route("/themes.json", get(|| async { page(themes_json(), "application/json") }))
         .route("/sandbox.html", get(|| async { sandbox_page() }))
         .route(
             "/pair/start",
@@ -420,6 +575,19 @@ pub fn public_routes(web: Arc<Web>) -> Router {
             }),
         )
         .route(
+            "/auth/token",
+            post(|State(w): State<Arc<Web>>, Json(b): Json<Value>| async move {
+                match w.login_with_token(b["token"].as_str().unwrap_or(""), b["name"].as_str().unwrap_or("Phone")) {
+                    Ok(t) => {
+                        let mut r = Json(json!({"ok": true})).into_response();
+                        r.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_str(&format!("lh_session={t}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age={}", LOGIN_SESSION_TTL.as_secs())).unwrap());
+                        r
+                    }
+                    Err((c, m)) => (c, Json(json!({"error": m}))).into_response(),
+                }
+            }),
+        )
+        .route(
             "/auth/logout",
             post(|State(w): State<Arc<Web>>, req: Request| async move {
                 if let Some(t) = cookie(&req, "lh_session") {
@@ -436,7 +604,7 @@ pub fn public_routes(web: Arc<Web>) -> Router {
 /// What a paired browser may reach. Everything that can run programs, move files out of the machine or
 /// change who is trusted stays on the machine's own terminal.
 pub fn device_may(method: &Method, path: &str) -> bool {
-    const DENIED: &[&str] = &["/v1/mcp", "/v1/channels", "/v1/export", "/v1/import", "/v1/trust", "/v1/team/plugins", "/v1/memory/export", "/v1/memory/import", "/v1/devices/pending", "/v1/devices/accept", "/v1/devices/open", "/v1/devices/fingerprint"];
+    const DENIED: &[&str] = &["/v1/mcp", "/v1/channels", "/v1/export", "/v1/import", "/v1/trust", "/v1/team/plugins", "/v1/memory/export", "/v1/memory/import", "/v1/devices/pending", "/v1/devices/accept", "/v1/devices/open", "/v1/devices/fingerprint", "/v1/devices/phone"];
     if DENIED.iter().any(|d| path == *d || path.starts_with(&format!("{d}/"))) {
         return false;
     }
@@ -444,7 +612,7 @@ pub fn device_may(method: &Method, path: &str) -> bool {
     if method == Method::GET || method == Method::HEAD {
         return path.starts_with("/v1/");
     }
-    ["/v1/sessions", "/v1/memory", "/v1/learn", "/v1/team", "/v1/settings", "/v1/devices", "/v1/activity"].iter().any(|d| path == *d || path.starts_with(&format!("{d}/")))
+    ["/v1/sessions", "/v1/memory", "/v1/learn", "/v1/team", "/v1/settings", "/v1/devices", "/v1/activity", "/v1/chats"].iter().any(|d| path == *d || path.starts_with(&format!("{d}/")))
 }
 
 fn cookie(req: &Request, name: &str) -> Option<String> {
@@ -466,7 +634,6 @@ pub async fn require_device(State(w): State<Arc<Web>>, mut req: Request, next: N
         return (StatusCode::FORBIDDEN, "this request must say where it comes from").into_response();
     }
     if !device_may(req.method(), req.uri().path()) {
-            .replace("src=\"/motion.js\"", &format!("src=\"/motion.js?v={id}\""))
         return (StatusCode::FORBIDDEN, Json(json!({"error": "this is not available from a browser; use the terminal on the machine"}))).into_response();
     }
     req.extensions_mut().insert(Via::Device(dev));
@@ -485,6 +652,16 @@ pub fn local_routes(web: Arc<Web>) -> Router {
                 let minutes = body.and_then(|b| b.0["minutes"].as_u64()).unwrap_or(5).clamp(1, 30);
                 w.open_pairing(Duration::from_secs(minutes * 60));
                 Json(json!({"open_for_minutes": minutes}))
+            }),
+        )
+        .route("/v1/devices/phone", get(|State(w): State<Arc<Web>>| async move { Json(w.phone_info()) }))
+        .route(
+            "/v1/devices/phone/rotate",
+            post(|State(w): State<Arc<Web>>| async move {
+                match w.rotate_login() {
+                    Ok(()) => Json(w.phone_info()).into_response(),
+                    Err(m) => (StatusCode::CONFLICT, Json(json!({"error": m}))).into_response(),
+                }
             }),
         )
         .route("/v1/devices/fingerprint", get(|State(w): State<Arc<Web>>| async move { Json(json!({"fingerprint": w.fingerprint})) }))
@@ -535,10 +712,12 @@ fn tls_err(e: impl std::fmt::Display) -> String {
 pub fn load_or_create_tls(dir: &std::path::Path, extra_names: &[String]) -> Result<Tls, String> {
     std::fs::create_dir_all(dir).map_err(tls_err)?;
     let (cert_path, key_path) = (dir.join("cert.der"), dir.join("key.der"));
-    let fresh = std::fs::metadata(&cert_path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < Duration::from_secs(300 * 86_400));
+    let names_path = dir.join("names.txt");
+    let known = std::fs::read_to_string(&names_path).unwrap_or_default();
+    let has_names = extra_names.iter().all(|n| known.lines().any(|l| l == n));
+    let fresh = has_names && std::fs::metadata(&cert_path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < Duration::from_secs(300 * 86_400));
     let (cert_der, key_der) = match (fresh, std::fs::read(&cert_path), std::fs::read(&key_path)) {
         (true, Ok(c), Ok(k)) => (c, k),
-        .route("/motion.js", get(|| async { page(MOTION, "text/javascript; charset=utf-8") }))
         _ => {
             let mut names: Vec<String> = vec!["localhost".into(), "127.0.0.1".into(), "::1".into()];
             if let Ok(h) = std::fs::read_to_string("/etc/hostname") {
@@ -549,7 +728,7 @@ pub fn load_or_create_tls(dir: &std::path::Path, extra_names: &[String]) -> Resu
             }
             names.extend(extra_names.iter().cloned());
             names.dedup();
-            let mut params = rcgen::CertificateParams::new(names).map_err(tls_err)?;
+            let mut params = rcgen::CertificateParams::new(names.clone()).map_err(tls_err)?;
             params.distinguished_name.push(rcgen::DnType::CommonName, "LastHarness");
             let today: Vec<i64> = lh_tools::today().split('-').filter_map(|p| p.parse().ok()).collect();
             let (y, m, d) = (today[0] as i32, today[1] as u8, today[2] as u8);
@@ -559,6 +738,7 @@ pub fn load_or_create_tls(dir: &std::path::Path, extra_names: &[String]) -> Resu
             let cert = params.self_signed(&key).map_err(tls_err)?;
             let (c, k) = (cert.der().to_vec(), key.serialize_der());
             std::fs::write(&cert_path, &c).map_err(tls_err)?;
+            std::fs::write(&names_path, names.join("\n")).map_err(tls_err)?;
             let mut opts = std::fs::OpenOptions::new();
             opts.write(true).create(true).truncate(true);
             #[cfg(unix)]

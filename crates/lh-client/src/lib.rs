@@ -1,5 +1,6 @@
 //! The client every front end uses to talk to the core (`lhd`): plain HTTP and server-sent events on the local API.
 
+pub mod qr;
 pub mod tree;
 
 use std::collections::VecDeque;
@@ -109,7 +110,12 @@ impl Client {
     }
 
     pub async fn create_session(&self, model: &str, project_dir: &Path, ask_all: bool, incognito: bool) -> Result<String> {
-        let body = json!({"model": model, "project_dir": project_dir, "ask_all": ask_all, "incognito": incognito});
+        self.create_session_with(model, project_dir, ask_all, incognito, false).await
+    }
+
+    /// `create_session`, and `no_sandbox` runs this session's commands without the sandbox (`lh -p --no-sandbox`).
+    pub async fn create_session_with(&self, model: &str, project_dir: &Path, ask_all: bool, incognito: bool, no_sandbox: bool) -> Result<String> {
+        let body = json!({"model": model, "project_dir": project_dir, "ask_all": ask_all, "incognito": incognito, "no_sandbox": no_sandbox});
         let v: Value = self.send(self.req(reqwest::Method::POST, "/v1/sessions").json(&body)).await?.json().await.map_err(|e| e.to_string())?;
         v["id"].as_str().map(str::to_string).ok_or_else(|| "the core sent no session id".into())
     }

@@ -131,6 +131,10 @@ pub struct Live {
     pub check_model: String,
     /// `tools.sandbox`: run commands under bubblewrap.
     pub sandbox: bool,
+    /// `tools.sandbox_network*`: may sandboxed commands use the network.
+    pub sandbox_net: lh_tools::SandboxNet,
+    /// `lhd --no-sandbox`: commands run without the sandbox, whatever `tools.sandbox` says.
+    pub no_sandbox: bool,
     /// `tools.codemode`: offer the script tool.
     pub codemode: bool,
     pub web: lh_tools::WebConfig,
@@ -159,8 +163,6 @@ pub struct AppState<M> {
 }
 
 impl<M: Model + 'static> AppState<M> {
-    /// Builds the state and starts the idle manager. Must be called inside a Tokio runtime.
-    /// The KV cache saver, if it is set up and allowed for this session: a local endpoint, a stored (not private) chat.
     pub(crate) fn tree_summarize(&self) -> String {
         self.live().tree_summarize.clone()
     }
@@ -172,6 +174,11 @@ impl<M: Model + 'static> AppState<M> {
 
     pub(crate) fn live_perms(&self) -> Arc<lh_tools::LivePerms> {
         self.perms.clone()
+    }
+
+    /// `lhd --no-sandbox`: run every chat's commands without the sandbox.
+    pub fn turn_sandbox_off(&self) {
+        self.set_live(|l| l.no_sandbox = true);
     }
 
     fn set_live(&self, f: impl FnOnce(&mut Live)) {
@@ -262,6 +269,7 @@ impl<M: Model + 'static> AppState<M> {
             }
             if touched("tools.sandbox") {
                 l.sandbox = cfg.get("tools.sandbox") != "false";
+                l.sandbox_net = lh_tools::SandboxNet::from_settings(&cfg.get("tools.sandbox_network"), &cfg.get("tools.sandbox_network_allow"), &cfg.get("tools.sandbox_network_model"));
             }
             if touched("tree.") {
                 l.tree_summarize = cfg.get("tree.summarize");
@@ -285,16 +293,18 @@ impl<M: Model + 'static> AppState<M> {
         }
     }
 
+    /// The KV cache saver, if it is set up and allowed for this session: a local endpoint, a stored (not private) chat.
     pub(crate) fn kv_for(&self, s: &Session) -> Option<Arc<kv_cache::KvCache>> {
         let kv = self.kv()?;
         let local = self.settings.memory.as_ref().is_some_and(|m| m.trust == lh_memory::Trust::Local);
         (local && !s.incognito && s.conv.is_some() && !kv.is_off()).then_some(kv)
     }
 
+    /// Builds the state and starts the idle manager. Must be called inside a Tokio runtime.
     pub fn new(model: M, settings: Settings) -> Arc<Self> {
         let model = Arc::new(model);
         let idle = idle::Idle::new(settings.idle_after);
-        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, codemode: false, web: settings.web.clone(), image_model: settings.image_model.clone() };
+        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, sandbox_net: Default::default(), no_sandbox: false, codemode: false, web: settings.web.clone(), image_model: settings.image_model.clone() };
         let perms = Arc::new(lh_tools::LivePerms::new(settings.bypass, settings.ask_all, settings.sudo_enabled));
         {
             let (model, store) = (model.clone(), settings.store.clone());
@@ -368,6 +378,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(team_api::routes::<M>())
         .merge(mcp_api::routes::<M>())
         .merge(settings_api::routes::<M>())
+        .merge(hooks_api::routes::<M>())
         .merge(provider_api::routes::<M>())
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
@@ -378,7 +389,6 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
 }
 
 /// Only a request that passed its guard counts as activity: this layer sits outside the guard, so it
-        .merge(hooks_api::routes::<M>())
 /// must not wake the core for strangers. See `auth::require`.
 async fn touch_idle(idle: Arc<idle::Idle>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
     let r = next.run(req).await;
@@ -450,6 +460,9 @@ struct NewSession {
     /// The session is for a messaging channel: the lowest trust level, so nothing sensitive is used.
     #[serde(default)]
     channel: bool,
+    /// `lh -p --no-sandbox`: this session's commands run without the sandbox.
+    #[serde(default)]
+    no_sandbox: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -506,7 +519,10 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
     };
     let project = b.project_dir.as_ref().and_then(|d| std::fs::canonicalize(d).ok()).map(|d| d.to_string_lossy().to_string());
     let live = st.live();
-    let mut tools = session_tools(&st.settings, &live, tools_on);
+    let mut tools = session_tools(&st.settings, &live, tools_on, live.no_sandbox || b.no_sandbox);
+    if live.no_sandbox || b.no_sandbox {
+        let _ = st.settings.store.log("sandbox_off", &id, "user", &json!({"why": if b.no_sandbox { "--no-sandbox (session)" } else { "lhd --no-sandbox" }}));
+    }
     let (mut dest, mut conv) = (None, None);
     let mut about = String::new();
     if let (Some(rt), false) = (&st.settings.memory, b.incognito) {
@@ -688,11 +704,11 @@ pub(crate) fn outbound_guard(s: &Settings) -> Option<lh_tools::GuardFn> {
     Some(Arc::new(move |text: &str| lh_memory::leaks(text, &sensitive_texts(&store))))
 }
 
-fn session_tools(s: &Settings, live: &Live, tools_on: bool) -> lh_tools::ToolSet {
+fn session_tools(s: &Settings, live: &Live, tools_on: bool, no_sandbox: bool) -> lh_tools::ToolSet {
     if !tools_on {
         return lh_tools::ToolSet::default(); // plain chat: the model is told about no tools
     }
-    let mut t = default_tools().with_web(live.web.clone()).with_sandbox(live.sandbox).with_codemode(live.codemode);
+    let mut t = default_tools().with_web(live.web.clone()).with_sandbox(live.sandbox && !no_sandbox).with_sandbox_net(live.sandbox_net.clone()).with_codemode(live.codemode);
     if let Some(g) = outbound_guard(s) {
         t = t.with_outbound_guard(g);
     }

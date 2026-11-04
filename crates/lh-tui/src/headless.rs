@@ -32,7 +32,10 @@ impl End {
 }
 
 /// Printed to standard error when a run starts with `--bypass-permissions`.
-pub const BYPASS_WARNING: &str = "Warning: --bypass-permissions lets this run write files and run commands without asking.\nEvery permission question in this run is answered yes.";
+pub const BYPASS_WARNING: &str = "Warning: --bypass-permissions lets this run write files and run commands without asking.\nEvery permission question in this run is answered yes. The sandbox stays on (--no-sandbox turns it off).";
+
+/// Printed to standard error when a run starts with `--no-sandbox`.
+pub const NO_SANDBOX_WARNING: &str = "Warning: --no-sandbox turns the sandbox off for this run.\nCommands can change any file your user can, not only this folder, and reach the network. Permission questions still apply.";
 
 /// The prompt: the text given, or standard input when it is `-`. Standard input that is not a terminal is added
 /// after the given text, so `cat notes.txt | lh -p "summarise this"` works.
@@ -145,6 +148,13 @@ pub async fn run(client: &Client, session: &str, text: &str, as_json: bool, bypa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bypass_keeps_the_sandbox_and_no_sandbox_warns_on_its_own() {
+        assert!(BYPASS_WARNING.contains("sandbox stays on"));
+        assert!(NO_SANDBOX_WARNING.contains("turns the sandbox off"));
+        assert!(!NO_SANDBOX_WARNING.contains("answered yes"), "a separate warning, not the bypass one");
+    }
 
     #[test]
     fn the_prompt_comes_from_the_words_given_or_from_a_pipe() {

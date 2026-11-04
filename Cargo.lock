@@ -2731,8 +2731,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre-apple"
 version = "0.3.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfdd914311cd12894367c8b9908947bb0c27fd42f8b9a5ff7a0730551a83fa4c"
 dependencies = [
  "anyhow",
  "async-task",
@@ -3112,8 +3110,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre-windows"
 version = "0.3.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "371f9bb13f97e3bea2f8b8e5e81232bb74d735153c244ae67f7400e743925b1c"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -4034,6 +4030,7 @@ name = "lh-client"
 version = "0.0.0"
 dependencies = [
  "lh-provider",
+ "qrcode",
  "reqwest",
  "serde_json",
 ]
@@ -4079,6 +4076,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls",
+ "toml 1.1.8+spec-1.1.0",
  "tower",
 ]
 
@@ -4111,6 +4109,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 0.8.23",
+ "ttf-parser",
  "unicode-bidi",
 ]
 
@@ -5937,6 +5936,12 @@ checksum = "7f6d64c71eb498fe9eae14ce4ec935c555749aef511cca85b5568910d6e48001"
 dependencies = [
  "bytemuck",
 ]
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
 
 [[package]]
 name = "quick-error"
