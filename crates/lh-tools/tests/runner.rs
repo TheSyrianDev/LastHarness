@@ -358,6 +358,9 @@ return t.split("\n").filter(l => l.startsWith("g")).join(",") + " | " + wrote;"#
 
 /// One sandboxed `cat /proc/net/dev` under the given network rules; returns its output and how often the user was asked.
 async fn net_run(net: SandboxNet, extra: Vec<Response>, answer: Answer, bypass: bool) -> Option<(String, usize)> {
+    net_run_cmd("cat /proc/net/dev", net, extra, answer, bypass, Mode::Tiered).await
+}
+async fn net_run_cmd(cmd: &str, net: SandboxNet, extra: Vec<Response>, answer: Answer, bypass: bool, mode: Mode) -> Option<(String, usize)> {
     if !std::path::Path::new("/usr/bin/bwrap").is_file() {
         return None; // nothing to test without bubblewrap
     }
@@ -365,10 +368,9 @@ async fn net_run(net: SandboxNet, extra: Vec<Response>, answer: Answer, bypass: 
     let d = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
     let mut perms = Permissions::new(d.path()).unwrap();
     perms.allow_rules = vec!["cat /proc/net/dev".into()]; // only the network question is left to ask
-    if bypass {
-        perms.mode = Mode::Bypass;
-    }
-    let mut script = vec![tools_reply(vec![call("1", "run_command", r#"{"command":"cat /proc/net/dev"}"#)])];
+    perms.mode = if bypass { Mode::Bypass } else { mode };
+    let args = serde_json::json!({ "command": cmd }).to_string();
+    let mut script = vec![tools_reply(vec![call("1", "run_command", &args)])];
     script.extend(extra);
     script.push(text_reply("done"));
     let model = Script::new(script);
@@ -406,6 +408,24 @@ async fn sandbox_network_on_and_allowlist_modes() {
     let (out, asked) = net_run(SandboxNet::from_settings("allowlist", "github.com", ""), vec![], Answer::Yes, false).await.unwrap();
     assert_eq!(asked, 0);
     assert!(!has_net(&out), "{out}");
+}
+
+#[tokio::test]
+async fn allowed_sites_never_ask_in_any_mode() {
+    // the user rule: what is allowed is not asked about, even in ask or ask-for-everything mode
+    let cmd = "cat /proc/net/dev example.com";
+    for mode in ["ask", "auto"] {
+        for perm_mode in [Mode::Tiered, Mode::AskAll] {
+            let net = SandboxNet::from_settings(mode, "example.com", "");
+            let Some((out, asked)) = net_run_cmd(cmd, net, vec![], Answer::No, false, perm_mode).await else { return };
+            assert_eq!(asked, 0, "{mode} {perm_mode:?}: {out}");
+            let host = std::fs::read_to_string("/proc/net/dev").unwrap().lines().filter_map(|l| l.split_once(':')).count();
+            assert!(has_net(&out) || host == 1, "{out}");
+        }
+    }
+    // a site not on the list is still asked about in ask mode
+    let (_, asked) = net_run_cmd("cat /proc/net/dev other.org", SandboxNet::from_settings("ask", "example.com", ""), vec![], Answer::No, false, Mode::Tiered).await.unwrap();
+    assert_eq!(asked, 1);
 }
 
 #[tokio::test]

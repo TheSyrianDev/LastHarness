@@ -300,6 +300,10 @@ async fn codemode<M: Model, T: Meter, A: Asker>(
 async fn sandbox_net<M: Model, T: Meter, A: Asker>(model: &M, meter: &T, cmd: &str, tools: &ToolSet, perms: &Permissions, asker: &A, opts: &TurnOptions) -> (bool, &'static str) {
     use crate::NetMode;
     let net = &tools.net;
+    // What the user allowed never asks, in any mode: a command whose every site is on the list gets the network.
+    if net.mode != NetMode::On && net.allows(cmd) {
+        return (true, "allowlist");
+    }
     match net.mode {
         NetMode::On => return (true, "on"),
         NetMode::Allowlist => return (net.allows(cmd), "allowlist"),
