@@ -516,3 +516,12 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .ch-off { font-size: 14px; color: var(--muted); }
 .ch-warn { font-size: 14px; padding: 8px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent); }
 .import-sum { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: var(--inner); background: var(--button); font-size: 14px; }
+/* Departments: forms edged in the accent, the type delete question edged in danger, as GPUI draws them */
+.set-card.editing { border: 1px solid var(--accent); }
+.set-card.deleting { border: 1px solid var(--danger); }
+.set-card .small { font-size: 13px; min-width: 0; }
+.set-card .small.danger, .about.danger { color: var(--danger); }
+.step-num { width: 36px; text-align: center; }
+.samp { width: 150px; }
+.home-name { width: 120px; }
+.seg.danger-fill { background: var(--danger); color: var(--accent-text); }

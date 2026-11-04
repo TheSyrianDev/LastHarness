@@ -1079,6 +1079,16 @@ async function reviewView() {
 }
 
 // ---- departments ----
+// The Departments settings page keeps its open forms here between redraws, as GPUI keeps them in its state.
+const teamUi = { role: null, dept: null, roleHist: null, deptHist: null, typeEdit: null, typeDel: null, notes: {} };
+let deptPick = '';
+const AUTONOMY = [['plan-first', 'Ask me to approve the plan first'], ['check-ins', 'Also pause at milestones'], ['fire-and-forget', 'Do not ask me anything']];
+const UNAVAILABLE = [['stop', 'Stop and tell me'], ['fallback', 'Use another model']];
+// The tools a role may list, the core's own list, and the most a role's instructions may hold.
+const KNOWN_TOOLS = ['read_file', 'write_file', 'list_dir', 'run_command', 'web_fetch', 'web_search', 'generate_image', 'recall', 'open_note', 'remember', 'forget', 'use_skill', 'read_skill_file'];
+const INSTRUCTIONS_MAX = 600;
+const validName = (n) => n.length > 0 && n.length <= 40 && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(n);
+const quote = (s) => '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
 async function teamView() {
   const depts = h('select', { id: 'dept' });
   const goal = h('textarea', { rows: '3', id: 'goal' });
@@ -1087,7 +1097,7 @@ async function teamView() {
   const workers = h('ul', { 'aria-label': 'Workers' });
   const away = h('p', {});
   const err = h('p', { role: 'alert' });
-  try { (await json('/v1/team/departments')).departments.filter((d) => !d.error).forEach((d) => depts.append(h('option', { value: d.name }, `${d.name}: ${d.description || ''}`))); } catch (e) { err.textContent = e.message; }
+  try { (await json('/v1/team/departments')).departments.filter((d) => !d.error).forEach((d) => depts.append(h('option', { value: d.name }, `${d.name}: ${d.description || ''}`))); if (deptPick) { depts.value = deptPick; deptPick = ''; } } catch (e) { err.textContent = e.message; }
   const line = (t) => log.append(h('p', {}, t));
   async function follow(id) {
     await stream(`/v1/team/runs/${id}/events`, {}, (ev) => {
@@ -1129,7 +1139,7 @@ async function teamView() {
   } }, field('Department', depts), h('p', {}, h('label', { for: 'goal' }, 'Goal')), h('p', {}, goal), h('p', {}, h('button', { type: 'submit' }, 'Give it the goal')), err);
   async function refresh() {
     try {
-      const w = (await json('/v1/team/workers')).workers;
+      const w = (await json('/v1/team/workers')).workers || [];
       workers.replaceChildren(...(w.length ? w.map((x) => h('li', {}, `${x.role} in ${x.dept}: ${x.step} [${x.status}] on ${x.model} `,
         ...['pause', 'resume', 'stop'].map((a) => h('button', { type: 'button', onclick: async () => { await api(`/v1/team/workers/${x.id}/${a}`, { method: 'POST' }); refresh(); } }, a[0].toUpperCase() + a.slice(1))))) : [h('li', {}, 'Nobody is working right now.')]));
       const a = await json('/v1/team/away');
@@ -1477,40 +1487,203 @@ async function settingsView() {
           sv?.style?.version > 1 ? btn('Undo last change', () => act('POST', '/v1/learn/style/rollback', { version: sv.style.version - 1 }, () => `Went back to the text of version ${sv.style.version - 1}.`)) : null),
         sub('Skills'), muted('Ready-made know-how the assistant reads when a task needs it.'), skills.length ? skills : muted('No skills yet.')];
     },
+    // Departments as the desktop app draws it: team settings, away mode, and forms for departments, roles and model types
     async departments() {
-      const enc = encodeURIComponent;
-      const [av] = await fetchOr('/v1/team/away', 'Away mode');
+      const enc = encodeURIComponent, T = teamUi;
+      const [sv, sErr] = await fetchOr('/v1/team/settings', 'Team settings');
+      const [av, aErr] = await fetchOr('/v1/team/away', 'Away mode');
       const [dv, dErr] = await fetchOr('/v1/team/departments', 'The departments');
       const [rv, rErr] = await fetchOr('/v1/team/roles', 'The roles');
       const [tv, tErr] = await fetchOr('/v1/team/types', 'The model types');
-      // A file editor: the department or role file, saved with PUT {text}.
-      const editor = (path, text, done) => { const ta = h('textarea', { rows: 10, 'aria-label': 'File' }); ta.value = text || ''; return card(ta, row(btn('Save', () => act('PUT', path, { text: ta.value }, () => 'Saved.'), 'seg primary'), btn('Cancel', done))); };
-      const history = (base, slot) => btn('History', async (e) => {
-        if (slot.firstChild) { slot.replaceChildren(); e.target.textContent = 'History'; return; }
-        e.target.textContent = 'Hide history'; slot.replaceChildren(muted('Loading the history…'));
-        const v = ((await json(`${base}/history`)).versions || []).slice().sort((a, b) => b.version - a.version);
-        slot.replaceChildren(...v.map((x, n) => row(h('div', { class: 'grow' }, `Version ${x.version}, ${x.op}${x.note ? ': ' + x.note : ''}${n === 0 ? ' (now)' : ''}`), n ? btn('Go back to this', () => act('POST', `${base}/rollback`, { version: x.version }, () => `Went back to version ${x.version}.`)) : null)));
-      });
-      const entry = (base, title, lines, text, err, what) => {
-        const slot = h('div', {}), ed = h('div', {});
-        if (err) return card(h('div', { class: 'title' }, title), muted(`This ${what} file has a problem: ${err}`), row(sure('Delete', `Delete this ${what}?`, () => act('DELETE', base, undefined, () => 'Deleted.'))));
-        return card(h('div', { class: 'title' }, title), ...lines.filter(Boolean).map(muted),
-          row(btn('Edit', () => ed.replaceChildren(ed.firstChild ? '' : editor(base, text, () => ed.replaceChildren()))), history(base, slot), sure('Delete', `Delete this ${what}?`, () => act('DELETE', base, undefined, () => 'Deleted.'))), ed, slot);
+      let mv = null; try { mv = await json('/v1/models'); } catch { /* no model list: the pickers stay empty */ }
+      const models = (mv?.details || (mv?.models || []).map((id) => ({ id }))).map((d) => d.id);
+      const types = tv?.types || [], roleList = rv?.roles || [], deptList = dv?.departments || [];
+      const roleNames = roleList.filter((r) => !r.error).map((r) => r.name);
+      const head = (title, label, fn) => h('div', { class: 'set-row' }, h('div', { class: 'grow' }, sub(title)), btn(label, fn, 'seg ghost'));
+      const dd = (label, shown, opts, value, fn) => { const s = h('select', { 'aria-label': label }); if (!opts.some(([, v]) => v === value)) s.append(h('option', { value, disabled: true }, shown)); for (const [l, v] of opts) s.append(h('option', { value: v }, l)); s.value = value; s.onchange = () => fn(s.value); return s; };
+      const bound = (label, obj, key, ph = '') => { const [i, F] = fieldIn(label, ph); i.value = obj[key] ?? ''; i.oninput = () => { obj[key] = i.value; }; return F; };
+      const area = (label, obj, key, ph, rows, onIn) => { const t = h('textarea', { rows, placeholder: ph, 'aria-label': label }); t.value = obj[key] ?? ''; t.oninput = () => { obj[key] = t.value; onIn?.(); }; return h('div', { class: 'set-field' }, h('div', { class: 'lbl' }, label), t); };
+      const chips = (all, on, fn) => h('div', { class: 'set-row wrap' }, all.map((m) => btn(on.includes(m) ? `✓ ${m}` : m, () => { fn(m); draw(); }, on.includes(m) ? 'seg primary' : 'seg')));
+      const toggleIn = (list, m) => { const p = list.indexOf(m); if (p >= 0) list.splice(p, 1); else list.push(m); };
+      const note = (k) => (T.notes[k] ? muted(T.notes[k]) : null);
+      const history = (kind, name, open, set) => {
+        if (!open) return null;
+        const slot = h('div', { class: 'set-card', role: 'list' }, muted('Loading the history…'));
+        json(`/v1/team/${kind}/${enc(name)}/history`).then((v) => {
+          const list = (v.versions || []).slice().sort((a, b) => b.version - a.version);
+          slot.replaceChildren(...list.map((x, n) => row(h('div', { class: 'grow' }, `Version ${x.version}, ${x.op}${x.note ? ': ' + x.note : ''}${n === 0 ? ' (now)' : ''}`),
+            n ? btn('Go back to this', () => act('POST', `/v1/team/${kind}/${enc(name)}/rollback`, { version: x.version }, () => `Went back to version ${x.version}.`), 'seg ghost') : null)));
+        }).catch((e) => slot.replaceChildren(muted(e.message)));
+        return slot;
       };
-      const newOne = (label, kind) => { const [n, nF] = fieldIn('Name', ''); const ed = h('div', {}); return card(sub(label), nF, row(btn(label, () => { if (!n.value.trim()) return say('Give it a name first.'); ed.replaceChildren(editor(`/v1/team/${kind}/${enc(n.value.trim())}`, '', () => ed.replaceChildren())); })), ed); };
-      const away = av ? card(h('div', { class: 'title' }, av.away ? 'Away mode is on.' : 'Away mode is off.'),
-        (av.decisions || []).length ? [muted('Decided without you:'), ...av.decisions.map((d) => muted(`${stamp(d.at)} · ${d.dept}: ${d.decision}`))] : null,
-        (av.parked || []).length ? [muted('Set aside for you:'), ...av.parked.map((p) => muted(typeof p === 'string' ? p : JSON.stringify(p)))] : null,
-        row(btn(av.away ? 'I am back' : 'I am going away', () => act('POST', '/v1/team/away', { on: !av.away })))) : null;
-      const depts = (dv?.departments || []).map((d) => entry(`/v1/team/departments/${enc(d.name)}`, d.name, [d.description, d.members ? `Lead: ${d.lead}.   Members: ${d.members.join(', ')}.` : ''], d.text, d.error, 'department'));
-      const roles = (rv?.roles || []).map((r) => entry(`/v1/team/roles/${enc(r.name)}`, r.name, [r.description, r.target ? `Runs on ${r.target.value}. Tools: ${(r.tools || []).join(', ') || 'none'}.` : ''], r.text, r.error, 'role'));
-      const types = (tv?.types || []).map((t) => card(h('div', { class: 'title' }, t.name), muted(t.model ? `Uses ${t.model}${(t.fallbacks || []).length ? ', then ' + t.fallbacks.join(', ') : ''}` : 'No model chosen yet.'),
-        t.stock ? null : row(sure('Delete', `Delete the type ${t.name}?`, () => act('DELETE', `/v1/team/types/${enc(t.name)}`, undefined, () => 'Deleted.')))));
-      const [tn, tnF] = fieldIn('Name', 'cheap'); const [tm, tmF] = fieldIn('Model', 'No model yet');
-      const addType = () => { if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(tn.value.trim())) return say('The name can use lower case letters, digits and single hyphens, like cheap.'); act('POST', '/v1/team/types', { name: tn.value.trim(), model: tm.value.trim() || null }, () => 'Added.'); };
-      return [sub('Away mode'), away, sub('Departments'), dErr || (depts.length ? depts : muted('No departments yet')), newOne('New department', 'departments'),
-        sub('Roles'), rErr || roles, newOne('New role', 'roles'),
-        sub('Model types'), tErr || types, card(sub('New model type'), tnF, tmF, row(btn('New type', addType, 'seg primary')))];
+      // team settings
+      let settings = sErr;
+      if (sv) {
+        const save = (field, v) => act('PUT', '/v1/team/settings', { [field]: v }, () => 'Saved.');
+        const lim = sv.limits || {};
+        const step = (field, value, max) => h('div', { class: 'set-row' }, btn('−', () => save(field, Math.max(1, value - 1)), 'seg ghost'), h('div', { class: 'step-num' }, String(value)), btn('+', () => save(field, Math.min(max, value + 1)), 'seg ghost'));
+        const line = (label, c) => h('div', { class: 'set-row wrap' }, h('div', { class: 'grow' }, label), c);
+        const words = (tbl, k) => (tbl.find((x) => x[0] === k) || [k, k])[1];
+        settings = h('div', { class: 'set-card', role: 'group', 'aria-label': 'Team settings' },
+          line('Workers at the same time', step('parallel', sv.parallel ?? 1, lim.parallel_max ?? 16)),
+          line('Tries for each step', step('attempts', sv.attempts ?? 3, lim.attempts_max ?? 10)),
+          line('How much departments ask you', dd('How much departments ask you', words(AUTONOMY, sv.autonomy), AUTONOMY.map(([k, w]) => [w, k]), sv.autonomy || '', (v) => save('autonomy', v))),
+          line('When a model is missing', dd('When a model is missing', words(UNAVAILABLE, sv.unavailable), UNAVAILABLE.map(([k, w]) => [w, k]), sv.unavailable || '', (v) => save('unavailable', v))));
+      }
+      // away mode
+      let away = aErr;
+      if (av) {
+        const sw = h('input', { type: 'checkbox', class: 'switch', 'aria-label': 'Away mode' }); sw.checked = !!av.away;
+        sw.onchange = () => act('POST', '/v1/team/away', { on: sw.checked }, () => (sw.checked ? 'Away mode is on.' : 'Away mode is off.'));
+        away = h('div', { class: 'set-card', role: 'group', 'aria-label': 'Away mode' }, h('label', { class: 'set-row' }, sw, h('span', {}, 'Away mode')),
+          muted('While you are away, departments keep working but say no to anything that needs permission, and set those steps aside for you.'),
+          (av.decisions || []).length ? [muted('Decided without you:'), ...av.decisions.map((d) => h('div', { class: 'small' }, `${d.dept || ''}: ${d.decision || ''}`))] : null,
+          (av.parked || []).filter((p) => typeof p === 'string').length ? [muted('Set aside for you:'), ...av.parked.filter((p) => typeof p === 'string').map((p) => h('div', { class: 'small' }, p))] : null);
+      }
+      // departments
+      const deptForm = (d) => ({ name: d.name || '', description: d.description || '', lead: d.lead || '', members: [...(d.members || [])], parallel: d.parallel != null ? String(d.parallel) : '', attempts: d.attempts != null ? String(d.attempts) : '', instructions: d.instructions || '' });
+      const deptCard = (d) => {
+        const c = h('div', { class: 'set-card', role: 'group', 'aria-label': d.name }, h('div', {}, d.name));
+        const del = sure('Delete', 'Delete this department?', () => act('DELETE', `/v1/team/departments/${enc(d.name)}`, undefined, () => 'Deleted.'));
+        if (d.error) { c.append(h('p', { class: 'about danger' }, `This department file has a problem: ${d.error}`), row(del)); return c; }
+        if (d.description) c.append(muted(d.description));
+        c.append(muted(`Lead: ${d.lead || ''}.   Members: ${(d.members || []).join(', ')}.`));
+        const open = T.deptHist === d.name;
+        c.append(row(btn('Edit', () => { T.dept = [false, deptForm(d)]; delete T.notes.deptform; draw(); }),
+          btn(open ? 'Hide history' : 'History', () => { T.deptHist = open ? null : d.name; draw(); }, 'seg ghost'),
+          btn('Open page', () => { deptPick = d.name; close(); location.hash = '#/team'; }, 'seg ghost'), del), history('departments', d.name, open));
+        return c;
+      };
+      const deptEditor = () => {
+        const [isNew, f] = T.dept;
+        const others = deptList.map((d) => d.name).filter((n) => n && n !== f.name).map((n) => `dept:${n}`);
+        const save = () => {
+          const name = f.name.trim(), ok = (v, max) => v.trim() === '' || (/^\d+$/.test(v.trim()) && +v >= 1 && +v <= max);
+          const e = !validName(name) ? 'The name can use lower case letters, digits and single hyphens, like web.' : !f.lead.trim() ? 'Pick a lead. The lead plans the work and checks it.' : !f.members.length ? 'Pick at least one member.'
+            : !ok(f.parallel, 16) ? 'Workers at once must be a whole number from 1 to 16, or empty.' : !ok(f.attempts, 10) ? 'Attempts per step must be a whole number from 1 to 10, or empty.' : '';
+          if (e) { T.notes.deptform = e; return draw(); }
+          let t = `---\nname: ${name}\n`;
+          if (f.description.trim()) t += `description: ${quote(f.description.trim())}\n`;
+          t += `lead: ${f.lead}\nmembers: ${f.members.join(' ')}\n`;
+          if (f.parallel.trim()) t += `parallel: ${+f.parallel}\n`;
+          if (f.attempts.trim()) t += `attempts: ${+f.attempts}\n`;
+          T.dept = null; act('PUT', `/v1/team/departments/${enc(name)}`, { text: `${t}---\n\n${f.instructions.trim()}\n` }, () => 'Saved.');
+        };
+        return h('div', { class: 'set-card editing', role: 'group', 'aria-label': isNew ? 'New department' : 'Edit department' }, h('div', {}, isNew ? 'New department' : `Edit ${f.name}`),
+          isNew ? bound('Name', f, 'name', 'web (lower case letters, digits, hyphens)') : null, bound('What it is for', f, 'description', 'One line'),
+          h('div', { class: 'set-field' }, h('div', { class: 'lbl' }, 'Lead'), dd('Lead', f.lead || 'Pick a lead', roleNames.map((r) => [r, r]), f.lead, (v) => { f.lead = v; })),
+          muted('The lead plans the work, hands out steps and checks the results.'),
+          h('div', { class: 'set-field' }, h('div', { class: 'lbl' }, 'Members'), chips([...roleNames, ...others], f.members, (m) => toggleIn(f.members, m))),
+          bound('Workers at once for this department (empty: use the team setting)', f, 'parallel'), bound('Tries per step for this department (empty: use the team setting)', f, 'attempts'),
+          area('Instructions for the whole department', f, 'instructions', 'Optional', 3),
+          row(btn('Save', save, 'seg primary'), btn('Cancel', () => { T.dept = null; draw(); }, 'seg ghost')), note('deptform'));
+      };
+      // roles
+      const roleForm = (r) => { const s = r.sampling || {}, n = (v) => (v == null ? '' : String(v)); return { name: r.name || '', description: r.description || '', kind: r.target?.kind || 'type', target: r.target?.value || '', tools: [...(r.tools || [])], memory: r.memory || '', temperature: n(s.temperature), top_p: n(s.top_p), top_k: n(s.top_k), min_p: n(s.min_p), repeat_penalty: n(s.repeat_penalty), max_steps: r.max_steps != null ? String(r.max_steps) : '', thinking: r.thinking === true ? 'on' : r.thinking === false ? 'off' : '', instructions: r.instructions || '' }; };
+      const roleCard = (r) => {
+        const c = h('div', { class: 'set-card', role: 'group', 'aria-label': r.name }, h('div', {}, r.name));
+        if (r.error) c.append(h('p', { class: 'about danger' }, `This role file has a problem: ${r.error}`));
+        else { const f = roleForm(r); c.append(muted(f.description), muted(`Runs on ${f.kind === 'model' ? `the model ${f.target}` : `the ${f.target} model type`}. Tools: ${f.tools.length ? f.tools.join(', ') : 'none'}.`)); }
+        const open = T.roleHist === r.name;
+        c.append(row(r.error ? null : btn('Edit', () => { T.role = [false, roleForm(r)]; delete T.notes.roleform; draw(); }),
+          btn(open ? 'Hide history' : 'History', () => { T.roleHist = open ? null : r.name; draw(); }, 'seg ghost'),
+          sure('Delete', 'Delete this role?', () => act('DELETE', `/v1/team/roles/${enc(r.name)}`, undefined, () => 'Deleted.'))), history('roles', r.name, open));
+        return c;
+      };
+      const roleEditor = () => {
+        const [isNew, f] = T.role;
+        const count = h('div', { class: 'small' });
+        const recount = () => { const n = [...f.instructions.trim()].length; count.textContent = `${n} of ${INSTRUCTIONS_MAX} characters`; count.classList.toggle('danger', n > INSTRUCTIONS_MAX); };
+        recount();
+        const kindBtn = (label, k) => btn(label, () => { f.kind = k; draw(); }, (k === 'model') === (f.kind === 'model') ? 'seg primary' : 'seg');
+        let target;
+        if (f.kind === 'model') {
+          const [typed, typedF] = fieldIn('or type its name', ''); typed.value = f.target; typed.oninput = () => { f.target = typed.value; };
+          target = [dd('Model', f.target || 'Pick a model', models.map((m) => [m, m]), f.target, (v) => { f.target = v; typed.value = v; }), typedF];
+        } else target = dd('Model type', f.target || 'Pick a type', types.map((t) => [t.name, t.name]), f.target, (v) => { f.target = v; });
+        const samp = h('div', { class: 'set-row wrap' }, [['temperature', 'Temperature'], ['top_p', 'Top P'], ['top_k', 'Top K'], ['min_p', 'Min P'], ['repeat_penalty', 'Repeat penalty']].map(([k, l]) => h('div', { class: 'samp' }, bound(l, f, k))));
+        const save = () => {
+          const name = f.name.trim(), ins = f.instructions.trim(), num = (v) => v.trim() === '' || !isNaN(parseFloat(v)) && isFinite(v.trim());
+          const steps = f.max_steps.trim();
+          const e = !validName(name) ? 'The name can use lower case letters, digits and single hyphens, like web-designer.' : !f.description.trim() ? 'Add a one-line description. The lead reads it when it decides who gets a step.'
+            : !f.target.trim() ? (f.kind === 'model' ? 'Say which model this role uses.' : 'Pick a model type for this role.') : !ins ? 'Write the instructions for this role.'
+            : [...ins].length > INSTRUCTIONS_MAX ? `The instructions are ${[...ins].length} characters; the most is ${INSTRUCTIONS_MAX}. They go with every step the role does, so keep them to a short role line.`
+            : [['temperature', 'Temperature'], ['top_p', 'Top P'], ['min_p', 'Min P'], ['repeat_penalty', 'Repeat penalty']].map(([k, l]) => (num(f[k]) ? '' : `${l} must be a number, like 0.7, or empty.`)).find(Boolean)
+            || (!/^\d+$/.test(steps) || +steps < 1 || +steps > 100 ? 'Steps per task must be a whole number from 1 to 100.' : f.top_k.trim() && !/^\d+$/.test(f.top_k.trim()) ? 'Top K must be a whole number, or empty.' : '');
+          if (e) { T.notes.roleform = e; return draw(); }
+          let t = `---\nname: ${name}\ndescription: ${quote(f.description.trim())}\n`;
+          t += f.kind === 'model' ? `model: ${quote(f.target.trim())}\n` : `type: ${f.target.trim().toLowerCase()}\n`;
+          if (f.tools.length) t += `tools: ${f.tools.join(' ')}\n`;
+          t += `memory: ${f.memory.trim() || 'none'}\n`;
+          for (const k of ['temperature', 'top_p', 'top_k', 'min_p', 'repeat_penalty']) if (f[k].trim()) t += `${k}: ${k === 'top_k' ? parseInt(f[k], 10) : parseFloat(f[k])}\n`;
+          t += `max_steps: ${+steps}\n`;
+          if (f.thinking === 'on' || f.thinking === 'off') t += `thinking: ${f.thinking}\n`;
+          T.role = null; act('PUT', `/v1/team/roles/${enc(name)}`, { text: `${t}---\n\n${ins}\n` }, () => 'Saved.');
+        };
+        return h('div', { class: 'set-card editing', role: 'group', 'aria-label': isNew ? 'New role' : 'Edit role' }, h('div', {}, isNew ? 'New role' : `Edit ${f.name}`),
+          isNew ? bound('Name', f, 'name', 'coder (lower case letters, digits, hyphens)') : null, bound('What it does, in one line', f, 'description', 'The lead reads this when it chooses who gets a step'),
+          h('div', { class: 'set-field' }, h('div', { class: 'lbl' }, 'Model'), row(kindBtn('A model type', 'type'), kindBtn('One exact model', 'model')), target),
+          h('div', { class: 'set-field' }, h('div', { class: 'lbl' }, 'Tools it may use'), chips(KNOWN_TOOLS, f.tools, (t) => toggleIn(f.tools, t))),
+          bound('Memory it may see (none, all, or preferences facts projects)', f, 'memory', 'none'),
+          h('div', { class: 'small' }, 'Sampling (leave empty to let the model decide)'), samp,
+          bound('Most model calls in one step (1 to 100)', f, 'max_steps', '12'),
+          h('div', { class: 'set-field' }, h('div', { class: 'lbl' }, 'Thinking'), dd('Thinking', '', [['Let the model decide', ''], ['Answers without thinking', 'off'], ['Thinks first', 'on']], f.thinking, (v) => { f.thinking = v; })),
+          area('Instructions', f, 'instructions', 'Who the role is and how it works. Keep it short: it goes with every step.', 4, recount), count,
+          row(btn('Save', save, 'seg primary'), btn('Cancel', () => { T.role = null; draw(); }, 'seg ghost')), note('roleform'));
+      };
+      // model types
+      const typeCard = (t) => h('div', { class: 'set-card', role: 'group', 'aria-label': t.name }, h('div', { class: 'set-row' }, h('div', {}, t.name), t.stock ? muted('built in') : null),
+        muted(t.model ? `Uses ${t.model}${(t.fallbacks || []).length ? ', then ' + t.fallbacks.join(', ') : ''}` : 'No model chosen yet.'),
+        row(btn('Edit', () => { T.typeEdit = { name: t.name, model: t.model || '', fallbacks: (t.fallbacks || []).join(', ') }; delete T.notes.typeform; draw(); }), btn('Delete', () => startDelete(t.name), 'seg ghost')));
+      const startDelete = (name) => {
+        const affected = roleList.filter((r) => !r.error && r.target?.kind === 'type' && r.target?.value === name).map((r) => r.name);
+        const other = types.find((t) => t.name !== name);
+        T.typeDel = { name, affected, homes: Object.fromEntries(other ? affected.map((r) => [r, `type:${other.name}`]) : []) }; delete T.notes.types; draw();
+      };
+      const typeEditor = () => {
+        const f = T.typeEdit, isNew = !f.name;
+        const save = async () => {
+          const model = f.model.trim() || null, fallbacks = f.fallbacks.split(',').map((s) => s.trim()).filter(Boolean);
+          if (isNew) {
+            const name = (f.newName || '').trim().toLowerCase();
+            if (!validName(name)) { T.notes.typeform = 'The name can use lower case letters, digits and single hyphens, like cheap.'; return draw(); }
+            T.typeEdit = null;
+            try { await json('/v1/team/types', { method: 'POST', body: { name, model } }); if (fallbacks.length) await json(`/v1/team/types/${enc(name)}`, { method: 'PUT', body: { fallbacks } }); say('Added.'); } catch (e) { say(e.message); }
+            return draw();
+          }
+          T.typeEdit = null; act('PUT', `/v1/team/types/${enc(f.name)}`, { model, fallbacks }, () => 'Saved.');
+        };
+        return h('div', { class: 'set-card editing', role: 'group', 'aria-label': 'Model type' }, h('div', {}, isNew ? 'New model type' : `Edit ${f.name}`),
+          isNew ? bound('Name', f, 'newName', 'cheap (lower case letters, digits, hyphens)') : null,
+          h('div', { class: 'set-field' }, h('div', { class: 'lbl' }, 'Model'), dd('Model', f.model, [['No model yet', ''], ...models.map((m) => [m, m])], f.model, (v) => { f.model = v; })),
+          bound('Models to try, in order, when the first is missing (separate with commas)', f, 'fallbacks'),
+          row(btn('Save', save, 'seg primary'), btn('Cancel', () => { T.typeEdit = null; draw(); }, 'seg ghost')), note('typeform'));
+      };
+      const typeDelete = () => {
+        const d = T.typeDel;
+        const opts = [...types.filter((t) => t.name !== d.name).map((t) => [`Type ${t.name}`, `type:${t.name}`]), ...models.map((m) => [`Model ${m}`, `model:${m}`])];
+        const go = () => {
+          const reassign = {};
+          for (const r of d.affected) {
+            const [k, v] = (d.homes[r] || '').split(/:(.*)/s);
+            if (!v || !v.trim()) { T.notes.types = `Choose where ${r} goes first.`; return draw(); }
+            reassign[r] = k === 'type' ? { type: v } : { model: v.trim() };
+          }
+          T.typeDel = null; act('DELETE', `/v1/team/types/${enc(d.name)}`, { reassign }, () => 'Deleted.');
+        };
+        return h('div', { class: 'set-card deleting', role: 'group', 'aria-label': 'Delete a model type' }, h('div', {}, `Delete the type ${d.name}?`),
+          muted(d.affected.length ? 'These roles use it. Choose where each one goes before it is deleted.' : 'No role uses it.'),
+          d.affected.map((r) => h('div', { class: 'set-row wrap' }, h('div', { class: 'home-name' }, r), dd(`Where ${r} goes`, 'Choose…', opts, d.homes[r] || '', (v) => { d.homes[r] = v; }))),
+          row(btn('Delete the type', go, 'seg danger-fill'), btn('Cancel', () => { T.typeDel = null; draw(); }, 'seg ghost')));
+      };
+      return [
+        sub('Team settings'), settings, away,
+        head('Departments', 'New department', () => { T.dept = [true, deptForm({})]; delete T.notes.deptform; draw(); }), dErr || (deptList.length ? deptList.map(deptCard) : muted('No departments yet')), T.dept ? deptEditor() : null,
+        head('Roles', 'New role', () => { T.role = [true, { ...roleForm({}), kind: 'type', target: 'mid-tier', memory: 'none', max_steps: '12' }]; delete T.notes.roleform; draw(); }),
+        muted('A role is a job a worker can do: its instructions, the tools it may use and the kind of model it runs on.'), rErr || roleList.map(roleCard), T.role ? roleEditor() : null,
+        head('Model types', 'New type', () => { T.typeEdit = { name: '', newName: '', model: '', fallbacks: '' }; delete T.notes.typeform; draw(); }),
+        muted('A model type is a kind of job for a model, like frontier or mid-tier. Roles name a type, and the type names the model, so one change here moves every role that uses it.'),
+        tErr || types.map(typeCard), T.typeEdit ? typeEditor() : null, T.typeDel ? typeDelete() : null, note('types')];
     },
     // Channels as the desktop app has them: each channel off until its warning is read, then a form to add or edit one
     async channels() {
