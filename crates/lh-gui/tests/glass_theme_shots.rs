@@ -46,10 +46,14 @@ fn glass_e(s: &mut Scene, b: Bounds<gpui::ScaledPixels>, r: f32, blur: f32, refr
 /// opacity 0.9, blur 8 x 3), and from this desktop as it is now when Omarchy and Hyprland are there.
 fn looks() -> Vec<lh_gui::theme::Theme> {
     let mut v: Vec<_> = builtin().into_iter().filter(|t| t.name == "Glass").collect();
-    let h = lh_gui::omarchy::Hypr { rounding: 24., active_opacity: 0.9, inactive_opacity: 0.8, blur_size: 8., blur_passes: 3. };
+    let h = lh_gui::omarchy::Hypr { rounding: 24., active_opacity: 0.9, inactive_opacity: 0.8, blur_size: 8., blur_passes: 3., window_opacity: None };
     let mut fixture = lh_gui::omarchy::from_colors_with(include_str!("fixtures/omarchy-dark.toml"), Some(h)).unwrap();
     fixture.name = "Omarchy sample".into();
     v.push(fixture);
+    let tr = lh_gui::omarchy::Hypr { window_opacity: Some((0.8, true)), ..h };
+    let mut t = lh_gui::omarchy::transparent_from_colors(include_str!("fixtures/omarchy-dark.toml"), Some(tr)).unwrap();
+    t.name = "Omarchy transparent sample".into();
+    v.push(t);
     if let Some(t) = lh_gui::omarchy::current_dir().and_then(|d| lh_gui::omarchy::load(&d, lh_gui::omarchy::Hypr::read())) {
         let mut t = t;
         t.name = "Omarchy live".into();

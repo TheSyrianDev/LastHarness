@@ -1,5 +1,5 @@
-//! Themes: a TOML file sets colours, background, roundness, blur, shadows and animation. Eight come with
-//! the app (Calm, Matte and Glass, each light and dark); users add their own in a folder and
+//! Themes: a TOML file sets colours, background, roundness, blur, shadows and animation. Fourteen looks come
+//! with the app in seven families (Calm, Matte, Glass, Grove, Cobalt, Claude and ChatGPT), each light and dark; users add their own in a folder and
 //! changes are picked up while the app runs. This module knows nothing about the window toolkit.
 
 use std::path::{Path, PathBuf};
@@ -84,13 +84,18 @@ struct RawColors {
     border: String,
     danger: String,
     warn: Option<String>,
+    /// The three status colours under their plain names. `bad` is `danger` and `caution` is `warn`; `good` is new.
+    good: Option<String>,
+    caution: Option<String>,
+    bad: Option<String>,
     focus_ring: Option<String>,
+    bubble: Option<String>,
 }
 impl Default for RawColors {
     fn default() -> Self {
         // Calm light, so a theme file only has to say what it changes
         let d = |s: &str| s.to_string();
-        Self { background: d("#f5f5f3"), surface: d("#ffffff"), sunken: d("#ecece9"), text: d("#1d1d1b"), muted: d("#6d6d68"), accent: d("#3b6fd4"), accent_text: d("#ffffff"), button: d("#e8e8e4"), button_hover: d("#dcdcd6"), border: d("#dadad5"), danger: d("#c0392b"), warn: None, focus_ring: None }
+        Self { background: d("#f5f5f3"), surface: d("#ffffff"), sunken: d("#ecece9"), text: d("#1d1d1b"), muted: d("#6d6d68"), accent: d("#3b6fd4"), accent_text: d("#ffffff"), button: d("#e8e8e4"), button_hover: d("#dcdcd6"), border: d("#dadad5"), danger: d("#c0392b"), warn: None, good: None, caution: None, bad: None, focus_ring: None, bubble: None }
     }
 }
 
@@ -273,8 +278,12 @@ pub struct Colors {
     pub danger: Color,
     /// Cautions that are not errors. Optional in a file; a readable amber for the mode when left out.
     pub warn: Color,
+    /// Success: done ticks, passed checks, saved notices. Optional in a file (`good`); a readable green for the mode when left out.
+    pub good: Color,
     /// The ring around the control that has the keyboard. Optional in a file; the accent when left out.
     pub focus_ring: Color,
+    /// The person's own message bubble. Optional in a file; the button colour when left out.
+    pub bubble: Color,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -282,6 +291,8 @@ pub struct Background {
     pub kind: BackgroundKind,
     pub from: Color,
     pub to: Color,
+    /// A middle stop, set when Glass has three colours; themes never set it.
+    pub via: Option<Color>,
     pub angle: f32,
     /// An absolute path, resolved against the theme file's folder.
     pub image: Option<PathBuf>,
@@ -343,14 +354,26 @@ impl Theme {
             button: col("button", &c.button)?,
             button_hover: col("button_hover", &c.button_hover)?,
             border: col("border", &c.border)?,
-            danger: col("danger", &c.danger)?,
-            warn: match &c.warn {
-                Some(v) => col("warn", v)?,
-                None => Color::parse(if raw.mode == Mode::Dark { "#e0b25c" } else { "#8a5a00" })?,
+            danger: match &c.bad {
+                Some(v) => col("bad", v)?,
+                None => col("danger", &c.danger)?,
+            },
+            warn: match (&c.caution, &c.warn) {
+                (Some(v), _) => col("caution", v)?,
+                (None, Some(v)) => col("warn", v)?,
+                (None, None) => Color::parse(if raw.mode == Mode::Dark { "#e0b25c" } else { "#8a5a00" })?,
+            },
+            good: match &c.good {
+                Some(v) => col("good", v)?,
+                None => Color::parse(if raw.mode == Mode::Dark { "#6fcf8a" } else { "#1e7a3c" })?,
             },
             focus_ring: match &c.focus_ring {
                 Some(v) => col("focus_ring", v)?,
                 None => col("accent", &c.accent)?,
+            },
+            bubble: match &c.bubble {
+                Some(v) => col("bubble", v)?,
+                None => col("button", &c.button)?,
             },
         };
         let b = &raw.background;
@@ -425,7 +448,7 @@ impl Theme {
             name: raw.name.trim().to_string(),
             mode: raw.mode,
             colors,
-            background: Background { kind, from, to, angle, image: b.image.as_ref().map(|i| dir.join(i)), image_opacity: b.image_opacity },
+            background: Background { kind, from, to, via: None, angle, image: b.image.as_ref().map(|i| dir.join(i)), image_opacity: b.image_opacity },
             roundness: raw.shape.roundness,
             match_window: raw.shape.match_window,
             blur: raw.effects.blur,
@@ -476,8 +499,7 @@ const BUILTIN: &[(&str, &str)] = &[
     ("grove-dark", include_str!("../themes/grove-dark.toml")),
     ("cobalt-light", include_str!("../themes/cobalt-light.toml")),
     ("cobalt-dark", include_str!("../themes/cobalt-dark.toml")),
-    // DEV BUILD ONLY: "Claude" and "ChatGPT" imitate the feel of two products with open fonts and no brand assets.
-    // Rename or remove them before the first release.
+    // "Claude" and "ChatGPT" are looks named after two products; they use open fonts only.
     ("claude-light", include_str!("../themes/claude-light.toml")),
     ("claude-dark", include_str!("../themes/claude-dark.toml")),
     ("chatgpt-light", include_str!("../themes/chatgpt-light.toml")),
@@ -542,6 +564,10 @@ impl ThemeSet {
         let hypr = ask_hypr(omarchy.as_deref());
         if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load(d, hypr)) {
             themes.insert(0, t);
+            // its see-through variant next to it, as see-through as Hyprland's window rule for this app says
+            if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load_transparent(d, hypr)) {
+                themes.insert(1, t);
+            }
         }
         let mut problems = vec![];
         let mut old_things: Vec<(String, Vec<&'static str>)> = vec![];
@@ -602,6 +628,12 @@ impl ThemeSet {
         }
         self.hypr_asked.set(std::time::Instant::now());
         ask_hypr(self.omarchy.as_deref()) != self.hypr
+    }
+
+    /// For Settings: the transparent Omarchy look is chosen-able but no Hyprland window rule makes this app
+    /// see-through, so the look is opaque. False off Hyprland (nothing to add a rule to).
+    pub fn needs_window_rule(&self) -> bool {
+        self.hypr.is_some_and(|h| !h.has_see_through_rule())
     }
 
     pub fn reload(&mut self) {
@@ -665,6 +697,130 @@ pub fn luminance(c: Color) -> f64 {
         if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) }
     };
     0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+}
+
+/// `fg` painted over `bg`, by its own opacity.
+fn over(fg: Color, bg: Color) -> Color {
+    Color { a: 255, ..bg.mix(Color { a: 255, ..fg }, fg.a as f32 / 255.) }
+}
+
+/// Every place a look's words or marks are too faint. Translucent looks are measured over black (dark) or white
+/// (light) behind the window; text needs 4.5:1 (WCAG AA), the accent and the focus ring need 3:1 as non-text marks.
+pub fn readability_problems(t: &Theme) -> Vec<String> {
+    let c = &t.colors;
+    let desk = if t.mode == Mode::Dark { Color { r: 0, g: 0, b: 0, a: 255 } } else { Color { r: 255, g: 255, b: 255, a: 255 } };
+    let bg = over(c.background, desk);
+    let (surface, sunken, button, accent) = (over(c.surface, bg), over(c.sunken, bg), over(c.button, bg), over(c.accent, bg));
+    let checks = [
+        ("text on surface", c.text, surface, 4.5),
+        ("text on background", c.text, bg, 4.5),
+        ("text on input", c.text, sunken, 4.5),
+        ("text on button", c.text, button, 4.5),
+        ("text on bubble", c.text, over(c.bubble, bg), 4.5),
+        ("muted on surface", c.muted, surface, 4.5),
+        ("muted on background", c.muted, bg, 4.5),
+        ("muted on input", c.muted, sunken, 4.5),
+        ("accent text on accent", c.accent_text, accent, 4.5),
+        ("danger on surface", c.danger, surface, 4.5),
+        ("warn on surface", c.warn, surface, 4.5),
+        ("good on surface", c.good, surface, 4.5),
+        ("accent on surface", accent, surface, 3.0),
+        ("focus ring on background", c.focus_ring, bg, 3.0),
+    ];
+    let mut low = vec![];
+    for (what, fg, back, min) in checks {
+        let r = contrast(over(fg, back), back);
+        if r < min {
+            low.push(format!("{}: {what} is {r:.2}, needs {min}", t.label()));
+        }
+    }
+    low
+}
+
+/// The Glass look tinted around up to three colours the person picked, like a gradient picker: the first leads the
+/// accent and the top of the background, the last the bottom, the middle one the panels. `opacity` (0 to 1) is how
+/// strongly the colours show. The tint backs off until every readability check passes, so it can never make words faint.
+pub fn tint_glass(t: &Theme, picks: &[Color], opacity: f32) -> Theme {
+    let Some(&first) = picks.first() else { return t.clone() };
+    let last = *picks.last().unwrap();
+    let mid = picks.get(1).copied().unwrap_or(first);
+    let dark = t.mode == Mode::Dark;
+    let (black, white) = (Color { r: 0, g: 0, b: 0, a: 255 }, Color { r: 255, g: 255, b: 255, a: 255 });
+    let mut s = opacity.clamp(0., 1.);
+    loop {
+        let mut g = t.clone();
+        let towards = |c: Color, p: Color, k: f32| Color { a: c.a, ..c.mix(Color { a: c.a, ..p }, k) };
+        let c = &mut g.colors;
+        c.background = towards(c.background, first.mix(last, 0.5), s * 0.45);
+        c.surface = towards(c.surface, mid, s * 0.25);
+        c.button = towards(c.button, mid, s * 0.3);
+        c.button_hover = towards(c.button_hover, mid, s * 0.35);
+        // every chosen colour gets its own stop: first, then the second in the middle (three colours) or at the end
+        g.background.from = towards(g.background.from, first, s * 0.9);
+        g.background.to = towards(g.background.to, last, s * 0.9);
+        g.background.via = (picks.len() >= 3).then(|| {
+            let base = g.background.from.mix(g.background.to, 0.5);
+            Color { a: base.a, ..base.mix(Color { a: base.a, ..mid }, s * 0.9) }
+        });
+        // the accent is the first colour, darkened (light) or lightened (dark) until it reads as a mark
+        let bg = over(c.background, if dark { black } else { white });
+        let surface = over(c.surface, bg);
+        let mut accent = Color { a: 255, ..first };
+        for _ in 0..20 {
+            if contrast(accent, surface) >= 3.2 {
+                break;
+            }
+            accent = accent.mix(if dark { white } else { black }, 0.12);
+        }
+        c.accent = accent;
+        c.focus_ring = accent;
+        c.accent_text = if contrast(white, accent) >= contrast(black.mix(accent, 0.1), accent) { white } else { black.mix(accent, 0.1) };
+        // status and quiet words deepen a little against the tinted panels rather than the tint fading away
+        let ink = if dark { white } else { black };
+        for col in [&mut c.danger, &mut c.warn, &mut c.good, &mut c.muted] {
+            for _ in 0..12 {
+                if contrast(*col, surface) >= 4.7 && contrast(*col, bg) >= 4.7 {
+                    break;
+                }
+                *col = col.mix(ink, 0.08);
+            }
+        }
+        if readability_problems(&g).is_empty() || s <= 0. {
+            return if s <= 0. && !readability_problems(&g).is_empty() { t.clone() } else { g };
+        }
+        s = (s - 0.1).max(0.);
+    }
+}
+
+/// The Glass colour field, like a gradient picker: hue runs across (`col` of `FIELD_COLS`), from pale at the top to
+/// deep at the bottom (`row` of `FIELD_ROWS`). Returns "#rrggbb".
+pub const FIELD_COLS: usize = 24;
+pub const FIELD_ROWS: usize = 6;
+pub fn field_colour(col: usize, row: usize) -> String {
+    let h = col as f32 / FIELD_COLS as f32;
+    let l = 0.85 - 0.55 * row as f32 / (FIELD_ROWS - 1) as f32;
+    let s = 0.8_f32;
+    let q = if l < 0.5 { l * (1. + s) } else { l + s - l * s };
+    let p = 2. * l - q;
+    let ch = |mut t: f32| {
+        t = t.rem_euclid(1.);
+        let v = if t < 1. / 6. { p + (q - p) * 6. * t } else if t < 0.5 { q } else if t < 2. / 3. { p + (q - p) * (2. / 3. - t) * 6. } else { p };
+        (v * 255.).round() as u8
+    };
+    format!("#{:02x}{:02x}{:02x}", ch(h + 1. / 3.), ch(h), ch(h - 1. / 3.))
+}
+
+/// Clicking a colour in the field: a picked one is taken off, a new one is added, and with three already picked the
+/// newest is replaced.
+pub fn toggle_pick(picks: &mut Vec<String>, colour: &str) {
+    if let Some(i) = picks.iter().position(|c| c == colour) {
+        picks.remove(i);
+    } else {
+        if picks.len() >= 3 {
+            picks.truncate(2);
+        }
+        picks.push(colour.to_string());
+    }
 }
 
 /// WCAG contrast ratio of two opaque colours, 1 to 21.
@@ -877,7 +1033,7 @@ mod tests {
         }
         let claude = t.iter().find(|x| x.label() == "Claude light").unwrap();
         assert_eq!(claude.colors.background, Color::parse("#F5F4EE").unwrap());
-        assert_eq!(claude.colors.accent, Color::parse("#C96442").unwrap());
+        assert_eq!(claude.colors.accent, Color::parse("#B5532F").unwrap());
         assert_eq!(t.iter().find(|x| x.label() == "Claude dark").unwrap().colors.background, Color::parse("#262624").unwrap());
         assert_eq!(t.iter().find(|x| x.label() == "ChatGPT dark").unwrap().colors.background, Color::parse("#212121").unwrap());
     }
@@ -981,43 +1137,41 @@ mod tests {
 
     pub(crate) use super::contrast;
 
-    /// `fg` painted over `bg`, by its own opacity.
-    fn over(fg: Color, bg: Color) -> Color {
-        Color { a: 255, ..bg.mix(Color { a: 255, ..fg }, fg.a as f32 / 255.) }
+    #[test]
+    fn every_look_keeps_text_readable_on_every_surface() {
+        let low: Vec<String> = builtin().iter().flat_map(readability_problems).collect();
+        assert!(low.is_empty(), "{low:#?}");
     }
 
     #[test]
-    fn every_look_keeps_text_readable_on_every_surface() {
-        // translucent looks are measured over black (dark) or white (light) behind the window; text needs 4.5:1
-        // (WCAG AA), the accent and the focus ring need 3:1 as non-text marks
-        let mut low = vec![];
-        for t in builtin() {
-            let c = &t.colors;
-            let desk = if t.mode == Mode::Dark { Color { r: 0, g: 0, b: 0, a: 255 } } else { Color { r: 255, g: 255, b: 255, a: 255 } };
-            let bg = over(c.background, desk);
-            let (surface, sunken, button, accent) = (over(c.surface, bg), over(c.sunken, bg), over(c.button, bg), over(c.accent, bg));
-            let checks = [
-                ("text on surface", c.text, surface, 4.5),
-                ("text on background", c.text, bg, 4.5),
-                ("text on input", c.text, sunken, 4.5),
-                ("text on button", c.text, button, 4.5),
-                ("muted on surface", c.muted, surface, 4.5),
-                ("muted on background", c.muted, bg, 4.5),
-                ("muted on input", c.muted, sunken, 4.5),
-                ("accent text on accent", c.accent_text, accent, 4.5),
-                ("danger on surface", c.danger, surface, 4.5),
-                ("warn on surface", c.warn, surface, 4.5),
-                ("accent on surface", accent, surface, 3.0),
-                ("focus ring on background", c.focus_ring, bg, 3.0),
-            ];
-            for (what, fg, back, min) in checks {
-                let r = contrast(over(fg, back), back);
-                if r < min {
-                    low.push(format!("{}: {what} is {r:.2}, needs {min}", t.label()));
+    fn the_colour_field_and_picks() {
+        assert_eq!(field_colour(0, 2).len(), 7);
+        assert!(Color::parse(&field_colour(FIELD_COLS - 1, FIELD_ROWS - 1)).is_ok());
+        let mut p = vec![];
+        for c in ["#a", "#b", "#c", "#d"] {
+            toggle_pick(&mut p, c);
+        }
+        assert_eq!(p, ["#a", "#b", "#d"]);
+        toggle_pick(&mut p, "#b");
+        assert_eq!(p, ["#a", "#d"]);
+    }
+
+    #[test]
+    fn a_glass_tint_keeps_every_check() {
+        let picks: Vec<Color> = ["#ff0000", "#ffff00", "#00ff00", "#0000ff", "#ffffff", "#000000", "#ff00ff", "#808080"].iter().map(|c| Color::parse(c).unwrap()).collect();
+        for t in builtin().into_iter().filter(|t| t.name == "Glass") {
+            for w in picks.windows(3) {
+                for n in 1..=3 {
+                    for o in [0.2, 0.6, 1.0] {
+                        let g = tint_glass(&t, &w[..n], o);
+                        let low = readability_problems(&g);
+                        assert!(low.is_empty(), "{:?} {o}: {low:#?}", &w[..n]);
+                    }
                 }
             }
+            assert_eq!(tint_glass(&t, &[], 1.0), t, "no colours leaves the look alone");
+            assert_ne!(tint_glass(&t, &picks[..1], 1.0).colors.background, t.colors.background);
         }
-        assert!(low.is_empty(), "{low:#?}");
     }
 
     #[test]
@@ -1073,6 +1227,15 @@ mod tests {
         assert_eq!(light.colors.focus_ring, light.colors.accent);
         let dark = Theme::parse("name = \"X\"\nmode = \"dark\"", Path::new(".")).unwrap();
         assert_ne!(light.colors.warn, dark.colors.warn, "the fallback amber follows the mode");
+        assert_ne!(light.colors.good, dark.colors.good, "the fallback green follows the mode");
+    }
+
+    #[test]
+    fn good_caution_bad_are_the_status_keys_and_old_names_still_work() {
+        let t = Theme::parse("name = \"X\"\n[colors]\ngood = \"#00ff00\"\ncaution = \"#ffff00\"\nbad = \"#ff0000\"", Path::new(".")).unwrap();
+        assert_eq!((t.colors.good, t.colors.warn, t.colors.danger), (Color::parse("#00ff00").unwrap(), Color::parse("#ffff00").unwrap(), Color::parse("#ff0000").unwrap()));
+        let old = Theme::parse("name = \"X\"\n[colors]\ndanger = \"#aa0000\"\nwarn = \"#aaaa00\"", Path::new(".")).unwrap();
+        assert_eq!((old.colors.danger, old.colors.warn), (Color::parse("#aa0000").unwrap(), Color::parse("#aaaa00").unwrap()));
     }
 
 
@@ -1086,6 +1249,8 @@ mod tests {
         std::fs::write(cur.join("theme/colors.toml"), include_str!("../tests/fixtures/omarchy-dark.toml")).unwrap();
         let mut set = ThemeSet::load_with(&root.join("none"), Some(cur.clone()));
         assert_eq!(set.families()[0], "Omarchy");
+        assert_eq!(set.families()[1], crate::omarchy::TRANSPARENT, "the see-through variant sits next to it");
+        assert!(!set.needs_window_rule(), "no Hyprland in tests: no hint");
         assert_eq!(set.themes[set.resolve("", false)].label(), "Omarchy dark", "no look chosen: the desktop's, in its own mode");
         assert!(!set.changed());
         std::fs::write(cur.join("theme.name"), "b").unwrap();

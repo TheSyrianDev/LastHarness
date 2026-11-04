@@ -1,5 +1,4 @@
 # Warm cream look with a clay accent and a serif for text.
-# DEV BUILD ONLY: rename or remove before the first release. No logos or brand assets; open fonts only.
 name = "Claude"
 mode = "light"
 
@@ -14,14 +13,15 @@ surface = "#FAF9F5"
 sunken = "#EDEBE2"
 text = "#29261F"
 muted = "#66625B"
-accent = "#C96442"
-accent_text = "#1F1410"
+accent = "#B5532F"
+accent_text = "#FFFFFF"
 button = "#E8E5DA"
 button_hover = "#DDD9CB"
 border = "#DDD9CB"
 danger = "#B3392B"
 focus_ring = "#C96442"
 warn = "#8A5A00"
+good = "#1f7a3d"
 
 [background]
 kind = "solid"

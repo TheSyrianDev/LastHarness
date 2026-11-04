@@ -15,8 +15,10 @@ button = "#ffffff2a"
 button_hover = "#ffffff48"
 border = "#ffffff2e"         # a soft light hairline; the glass adds its own rim
 danger = "#ff7b6e"
+bubble = "#ffffff14"           # your own messages: clear, neutral glass with a white rim
 focus_ring = "#8ab9ff"
 warn = "#ffc66e"
+good = "#7fdc98"
 
 [background]
 kind = "gradient"             # solid, gradient or image

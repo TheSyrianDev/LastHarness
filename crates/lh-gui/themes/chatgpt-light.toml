@@ -1,5 +1,4 @@
 # Neutral white look: near-black primary buttons, grey bubbles, a plain sans.
-# DEV BUILD ONLY: rename or remove before the first release. No logos or brand assets; open fonts only.
 name = "ChatGPT"
 mode = "light"
 
@@ -22,6 +21,7 @@ border = "#E5E5E5"
 danger = "#C0392B"
 focus_ring = "#0D0D0D"
 warn = "#8A5A00"
+good = "#16794a"
 
 [background]
 kind = "solid"

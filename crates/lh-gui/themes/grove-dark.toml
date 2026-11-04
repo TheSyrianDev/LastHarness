@@ -18,6 +18,7 @@ border = "#33482e"
 danger = "#d78f6a"
 focus_ring = "#b2c27c"
 warn = "#e0a050"
+good = "#6fcf8a"
 
 [background]
 kind = "solid"

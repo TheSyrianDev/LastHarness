@@ -1,5 +1,4 @@
 # Warm dark look with a clay accent and a serif for text.
-# DEV BUILD ONLY: rename or remove before the first release. No logos or brand assets; open fonts only.
 name = "Claude"
 mode = "dark"
 
@@ -22,6 +21,7 @@ border = "#43423D"
 danger = "#EE7E6F"
 focus_ring = "#E08868"
 warn = "#E3B261"
+good = "#7fcf8f"
 
 [background]
 kind = "solid"

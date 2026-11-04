@@ -17,6 +17,7 @@ border = "#dadad5"
 danger = "#c0392b"
 focus_ring = "#3b6fd4"
 warn = "#8a5a00"
+good = "#1e7a3c"
 
 [background]
 kind = "solid"             # solid, gradient or image

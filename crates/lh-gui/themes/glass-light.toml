@@ -15,8 +15,10 @@ button = "#d9e4f3cc"         # a cool frost, so a resting button shows on a whit
 button_hover = "#c9d8eee0"
 border = "#1d3c6424"         # a dark hairline; the glass adds its own bright rim
 danger = "#d23b2e"
+bubble = "#ffffff4d"           # your own messages: clear, neutral glass with a white rim
 focus_ring = "#1f6fe5"
 warn = "#8a5a00"
+good = "#1b7a3a"
 
 [background]
 kind = "gradient"             # solid, gradient or image
