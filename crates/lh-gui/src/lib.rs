@@ -30,6 +30,7 @@ pub mod settings;
 pub mod sidebar;
 pub mod theme;
 pub mod tiers;
+pub mod wheel;
 pub mod thinking;
 pub mod transcript;
 pub mod treeview;
