@@ -35,6 +35,6 @@ Linux (Omarchy, Arch), Dell G15 with 24 GB RAM and an RTX 3050 with 4 GB. Rust c
 
 Milestone 0 (spikes) is done. Milestones 1 to 8 are built (see `docs/milestone-N-report.md`; 4 is roles and departments, 5 is onboarding and settings, 6 is the browser UI (now parked), 7 is messaging channels, 8 is the desktop app in `crates/lh-gui`, drawn with GPUI). Early releases (v0.1.0-alpha.x) are on GitHub for Linux, Windows and macOS; the public repo is `~/Projects/public/LastHarness`. On 2026-10-30 the user kept GPUI after trying Tauri 2 (generative answers drawn natively, apps in Servo) and chose the "Quiet desk" redesign; see the decision log. Milestone 9 (mobile) and 10 (macOS and Windows) are next; wait for the planning session. Check `git log` and `.grill/parked.md` for the current state. Decided so far: SQLite store, EmbeddingGemma 2, local API over HTTP on localhost with SSE, the terminal app starts as `lastharness` or `lh`. While the user is away, ask nothing and park questions in `.grill/parked.md`. Do not invent GUI visuals or branding; the user designs those with the planning session. Not yet done: the cloud API run (ask first), and Ollama and LM Studio probing.
 
-## Local test model
+## Test model
 
-For real-model runs of non-coding work (privacy judge, learning proposals, summaries, extraction, general chat), use `Qwen3.6-35B-A3B-NanoPlus-fast` on llama-swap. The user chose it for its wider range; Tiel-Coder and Ornith are for coding tasks only. Qwen thinks a lot (it used the whole 1024-token budget on trivial prompts in spike 1), so give it a larger token limit.
+For real-model runs of any work, use `LFM3-1.7B-balanced` on llama-swap for now. It is small, so give it generous token limits and do not expect strong reasoning.
