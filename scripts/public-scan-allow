@@ -1,0 +1,10 @@
+# Known fake values in tests, allowed past the secret scan in scripts/sync-public.sh. One path:match per line.
+crates/lh-memory/src/privacy.rs:-----BEGIN OPENSSH PRIVATE KEY-----
+crates/lh-memory/src/privacy.rs:sk-abcdefghijklmnop1234
+crates/lh-store/src/activity.rs:AKIAABCDEFGHIJKLMNOP
+crates/lh-store/src/activity.rs:-----BEGIN OPENSSH PRIVATE KEY-----
+crates/lh-store/src/activity.rs:sk-abcdefghijklmnopqrstuv
+crates/lh-store/src/activity.rs:xoxb-1234567890
+crates/lh-store/src/activity.rs:xoxb-1234567890-abcdef
+crates/lh-tools/src/tools.rs:sk-secretsecretsecretsecret
+crates/lh-tools/src/web.rs:sk-abcdefghijklmnopqrstuvwx
