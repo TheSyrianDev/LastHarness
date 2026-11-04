@@ -177,14 +177,15 @@ pub const INFO: &[Info] = &[
     i("memory.recall_items", Memory, "Notes added to a message", "The most notes memory adds to one message you send.", Show::Count("note", "notes"), false),
     i("memory.recall_chars", Memory, "Memory added to a message, in characters", "The most text, all notes together, that memory adds to one message you send.", Show::Count("character", "characters"), false),
     i("learning.mode", Learning, "Learning from your habits", "How the app picks up your habits. It can suggest and wait for you, apply changes quietly, or not learn.", Show::Words(&[("propose", "Suggest and wait"), ("silent", "Apply quietly"), ("off", "Off")]), false),
-    i("learning.threshold", Learning, "Chats before it counts as a habit", "How many chats a wish must come up in before the app treats it as a habit.", Show::Count("chat", "chats"), false),
+    i("learning.threshold", Learning, "Chats before it counts as a habit", "How many chats a suggestion must come up in before the app treats it as a habit.", Show::Count("chat", "chats"), false),
     i("team.autonomy", Departments, "How much departments ask you", "How often a department checks with you while it works on a big goal.", Show::Words(&[("plan-first", "Show a plan first"), ("check-ins", "Check in as it goes"), ("fire-and-forget", "Just do it")]), false),
     i("team.parallel", Departments, "Workers at the same time", "How many workers a department may run at once.", Show::Count("worker", "workers"), false),
     i("team.attempts", Departments, "Tries for each step", "How many times a step is tried before the failure is passed up to you.", Show::Count("try", "tries"), false),
     i("team.unavailable", Departments, "When a model is missing", "Stop and tell you, or try the backup models listed for that kind of job.", Show::Words(&[("stop", "Stop and tell me"), ("fallback", "Try a backup model")]), false),
     i("web.listen", Web, "Address for the browser and phone", "Lets you use LastHarness in a browser over HTTPS, for example at 127.0.0.1:7843. Every device must be paired first. Leave it empty to keep this off.", Show::Text("Off"), true),
+    i("web.tailscale", Web, "Reach it from your phone over Tailscale", "Opens the browser page on this computer's Tailscale address only, so a phone on your tailnet can use it. Sign the phone in under Phone, after a restart.", Show::OnOff, true),
     i("tools.codemode", Tools, "Let the model write small scripts", "The model can run a short script that calls its other tools and keeps only what matters from long results. Every call inside is checked like any other. Off by default: it adds one tool to every request.", Show::OnOff, false),
-    i("tools.sandbox", Tools, "Keep commands in the chat's folder", "Commands the model runs can change files only in the chat's folder and a private temporary folder. They can still read the rest and use the network. Needs bubblewrap.", Show::OnOff, true),
+    i("tools.sandbox", Tools, "Keep commands in the chat's folder", "Commands the model runs can change files only in the chat's folder and a private temporary folder. They can still read the rest, and network access is set under Permissions. Needs bubblewrap.", Show::OnOff, true),
     i("web.use_proxy", Web, "Use the system proxy for web pages", "A proxy looks up names itself, so the check against private addresses cannot see where a request goes. This is off unless you turn it on.", Show::OnOff, true),
     i("web.searxng", Web, "Web search server", "The address of a SearXNG server used for web search. Leave it empty to turn search off.", Show::Text("Off"), false),
     i("spending.mode", Spending, "What happens as costs add up", "Only record what you spend, stop at your limits, or ask before a call that looks expensive.", Show::Words(&[("none", "Only record"), ("caps", "Stop at my limits"), ("estimate", "Ask before costly calls")]), true),
@@ -195,6 +196,9 @@ pub const INFO: &[Info] = &[
     i("permissions.mode", Permissions, "When to ask permission", "Reads are free, writes ask once, and risky things always ask. Or ask for everything.", Show::Words(&[("tiered", "Ask for risky things"), ("ask-all", "Ask for everything")]), true),
     i("permissions.bypass", Permissions, "Skip all permission questions", "Turns every permission question off. You accept the risk, and the project is not responsible for the outcome.", Show::OnOff, true),
     i("permissions.show_diff", Permissions, "Show the changes of a file write", "When a write is allowed without asking, the chat shows what changed. Choose where that happens.", Show::Words(&[("always", "Always"), ("untrusted", "In folders I have not trusted"), ("trusted", "In trusted folders"), ("never", "Never")]), false),
+    i("tools.sandbox_network", Permissions, "Network for sandboxed commands", "Whether commands in the sandbox may use the network. Ask each run, allow only the sites listed below, always allow, or let a small model decide and ask you when it cannot.", Show::Words(&[("ask", "Ask each time"), ("allowlist", "Only listed sites"), ("on", "Always"), ("auto", "Let a model decide")]), true),
+    i("tools.sandbox_network_allow", Permissions, "Sites sandboxed commands may reach", "Used when only listed sites are allowed. Separate them with commas, for example github.com, crates.io. A site covers its subdomains.", Show::Text("None"), false),
+    i("tools.sandbox_network_model", Permissions, "Model that decides network access", "A small, fast model that decides each run when a model decides. Leave it empty and you are asked instead.", Show::Text("Not set, so you are asked"), false),
     i("permissions.sudo", Permissions, "Allow sudo", "Lets agents run commands with sudo. It still asks like any other command.", Show::OnOff, true),
     i("tree.summarize", Chats, "Summary when you leave a branch", "When you move to another branch of a chat, a short summary of the branch you left can be written where you come back.", Show::Words(&[("ask", "Ask each time"), ("always", "Always"), ("never", "Never")]), false),
     i("kvcache.enabled", Chats, "Saved chat memory for faster resume", "Saves the local model's work on a chat so a stored chat goes on quickly instead of being read again. It needs the folder below, and is never used for private chats or cloud models.", Show::OnOff, false),
@@ -215,6 +219,7 @@ pub fn is_risky(key: &str, value: &str) -> bool {
     match key {
         "permissions.bypass" | "permissions.sudo" | "web.use_proxy" => v == "true",
         "tools.sandbox" => v == "false",
+        "tools.sandbox_network" => v == "on",
         "spending.mode" => v == "none",
         "web.listen" => !v.is_empty() && !is_local_address(v),
         _ => false,
@@ -344,7 +349,7 @@ pub fn matches(key: &str, d: &Described, query: &str) -> bool {
 }
 
 /// Words that find the Appearance page in the search box: the controls on it are drawn by the app, not listed by the core.
-pub const APPEARANCE_WORDS: &str = "appearance name greeting hello web page pages html browser inside look theme mode light dark system direction left right language chat width wide column preset slider size chat list font fonts latin arabic naskh";
+pub const APPEARANCE_WORDS: &str = "appearance name greeting hello web page pages html browser inside look theme mode light dark system direction left right language chat width wide column preset slider size chat list font fonts latin arabic naskh omarchy transparent see-through glass hyprland window rule opacity";
 
 pub fn appearance_matches(query: &str) -> bool {
     query.split_whitespace().all(|w| APPEARANCE_WORDS.contains(&w.to_lowercase()))
@@ -374,14 +379,6 @@ pub fn neighbour(pages: &[Category], current: Category, down: bool) -> Category 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn kind_of(k: lh_config::Kind) -> &'static str {
-        match k {
-            lh_config::Kind::Bool => "bool",
-            lh_config::Kind::Choice(_) => "choice",
-            _ => "other",
-        }
-    }
 
     #[test]
     fn every_setting_the_core_lists_has_exactly_one_page_and_nothing_extra_is_named() {
@@ -452,8 +449,6 @@ mod tests {
                 }
                 _ => {}
             }
-            // the kind the window edits (switch, choice, number) matches how the value is written
-            let _ = kind_of(d.kind);
         }
         assert_eq!(value_text("tree.summarize", "ask"), "Ask each time");
         assert_eq!(value_text("tree.summarize", "always"), "Always");

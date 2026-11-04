@@ -28,6 +28,7 @@ fn main() {
     tray::spawn();
     gpui_platform::application().run(move |cx| {
         gpui_component::init(cx);
+        app::App::load_user_fonts(cx);
         ui::bind_keys(cx);
         let opts = WindowOptions {
             window_background: WindowBackgroundAppearance::Transparent,

@@ -83,7 +83,7 @@ pub fn accept_body(row: &ProposalRow, edited: &str) -> Value {
     if row.editable.is_empty() || e.is_empty() || e == row.editable.trim() { json!({}) } else { json!({"edit": {"text": e}}) }
 }
 
-/// A wish noticed in several chats.
+/// A suggestion noticed in several chats.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HabitRow {
     pub sessions: u64,

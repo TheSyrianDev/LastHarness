@@ -30,7 +30,7 @@ pub struct Thinking {
 pub struct Snap {
     pub tokens: u64,
     pub secs: u64,
-    /// Tokens a second over the last few seconds; `None` in the first second, when it would only be noise.
+    /// Tokens a second over the last few seconds; `None` in the first second, when a rate would mean nothing yet.
     pub rate: Option<u32>,
 }
 

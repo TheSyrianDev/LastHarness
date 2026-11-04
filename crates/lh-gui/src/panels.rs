@@ -302,7 +302,7 @@ impl App {
     }
 
     /// The Appearance page: the app's own look, mode, direction and widths. It works when the core is away.
-    fn appearance_block(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn appearance_block(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
         // a look is a family with a light and a dark variant; the mode below picks the variant for all of them
@@ -350,7 +350,8 @@ impl App {
         let widths = self.width_controls(cx);
         let fonts = div().flex().flex_col().gap_1()
             .child(self.font_picker_row(crate::app::FontSlot::Latin, cx))
-            .child(self.font_picker_row(crate::app::FontSlot::Arabic, cx));
+            .child(self.font_picker_row(crate::app::FontSlot::Arabic, cx))
+            .child(self.added_fonts_block(cx));
         let pages_switch = self.glass_switch("pages-inside-switch", !self.prefs.pages_off, true, if rtl { "عرض صفحات الويب داخل التطبيق" } else { "Show web pages inside the app" }, true, cx, |a, on, _, cx| {
             a.prefs.pages_off = !on;
             a.persist();
@@ -365,6 +366,12 @@ impl App {
                 .id("appearance").role(Role::Group).aria_label("Appearance")
                 .child(modes)
                 .child(looks)
+                .children((current == "Glass").then(|| self.glass_colours_block(window, cx)))
+                .children((current == lh_gui::omarchy::TRANSPARENT && self.themes.needs_window_rule()).then(|| {
+                    div().flex().flex_col().gap_1().text_xs().text_color(p.muted)
+                        .child(format!("No Hyprland window rule makes this app see-through yet, so this look is opaque. Add this line to your Hyprland config (window class {}) and it follows within a few seconds:", lh_gui::omarchy::APP_CLASS))
+                        .child(div().font_family(p.mono.clone()).text_color(p.text).child(lh_gui::omarchy::RULE_HINT))
+                }))
                 .child(widths)
                 .child(fonts)
                 .child(name_row)
@@ -374,6 +381,240 @@ impl App {
                 .children(self.themes.problems.iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Theme file problem: {e}"))))
             .children(self.themes.notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
             .children(self.look_notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
+            .into_any_element()
+    }
+
+    /// The Glass look's colours: up to three glass balls on a colour wheel (hue around, saturation out from the
+    /// middle), a hex box for each, and how strongly they show.
+    fn glass_colours_block(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        use lh_gui::wheel;
+        const SIZE: f32 = 176.;
+        const BALL: f32 = 22.;
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let picks = self.prefs.glass_colours.clone();
+        let disc = self.glass_disc.get_or_insert_with(|| {
+            // drawn at twice the size so it stays sharp on a scaled screen; red and blue swapped for the toolkit
+            let n = (SIZE * 2.) as u32;
+            let mut px = wheel::disc_rgba(n);
+            for c in px.as_chunks_mut::<4>().0 {
+                c.swap(0, 2);
+            }
+            std::sync::Arc::new(RenderImage::new(vec![image::Frame::new(image::RgbaImage::from_raw(n, n, px).expect("wheel size"))]))
+        }).clone();
+        let dot = |hex: &str| { let (r, g, b) = wheel::parse_hex(hex).unwrap_or((128, 128, 128)); gpui::rgb(((r as u32) << 16) | ((g as u32) << 8) | b as u32) };
+        let centre = self.glass_wheel.clone();
+        let mark = gpui::canvas(|_, _, _| (), move |b, _, _, _| centre.set((f32::from(b.origin.x) + SIZE / 2., f32::from(b.origin.y) + SIZE / 2.)))
+            .absolute().top_0().left_0().size_full();
+        let mut ring = div().id("glass-wheel").role(Role::Group).aria_label(if rtl { "عجلة ألوان الزجاج" } else { "Glass colour wheel" })
+            .relative().w(px(SIZE)).h(px(SIZE)).flex_none().cursor_pointer()
+            .child(img(disc).absolute().top_0().left_0().size_full())
+            .child(mark)
+            .on_mouse_down(MouseButton::Left, cx.listener(|a, ev: &MouseDownEvent, w, cx| {
+                let (dx, dy) = a.glass_offset(ev.position);
+                let r = SIZE / 2.;
+                if dx * dx + dy * dy > (r + BALL / 2.).powi(2) {
+                    return;
+                }
+                // the ball under the pointer, else a new ball, else the nearest one comes to the pointer
+                let near = a.prefs.glass_colours.iter().enumerate()
+                    .map(|(i, c)| { let (x, y) = wheel::position(c, r); (i, (x - dx).powi(2) + (y - dy).powi(2)) })
+                    .min_by(|x, y| x.1.total_cmp(&y.1));
+                let i = match near {
+                    Some((i, d)) if d <= (BALL / 2. + 2.).powi(2) || a.prefs.glass_colours.len() >= 3 => i,
+                    _ => { a.prefs.glass_colours.push(wheel::colour_at(dx, dy, r, 1.)); a.prefs.glass_colours.len() - 1 }
+                };
+                a.glass_drag = Some(i);
+                a.glass_sel = i;
+                a.glass_move(i, dx, dy, w, cx);
+            }))
+            .on_mouse_move(cx.listener(|a, ev: &MouseMoveEvent, w, cx| {
+                if let Some(i) = a.glass_drag {
+                    let (dx, dy) = a.glass_offset(ev.position);
+                    a.glass_move(i, dx, dy, w, cx);
+                }
+            }))
+            .on_mouse_up(MouseButton::Left, cx.listener(|a, _, w, cx| a.glass_release(w, cx)))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(|a, _, w, cx| a.glass_release(w, cx)));
+        let sel = self.glass_sel.min(picks.len().saturating_sub(1));
+        self.glass_sel = sel;
+        for (i, c) in picks.iter().enumerate() {
+            let (x, y) = wheel::position(c, SIZE / 2.);
+            let held = self.glass_drag == Some(i);
+            let grow = self.swell(&format!("glass-ball-{i}"), held, 4., Some(window));
+            let d = BALL + grow;
+            let ball = div().absolute().left(px(SIZE / 2. + x - d / 2.)).top(px(SIZE / 2. + y - d / 2.)).w(px(d)).h(px(d)).rounded_full().bg(dot(c));
+            let ball = self.glass(ball, &format!("glass-ball-{i}"), held, d / 2.);
+            // the ball the brightness slider follows wears a ring in the accent colour
+            ring = ring.child(if i == sel {
+                let o = d / 2. + 4.;
+                div().absolute().left(px(SIZE / 2. + x - o)).top(px(SIZE / 2. + y - o)).w(px(o * 2.)).h(px(o * 2.)).rounded_full().border_2().border_color(p.accent).child(ball.left(px(2.)).top(px(2.)))
+            } else {
+                ball
+            });
+        }
+        // brightness for the selected ball: bright at the top, dark at the bottom, a glass knob like the other sliders
+        let bar = picks.get(sel).map(|c| {
+            let full = wheel::with_value(c, 1.);
+            let v = wheel::value_of(c);
+            let held = self.glass_vdrag;
+            let k = 18. + self.swell("glass-value", held, 4., Some(window));
+            let top = self.glass_bar.clone();
+            let mark = gpui::canvas(|_, _, _| (), move |b, _, _, _| top.set(f32::from(b.origin.y))).absolute().top_0().left_0().size_full();
+            let knob = div().absolute().left(px((14. - k) / 2.)).top(px(wheel::value_y(v, SIZE) - k / 2.)).w(px(k)).h(px(k)).rounded_full().bg(dot(c));
+            let knob = self.glass(knob, "glass-value", held, k / 2.);
+            div().id("glass-value").role(Role::Slider).aria_label(if rtl { "السطوع" } else { "Brightness" })
+                .relative().w(px(14.)).h(px(SIZE)).flex_none().rounded_full().cursor_pointer().border_1().border_color(p.border)
+                .bg(linear_gradient(180., linear_color_stop(dot(&full), 0.), linear_color_stop(gpui::black(), 1.)))
+                .child(mark)
+                .child(knob)
+                .on_mouse_down(MouseButton::Left, cx.listener(|a, ev: &MouseDownEvent, w, cx| { a.glass_vdrag = true; a.glass_value(ev.position.y, w, cx); }))
+                .on_mouse_move(cx.listener(|a, ev: &MouseMoveEvent, w, cx| if a.glass_vdrag { a.glass_value(ev.position.y, w, cx) }))
+                .on_mouse_up(MouseButton::Left, cx.listener(|a, _, w, cx| a.glass_release(w, cx)))
+                .on_mouse_up_out(MouseButton::Left, cx.listener(|a, _, w, cx| a.glass_release(w, cx)))
+        });
+        // one hex box per ball: typing a good colour moves its ball at once, a bad one goes back on Enter or leaving
+        while self.glass_hex.len() < picks.len() {
+            let i = self.glass_hex.len();
+            let st = cx.new(|cx| InputState::new(window, cx).placeholder("#RRGGBB"));
+            cx.subscribe_in(&st, window, move |a, st, ev: &InputEvent, w, cx| {
+                let typed = st.read(cx).value().to_string();
+                match ev {
+                    InputEvent::Change => {
+                        if let (Some((r, g, b)), true) = (wheel::parse_hex(&typed), i < a.prefs.glass_colours.len()) {
+                            let hex = wheel::to_hex(r, g, b);
+                            if a.prefs.glass_colours[i] != hex {
+                                a.prefs.glass_colours[i] = hex;
+                                a.reapply_look(w, cx);
+                            }
+                        }
+                    }
+                    InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                        if let Some(now) = a.prefs.glass_colours.get(i).cloned() {
+                            if wheel::parse_hex(&typed).map(|(r, g, b)| wheel::to_hex(r, g, b)) != Some(now.clone()) {
+                                st.update(cx, |s, cx| s.set_value(now, w, cx));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            })
+            .detach();
+            self.glass_hex.push(st);
+        }
+        let mut rows = div().flex().flex_col().gap_2();
+        for (i, c) in picks.iter().enumerate() {
+            let st = self.glass_hex[i].clone();
+            let (typing, shown) = st.read_with(cx, |s, cx| (s.focus_handle(cx).is_focused(window), s.value().to_string()));
+            if !typing && shown != *c {
+                let v = c.clone();
+                st.update(cx, |s, cx| s.set_value(v, window, cx));
+            }
+            let rm = self.button(format!("glass-remove-{i}"), if rtl { "إزالة" } else { "Remove" }, Kind::Ghost, cx, move |a, w, cx| {
+                if i < a.prefs.glass_colours.len() {
+                    a.prefs.glass_colours.remove(i);
+                    a.reapply_look(w, cx);
+                }
+            });
+            rows = rows.child(
+                div().flex().items_center().gap_2()
+                    .child(div().id(SharedString::from(format!("glass-pick-{i}"))).w(px(16.)).h(px(16.)).flex_none().rounded_full().bg(dot(c)).border_2().border_color(if i == sel { p.accent } else { p.border }).cursor_pointer()
+                        .on_click(cx.listener(move |a, _, _, cx| { a.glass_sel = i; cx.notify(); })))
+                    .child(div().w(px(110.)).child(Input::new(&st)))
+                    .child(rm),
+            );
+        }
+        if picks.len() < 3 {
+            rows = rows.child(self.button("glass-colour-add", if rtl { "إضافة لون" } else { "Add colour" }, Kind::Normal, cx, |a, w, cx| {
+                // a new ball starts across the wheel from the last one, so it is easy to see and grab
+                let next = match a.prefs.glass_colours.last().and_then(|c| wheel::parse_hex(c)) {
+                    Some((r, g, b)) => { let (h, s, v) = wheel::rgb_to_hsv(r, g, b); let (r, g, b) = wheel::hsv_to_rgb(h + 120., s.max(0.6), v.max(0.6)); wheel::to_hex(r, g, b) }
+                    None => "#4F8CFF".to_string(),
+                };
+                a.prefs.glass_colours.push(next);
+                a.reapply_look(w, cx);
+            }));
+        }
+        let opacity = self.prefs.glass_opacity.unwrap_or(0.5);
+        let mut strength = div().flex().flex_wrap().items_center().gap_1().child(div().text_sm().text_color(p.muted).child(if rtl { "الشدة" } else { "Opacity" }));
+        for v in [0.2_f32, 0.4, 0.6, 0.8, 1.0] {
+            strength = strength.child(self.button(format!("glass-opacity-{}", (v * 100.) as u32), format!("{}%", (v * 100.) as u32), if (opacity - v).abs() < 0.05 { Kind::Primary } else { Kind::Normal }, cx, move |a, w, cx| {
+                a.prefs.glass_opacity = Some(v);
+                a.reapply_look(w, cx);
+            }));
+        }
+        let clear = self.button("glass-colours-clear", if rtl { "بلا ألوان" } else { "No colours" }, Kind::Ghost, cx, |a, w, cx| {
+            a.prefs.glass_colours.clear();
+            a.reapply_look(w, cx);
+        });
+        div().flex().flex_col().gap_2()
+            .child(div().flex().items_center().gap_2().child(div().text_sm().text_color(p.muted).child(if rtl { "ألوان الزجاج (حتى ثلاثة)" } else { "Glass colours (up to three)" })).child(clear))
+            .child(div().flex().flex_wrap().items_center().gap_4().child(div().flex().items_center().gap_3().child(ring).children(bar)).child(rows))
+            .child(strength)
+            .child(div().text_xs().text_color(p.muted).child(if rtl { "تبقى الكلمات واضحة: يخف اللون إن لزم." } else { "Words stay readable: the tint softens itself when it has to." }))
+            .into_any_element()
+    }
+
+    /// Where the pointer is from the colour wheel's centre.
+    fn glass_offset(&self, at: Point<Pixels>) -> (f32, f32) {
+        let (cx0, cy0) = self.glass_wheel.get();
+        (f32::from(at.x) - cx0, f32::from(at.y) - cy0)
+    }
+
+    /// Move ball `i` to the pointer, keeping its brightness. The look follows live; saving waits for the release.
+    fn glass_move(&mut self, i: usize, dx: f32, dy: f32, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(old) = self.prefs.glass_colours.get(i) else { return };
+        let v = lh_gui::wheel::value_of(old).max(lh_gui::wheel::MIN_VALUE);
+        let hex = lh_gui::wheel::colour_at(dx, dy, 88., v);
+        if self.prefs.glass_colours[i] != hex {
+            self.prefs.glass_colours[i] = hex;
+            self.active_theme = self.themes.resolve(&self.prefs.theme, self.dark());
+            self.refresh_pal(cx);
+            self.apply_window(window);
+        }
+        cx.notify();
+    }
+
+    /// Set the selected ball's brightness from the pointer's height on the slider, live; saved on release.
+    fn glass_value(&mut self, y: Pixels, window: &mut Window, cx: &mut Context<Self>) {
+        let i = self.glass_sel;
+        let Some(old) = self.prefs.glass_colours.get(i) else { return };
+        let hex = lh_gui::wheel::with_value(old, lh_gui::wheel::value_at(f32::from(y) - self.glass_bar.get(), 176.));
+        if self.prefs.glass_colours[i] != hex {
+            self.prefs.glass_colours[i] = hex;
+            self.active_theme = self.themes.resolve(&self.prefs.theme, self.dark());
+            self.refresh_pal(cx);
+            self.apply_window(window);
+        }
+        cx.notify();
+    }
+
+    fn glass_release(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let slid = std::mem::take(&mut self.glass_vdrag);
+        if self.glass_drag.take().is_some() || slid {
+            self.reapply_look(window, cx);
+        }
+    }
+
+    /// "Add font…" and the list of fonts added so far, each with Remove.
+    fn added_fonts_block(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let add = self.button("font-add", if rtl { "إضافة خط…" } else { "Add font…" }, Kind::Normal, cx, |a, _, cx| a.add_font_dialog(cx));
+        let files = lh_gui::fonts::user_font_dir().map(|d| lh_gui::fonts::user_font_files(&d)).unwrap_or_default();
+        let rows: Vec<AnyElement> = files
+            .into_iter()
+            .enumerate()
+            .map(|(i, f)| {
+                let name = f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let rm = self.button(format!("font-remove-{i}"), if rtl { "إزالة" } else { "Remove" }, Kind::Ghost, cx, move |a, _, cx| a.remove_font(&f, cx));
+                div().flex().when(rtl, |r| r.flex_row_reverse()).items_center().gap_2().child(div().min_w_0().text_sm().text_color(p.muted).child(name)).child(rm).into_any_element()
+            })
+            .collect();
+        div().flex().flex_col().items_start().gap_1()
+            .child(add)
+            .children((!self.font_note.is_empty()).then(|| div().text_xs().text_color(p.muted).child(self.font_note.clone())))
+            .children(rows)
             .into_any_element()
     }
 
@@ -409,7 +650,7 @@ impl App {
             a.font_picker = if a.font_picker == Some(slot) { None } else { Some(slot) };
             cx.notify();
         });
-        let mut col = div().flex().flex_col().gap_1().child(toggle);
+        let mut col = div().flex().flex_col().items_start().gap_1().child(div().min_w(px(140.)).max_w(px(320.)).overflow_hidden().whitespace_nowrap().child(toggle));
         if open {
             let mut names = match slot {
                 FontSlot::Arabic => lh_gui::fonts::arabic_first(&self.fonts),
@@ -428,7 +669,7 @@ impl App {
                     })
                 })
                 .collect();
-            col = col.child(div().id(SharedString::from(format!("font-list-{tag}"))).role(Role::List).aria_label(title).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.sunken).children(rows));
+            col = col.child(div().id(SharedString::from(format!("font-list-{tag}"))).role(Role::List).aria_label(title).min_w(px(200.)).max_w(px(360.)).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.sunken).children(rows));
         }
         col.into_any_element()
     }
@@ -620,7 +861,7 @@ impl App {
         let mut control = Some(control);
         let mut head = div().flex().flex_wrap().when(rtl, |r| r.flex_row_reverse()).items_center().gap_2().child(title);
         if !wide {
-            head = head.child(div().flex_none().max_w_full().children(control.take()));
+            head = head.child(div().flex_none().max_w_full().flex().when(rtl, |r| r.flex_row_reverse()).children(control.take()));
         }
         let mut card = div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).overflow_hidden()
             .when(risky, |c| c.border_1().border_color(p.danger.opacity(0.55)))
@@ -688,7 +929,7 @@ impl App {
             col = col.child(div().flex().flex_col().gap_0p5().pb_1().child(div().text_lg().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(page.title())).child(div().text_sm().text_color(p.muted).child(page.blurb())));
         }
         if show_appearance {
-            col = col.child(self.appearance_block(cx));
+            col = col.child(self.appearance_block(window, cx));
         }
         if !searching {
             if let Some(body) = self.pg_page(page, window, cx) {
@@ -1050,7 +1291,7 @@ impl App {
         let mut col = div().flex().flex_col().gap_2().p_3().panel(&p, false).text_color(p.text)
             .child(div().flex().items_center().gap_2().child(div().flex_1().child(r.goal.clone())).child(div().text_sm().text_color(if r.is_waiting() { p.accent } else { p.muted }).child(format!("{} {}", r.status, if total > 0 { format!("({done}/{total})") } else { String::new() }))));
         for s in &r.steps {
-            col = col.child(div().flex().gap_2().text_sm().child(div().w(px(16.)).text_color(if s.state == StepState::Failed { p.danger } else { p.accent }).child(state_mark(s.state))).child(div().flex_1().child(format!("{} · {}{}", s.title, s.assignee, if s.note.is_empty() { String::new() } else { format!(" — {}", s.note.chars().take(160).collect::<String>()) }))));
+            col = col.child(div().flex().gap_2().text_sm().child(div().w(px(16.)).text_color(match s.state { StepState::Failed => p.danger, StepState::Done => p.good, StepState::Parked | StepState::Blocked => p.warn, _ => p.accent }).child(state_mark(s.state))).child(div().flex_1().child(format!("{} · {}{}", s.title, s.assignee, if s.note.is_empty() { String::new() } else { format!(" — {}", s.note.chars().take(160).collect::<String>()) }))));
         }
         for q in r.questions.clone() {
             let (run, q1, q2) = (r.id.clone(), q.clone(), q.clone());

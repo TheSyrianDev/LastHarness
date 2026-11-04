@@ -107,6 +107,69 @@ pub fn script_runs(text: &str) -> Vec<(Range<usize>, Script)> {
     out
 }
 
+
+// ---- fonts the person adds ------------------------------------------------------------------------------------
+
+use std::path::{Path, PathBuf};
+
+/// Where added fonts are kept: `$XDG_DATA_HOME/fonts/lastharness`, else `~/.local/share/fonts/lastharness`.
+pub fn user_font_dir() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
+    Some(base.join("fonts").join("lastharness"))
+}
+
+/// The family names inside font bytes, or why the bytes are not a font. `ext` is the lowercase file extension.
+pub fn validate_font(bytes: &[u8], ext: &str) -> Result<Vec<String>, String> {
+    match ext {
+        "ttf" | "otf" | "ttc" | "otc" => {}
+        "woff2" | "woff" => return Err("Web fonts (.woff, .woff2) are not supported. Use a .ttf, .otf or .ttc file.".into()),
+        _ => return Err("That file type is not a font. Use a .ttf, .otf or .ttc file.".into()),
+    }
+    let count = ttf_parser::fonts_in_collection(bytes).unwrap_or(1);
+    let mut names = Vec::new();
+    for i in 0..count {
+        let face = ttf_parser::Face::parse(bytes, i).map_err(|_| "That file is not a readable font.".to_string())?;
+        let pick = |id: u16| face.names().into_iter().filter(|n| n.name_id == id).find_map(|n| n.to_string());
+        let fam = pick(16).or_else(|| pick(1)).ok_or_else(|| "The font has no family name.".to_string())?;
+        if !names.contains(&fam) {
+            names.push(fam);
+        }
+    }
+    Ok(names)
+}
+
+/// Check a font file and copy it into `dir`. Returns the stored path, the family names and the bytes.
+pub fn add_font_file(src: &Path, dir: &Path) -> Result<(PathBuf, Vec<String>, Vec<u8>), String> {
+    let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let bytes = std::fs::read(src).map_err(|e| format!("Could not read the file: {e}"))?;
+    let names = validate_font(&bytes, &ext)?;
+    let stem: String = src.file_stem().and_then(|s| s.to_str()).unwrap_or("font").chars().map(|c| if c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' ') { c } else { '_' }).collect();
+    std::fs::create_dir_all(dir).map_err(|e| format!("Could not make the fonts folder: {e}"))?;
+    let dest = dir.join(format!("{stem}.{ext}"));
+    std::fs::write(&dest, &bytes).map_err(|e| format!("Could not save the font: {e}"))?;
+    Ok((dest, names, bytes))
+}
+
+/// The font files added so far, sorted.
+pub fn user_font_files(dir: &Path) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc"))).collect();
+    v.sort();
+    v
+}
+
+/// Delete one added font. Only files inside `dir` can go.
+pub fn remove_font_file(file: &Path, dir: &Path) -> Result<(), String> {
+    if file.parent() != Some(dir) {
+        return Err("That font is not one you added.".into());
+    }
+    std::fs::remove_file(file).map_err(|e| format!("Could not remove the font: {e}"))
+}
+
+/// Tell fontconfig about a folder so the new fonts show in `installed_families`. Silent when fc-cache is missing.
+pub fn refresh_cache(dir: &Path) {
+    let _ = std::process::Command::new("fc-cache").arg(dir).output();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +231,30 @@ mod tests {
         let runs = script_runs("واحد 2 اثنان");
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].1, Script::Arabic);
+    }
+
+    #[test]
+    fn only_real_fonts_are_taken() {
+        assert!(validate_font(b"not a font", "ttf").is_err());
+        assert!(validate_font(b"x", "txt").unwrap_err().contains("not a font"));
+        assert!(validate_font(b"x", "woff2").unwrap_err().contains("Web fonts"));
+        let dir = tempfile::tempdir().unwrap();
+        let bad = dir.path().join("bad.ttf");
+        std::fs::write(&bad, b"junk").unwrap();
+        assert!(add_font_file(&bad, &dir.path().join("out")).is_err());
+        assert!(user_font_files(&dir.path().join("out")).is_empty());
+    }
+
+    #[test]
+    fn a_real_system_font_is_copied_listed_and_removed() {
+        let Some(src) = std::process::Command::new("fc-list").args(["-f", "%{file}\\n"]).output().ok().and_then(|o| String::from_utf8(o.stdout).ok()).and_then(|t| t.lines().find(|l| l.ends_with(".ttf")).map(PathBuf::from)) else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("fonts");
+        let (dest, names, bytes) = add_font_file(&src, &out).unwrap();
+        assert!(!names.is_empty() && !bytes.is_empty());
+        assert_eq!(user_font_files(&out), vec![dest.clone()]);
+        assert!(remove_font_file(&src, &out).is_err(), "files outside the folder stay");
+        remove_font_file(&dest, &out).unwrap();
+        assert!(user_font_files(&out).is_empty());
     }
 }

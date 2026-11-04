@@ -126,4 +126,16 @@ fn screen_shots() {
             a.chats.new_chat("Qwen3.6-35B-A3B");
         });
     }
+    // the Glass look tinted around two picked colours, in a chat and on the Appearance page
+    snap(&mut cx, "glass-10-tinted-chat", &|a, w, cx| {
+        a.settings_open = false;
+        messages(a);
+        a.prefs.glass_colours = vec![lh_gui::theme::field_colour(14, 2), lh_gui::theme::field_colour(20, 3)];
+        a.prefs.glass_opacity = Some(0.8);
+        look("Glass")(a, w, cx);
+    });
+    snap(&mut cx, "glass-11-tinted-appearance", &|a, w, cx| {
+        a.open_settings(w, cx);
+        a.settings_page = Category::Appearance;
+    });
 }

@@ -37,6 +37,14 @@ pub struct Prefs {
     pub settle_days: u32,
     /// The model on each stop of the model slider, fastest first; empty means filled for you.
     pub tiers: Vec<String>,
+    /// How many stops the model slider has, 2 to 7. 0 means the default, 5 (an older file has no count and gets 5).
+    pub stop_count: usize,
+    /// The title of each stop of the model slider. Empty, or a blank entry, means the default title for that stop.
+    pub stop_titles: Vec<String>,
+    /// Up to three colours ("#rrggbb") the Glass look is tinted around; empty leaves it as built.
+    pub glass_colours: Vec<String>,
+    /// How strongly the Glass colours show, 0 to 1. None means 0.5.
+    pub glass_opacity: Option<f32>,
 }
 
 pub fn path() -> PathBuf {
@@ -241,6 +249,25 @@ mod tests {
         std::fs::write(&p, "model = \"Q\"\n").unwrap();
         assert_eq!(Prefs::load(&p).latin_font, "", "an older file without the keys");
         let a = Prefs { latin_font: "Inter".into(), arabic_font: "Noto Kufi Arabic".into(), ..Default::default() };
+        a.save(&p).unwrap();
+        assert_eq!(Prefs::load(&p), a);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_slider_count_and_titles_survive_and_an_old_file_keeps_five_stops() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-stops-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        // an old file: five fixed stops, no count, no titles
+        std::fs::write(&p, "tiers = [\"a\", \"\", \"b\", \"\", \"c\"]\n").unwrap();
+        let old = Prefs::load(&p);
+        assert_eq!(old.stop_count, 0, "no count in the file means the default");
+        assert_eq!(crate::tiers::clamp_count(old.stop_count), 5);
+        assert_eq!(old.tiers.len(), 5, "the old five stops load unchanged");
+        assert!(old.stop_titles.is_empty());
+        let a = Prefs { stop_count: 3, stop_titles: vec!["Slow".into(), String::new(), "Fast".into()], ..Default::default() };
         a.save(&p).unwrap();
         assert_eq!(Prefs::load(&p), a);
         let _ = std::fs::remove_dir_all(&dir);

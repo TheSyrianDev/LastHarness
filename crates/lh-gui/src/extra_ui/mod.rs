@@ -85,6 +85,7 @@ impl App {
             Category::Web => {
                 self.pg_fetch("devices", "/v1/devices");
                 self.pg_fetch("pending", "/v1/devices/pending");
+                self.pg_fetch("phone", "/v1/devices/phone");
             }
             Category::Activity => {
                 let path = model::activity::path(&self.pg.activity_kind, 100);
@@ -173,6 +174,7 @@ impl App {
             "ch-remove" => format!("Removed {arg}."),
             "dev-open" => format!("Pairing is open for {} minutes. On the other device, open this computer's address and press Pair. It shows a PIN: type it below.", v["open_for_minutes"]),
             "dev-accept" => format!("Paired {}. It can sign in now.", model::s(v, "name")),
+            "phone-new" => "Made a new sign-in link. The old one no longer works; phones already signed in stay in.".to_string(),
             "dev-remove" => "Removed. That device has to pair again to come back.".to_string(),
             "export" => model::data::export_note(v),
             "import-look" => {

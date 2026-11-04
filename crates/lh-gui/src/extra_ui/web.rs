@@ -13,6 +13,7 @@ use lh_gui::setting_names::Category;
 impl App {
     pub(super) fn pg_web(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let mut col = div().flex().flex_col().gap_2().pt_2();
+        col = col.child(self.pg_phone(cx));
         col = col.child(self.pg_title("Paired devices")).child(self.pg_muted("A browser or phone can use this app over the address above only after you pair it here. Open pairing for a few minutes, then on the other device open the address and press Pair. It shows a PIN: type that PIN below."));
         if let Some(n) = self.pg_note_for("web") {
             col = col.child(n);
@@ -76,6 +77,41 @@ impl App {
             }
         }
         col.child(div().flex().child(self.pg_refresh(Category::Web, cx))).into_any_element()
+    }
+
+    /// Phone: the sign-in link for a phone on the tailnet, as a QR code to scan and as text.
+    fn pg_phone(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let mut col = div().flex().flex_col().gap_2().pb_2().child(self.pg_title("Phone"));
+        let info = match self.pg_list("phone") {
+            None => return col.into_any_element(),
+            Some(Err(_)) => return col.child(self.pg_muted("Turn on \"Reach it from your phone over Tailscale\" above, then restart the app. A sign-in link for your phone appears here.")).into_any_element(),
+            Some(Ok(v)) => v,
+        };
+        let Some(link) = info["link"].as_str().map(str::to_string) else {
+            let why = if info["enabled"] == true { "The core is not listening on an address a phone can reach. Check that Tailscale is running on this computer, then restart the app." } else { "Turn on \"Reach it from your phone over Tailscale\" above, then restart the app. A sign-in link for your phone appears here." };
+            return col.child(self.pg_muted(why)).into_any_element();
+        };
+        col = col.child(self.pg_muted("Scan this with your phone's camera. The phone must be signed in to Tailscale too. Its browser warns about the certificate once: check the fingerprint below, then continue. The phone stays signed in and shows up under Paired devices."));
+        if let Some(rows) = lh_client::qr::modules(&link) {
+            // always dark on white, whatever the theme, so every camera reads it
+            let mut grid = div().flex().flex_col().bg(white()).p_1().rounded(px(6.)).id("pg-phone-qr").role(Role::Image).aria_label("QR code with the sign-in link for your phone");
+            for row in rows {
+                let mut r = div().flex();
+                for dark in row {
+                    r = r.child(div().size(px(5.)).when(dark, |d| d.bg(black())));
+                }
+                grid = grid.child(r);
+            }
+            col = col.child(div().flex().child(grid));
+        }
+        let copy_link = link.clone();
+        let copy = self.button("pg-phone-copy", "Copy link", Kind::Normal, cx, move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy_link.clone())));
+        let new = self.pg_confirm_button("phone-new", "Make a new link", "Yes, replace the link", cx, |a, _, cx| a.pg_act("web", "phone-new:", "POST", "/v1/devices/phone/rotate", None, cx));
+        col = col.child(div().flex().flex_wrap().gap_1().child(copy).child(new));
+        if let Some(f) = info["fingerprint"].as_str() {
+            col = col.child(self.pg_muted(format!("Certificate fingerprint: {f}")));
+        }
+        col.child(self.pg_muted("Keep the link private: anyone with it on your tailnet can sign in. Make a new link if it was shared by mistake.")).into_any_element()
     }
 
     /// While pairing is open, look for a device that is waiting every few seconds, so it appears without a click.

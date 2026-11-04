@@ -164,10 +164,32 @@ impl App {
                     a.close_settings(w, cx);
                     a.rank_models(w, cx);
                 });
+                let n = self.stop_count();
+                let count_row = div().flex().items_center().gap_2()
+                    .child(self.button("stops-fewer", "Fewer", crate::ui::Kind::Normal, cx, move |a, _, cx| a.set_stop_count(n.saturating_sub(1), cx)))
+                    .child(div().text_sm().child(format!("{n} stops")))
+                    .child(self.button("stops-more", "More", crate::ui::Kind::Normal, cx, move |a, _, cx| a.set_stop_count(n + 1, cx)));
+                let mut titles = div().flex().flex_col().gap_1p5();
+                for i in 0..n {
+                    let key = format!("stop-title-{i}");
+                    let fresh = !self.sp.inputs.contains_key(&key);
+                    let placeholder = lh_gui::tiers::title_of(&[], i, self.rtl);
+                    let input = self.pg_input(&key, &placeholder, false, window, cx);
+                    if fresh {
+                        if let Some(t) = self.prefs.stop_titles.get(i).filter(|t| !t.is_empty()).cloned() {
+                            self.pg_set(&key, &t, window, cx);
+                        }
+                    }
+                    titles = titles.child(Input::new(&input).aria_label(format!("Title of stop {}", i + 1)));
+                }
+                let save = self.button("stops-save-titles", "Save stop titles", crate::ui::Kind::Normal, cx, |a, _, cx| a.save_stop_titles(cx));
                 div().flex().flex_col().gap_3()
                     .child(div().flex().flex_col().gap_1()
                         .child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Model slider"))
-                        .child(div().text_xs().text_color(self.pal.muted).child("Five stops from fastest to smartest. The assistant can look up benchmarks and suggest which model goes where; nothing changes until you set it. Set a stop yourself in the model list."))
+                        .child(div().text_xs().text_color(self.pal.muted).child("The stops run from the lowest to the highest. Choose how many (2 to 7) and what each is called. The assistant can look up benchmarks and suggest which model goes where; nothing changes until you set it. Set a stop yourself in the model list."))
+                        .child(count_row)
+                        .child(titles)
+                        .child(div().flex().child(save))
                         .child(div().flex().child(rank)))
                     .child(self.models_keys_block(window, cx))
                     .into_any_element()
@@ -248,15 +270,15 @@ impl App {
         div().min_w_0().text_xs().text_color(self.pal.muted).child(t.into())
     }
 
-    /// The line under a section: green-ish accent when it worked, red when it did not.
+    /// The line under a section: the good colour when it worked, the danger colour when it did not.
     pub fn pg_note(&self, section: &str) -> Option<AnyElement> {
         let p = &self.pal;
-        self.sp.notes.get(section).map(|(ok, t)| div().min_w_0().text_sm().text_color(if *ok { p.accent } else { p.danger }).child(t.clone()).into_any_element())
+        self.sp.notes.get(section).map(|(ok, t)| div().min_w_0().text_sm().text_color(if *ok { p.good } else { p.danger }).child(t.clone()).into_any_element())
     }
 
     pub fn pg_error(&self, name: &str) -> Option<AnyElement> {
         let p = &self.pal;
-        // the page's banner already says it; the same words again under a section are noise
+        // the page's banner already says it; repeating it under a section adds nothing
         let banner = self.panels.settings_error.as_deref();
         self.sp.errors.get(name).filter(|e| Some(e.as_str()) != banner).map(|e| div().min_w_0().text_sm().text_color(p.danger).child(e.clone()).into_any_element())
     }

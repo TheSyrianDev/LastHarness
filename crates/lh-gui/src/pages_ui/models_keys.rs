@@ -38,7 +38,7 @@ impl App {
         };
         let status = info.status();
         let dot = match status {
-            Status::Working => p.accent,
+            Status::Working => p.good,
             Status::Down => p.danger,
             Status::NotSet => p.muted,
         };
@@ -164,7 +164,7 @@ impl App {
     fn test_result_view(&self, r: &TestResult) -> AnyElement {
         let p = &self.pal;
         let mut c = self.pg_card().id("provider-test-result").role(Role::Group).aria_label("Connection test");
-        c = c.child(div().flex().items_center().gap_2().child(div().w(px(10.)).h(px(10.)).rounded_full().bg(if r.ok { p.accent } else { p.danger })).child(div().flex_1().min_w_0().child(r.message.clone())));
+        c = c.child(div().flex().items_center().gap_2().child(div().w(px(10.)).h(px(10.)).rounded_full().bg(if r.ok { p.good } else { p.danger })).child(div().flex_1().min_w_0().child(r.message.clone())));
         if r.ok && !r.models.is_empty() {
             c = c.child(self.pg_small(format!("Models: {}", r.model_sample(8))));
         }

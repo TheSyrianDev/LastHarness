@@ -147,7 +147,6 @@ pub struct App {
     pub content_index: usize,
     /// The panel the person last used.
     pub focus: Focus,
-    /// Seconds the bubbles have drifted; only moves while the look has bubbles.
     /// A problem to show on the opened-content panel, such as a browser that would not start.
     pub content_note: Option<String>,
     /// The chat tree panel: whose tree it shows, the chosen line, a question waiting.
@@ -200,8 +199,20 @@ pub struct App {
     pub fonts: Vec<String>,
     /// Which font picker is open on the Appearance page.
     pub font_picker: Option<FontSlot>,
+    /// What happened to the last font the person tried to add or remove.
+    pub font_note: String,
     /// The text boxes of the setting cards, one per setting, made when first shown.
     pub setting_inputs: HashMap<String, Entity<InputState>>,
+    /// The Glass colour wheel: a hex box per ball (made when first shown), the ball being dragged, the wheel's
+    /// centre in the window as of the last paint, and its picture.
+    pub glass_hex: Vec<Entity<InputState>>,
+    pub glass_drag: Option<usize>,
+    pub glass_wheel: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
+    pub glass_disc: Option<std::sync::Arc<RenderImage>>,
+    /// The ball the brightness slider edits, whether that slider is being dragged, and its top edge in the window.
+    pub glass_sel: usize,
+    pub glass_vdrag: bool,
+    pub glass_bar: std::rc::Rc<std::cell::Cell<f32>>,
     /// The setting whose list of options (or models) is open.
     pub setting_list: Option<String>,
     /// The web page drawn inside the Opened tab, while it is shown.
@@ -269,7 +280,7 @@ impl App {
         let system_dark = lh_gui::appearance::system_dark();
         let active_theme = themes.resolve(&prefs.theme, lh_gui::appearance::is_dark(prefs.mode, system_dark));
         let window_radius = theme::window_radius();
-        let pal = Pal::from(&themes.themes[active_theme], window_radius, lh_gui::config::reduce_motion(), &lh_gui::fonts::installed_families());
+        let pal = Pal::from(&glass_tinted(&themes.themes[active_theme], &prefs), window_radius, lh_gui::config::reduce_motion(), &lh_gui::fonts::installed_families());
         apply_component_theme(&pal, cx);
 
         let (tx, mut rx) = futures_channel::unbounded::<Ev>();
@@ -296,6 +307,11 @@ impl App {
                         app.active_theme = app.themes.resolve(&app.prefs.theme, app.dark());
                         app.refresh_pal(cx);
                         cx.notify();
+                        crate::tray::refresh();
+                    }
+                    // the tray follows the system light or dark setting too: look about every 5 s
+                    if tick.is_multiple_of(12) {
+                        crate::tray::refresh();
                     }
                     // look for the core again every 3 s while it is away, and refresh the lists every 20 s
                     if (!app.connected && tick.is_multiple_of(8)) || tick.is_multiple_of(50) {
@@ -424,8 +440,6 @@ impl App {
         .detach();
         let mut chats = Chats::default();
         chats.new_chat(&prefs.model);
-        let layout_model = prefs.model.clone();
-        let _ = layout_model;
         App {
             cfg,
             backend,
@@ -495,7 +509,15 @@ impl App {
             look_notice,
             fonts: lh_gui::fonts::installed_families(),
             font_picker: None,
+            font_note: String::new(),
             setting_inputs: HashMap::new(),
+            glass_hex: Vec::new(),
+            glass_drag: None,
+            glass_wheel: Default::default(),
+            glass_disc: None,
+            glass_sel: 0,
+            glass_vdrag: false,
+            glass_bar: Default::default(),
             setting_list: None,
             page: None,
             page_stills: Vec::new(),
@@ -559,7 +581,8 @@ impl App {
 
     pub fn refresh_pal(&mut self, cx: &mut Context<Self>) {
         self.window_radius = theme::window_radius();
-        self.pal = Pal::from(&self.themes.themes[self.active_theme], self.window_radius, lh_gui::config::reduce_motion(), &self.fonts);
+        let t = glass_tinted(&self.themes.themes[self.active_theme], &self.prefs);
+        self.pal = Pal::from(&t, self.window_radius, lh_gui::config::reduce_motion(), &self.fonts);
         apply_component_theme(&self.pal, cx);
     }
 
@@ -610,6 +633,64 @@ impl App {
     pub fn apply_window(&self, window: &mut Window) {
         let t = &self.themes.themes[self.active_theme];
         window.set_background_appearance(if t.blur { WindowBackgroundAppearance::Blurred } else if t.is_translucent() { WindowBackgroundAppearance::Transparent } else { WindowBackgroundAppearance::Opaque });
+    }
+
+    /// Load every font in the added-fonts folder into the window's text system. Called once at start.
+    pub fn load_user_fonts(cx: &mut gpui::App) {
+        let Some(dir) = lh_gui::fonts::user_font_dir() else { return };
+        let fonts: Vec<std::borrow::Cow<'static, [u8]>> = lh_gui::fonts::user_font_files(&dir).iter().filter_map(|f| std::fs::read(f).ok()).map(std::borrow::Cow::Owned).collect();
+        if !fonts.is_empty() {
+            let _ = cx.text_system().add_fonts(fonts);
+        }
+    }
+
+    /// Ask for a font file, check it, copy it in, load it and refresh the list.
+    pub fn add_font_dialog(&mut self, cx: &mut Context<Self>) {
+        let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some("Add font".into()) });
+        cx.spawn(async move |this: WeakEntity<App>, cx: &mut AsyncApp| {
+            if let Ok(Ok(Some(paths))) = rx.await {
+                if let Some(path) = paths.first().cloned() {
+                    let _ = this.update(cx, |a, cx| a.add_font_file(&path, cx));
+                }
+            }
+        })
+        .detach();
+    }
+
+    pub fn add_font_file(&mut self, path: &std::path::Path, cx: &mut Context<Self>) {
+        let Some(dir) = lh_gui::fonts::user_font_dir() else {
+            self.font_note = "No home folder to keep fonts in.".into();
+            return cx.notify();
+        };
+        match lh_gui::fonts::add_font_file(path, &dir) {
+            Ok((_, names, bytes)) => {
+                let _ = cx.text_system().add_fonts(vec![std::borrow::Cow::Owned(bytes)]);
+                lh_gui::fonts::refresh_cache(&dir);
+                self.fonts = lh_gui::fonts::installed_families();
+                for n in &names {
+                    if !self.fonts.contains(n) {
+                        self.fonts.push(n.clone());
+                    }
+                }
+                self.fonts.sort_by_key(|s| s.to_lowercase());
+                self.font_note = format!("Added {}.", names.join(", "));
+            }
+            Err(e) => self.font_note = e,
+        }
+        cx.notify();
+    }
+
+    pub fn remove_font(&mut self, file: &std::path::Path, cx: &mut Context<Self>) {
+        let Some(dir) = lh_gui::fonts::user_font_dir() else { return };
+        match lh_gui::fonts::remove_font_file(file, &dir) {
+            Ok(()) => {
+                lh_gui::fonts::refresh_cache(&dir);
+                self.fonts = lh_gui::fonts::installed_families();
+                self.font_note = "Removed. It leaves the list now and the window fully on the next start.".into();
+            }
+            Err(e) => self.font_note = e,
+        }
+        cx.notify();
     }
 
     pub fn set_font(&mut self, slot: FontSlot, name: &str) {
@@ -765,15 +846,25 @@ impl App {
         cx.notify();
     }
 
-    /// The model on each slider stop, by model name (the group's base), fastest first.
-    pub fn stops(&self) -> [String; lh_gui::tiers::STOPS] {
+    /// How many stops the model slider has now (2 to 7).
+    pub fn stop_count(&self) -> usize {
+        lh_gui::tiers::clamp_count(self.prefs.stop_count)
+    }
+
+    /// The title of stop `i` of the model slider: the one the person set, else the default.
+    pub fn stop_title(&self, i: usize) -> String {
+        lh_gui::tiers::title_of(&self.prefs.stop_titles, i, self.rtl)
+    }
+
+    /// The model on each slider stop, by model name (the group's base), smallest first.
+    pub fn stops(&self) -> Vec<String> {
         let models: Vec<(String, String)> = self.models.groups().iter().map(|g| (g.base.clone(), g.size.clone())).collect();
-        lh_gui::tiers::fill(&self.prefs.tiers, &models)
+        lh_gui::tiers::fill(&self.prefs.tiers, &models, self.stop_count())
     }
 
     /// Move the open chat to the model on stop `i` of the slider.
     pub fn choose_stop(&mut self, i: usize, cx: &mut Context<Self>) {
-        let base = self.stops()[i].clone();
+        let Some(base) = self.stops().get(i).cloned() else { return };
         let Some(g) = self.models.groups().iter().find(|g| g.base == base) else { return };
         let id = g.default_entry().id.clone();
         self.choose_model(&id, cx);
@@ -783,8 +874,30 @@ impl App {
 
     /// Put a model on a stop by hand. Choosing the model already there gives the stop back to the automatic fill.
     pub fn set_stop(&mut self, i: usize, base: &str, cx: &mut Context<Self>) {
-        self.prefs.tiers.resize(lh_gui::tiers::STOPS, String::new());
+        let n = self.stop_count();
+        self.prefs.tiers.resize(n, String::new());
+        if i >= n {
+            return;
+        }
         self.prefs.tiers[i] = if self.prefs.tiers[i] == base { String::new() } else { base.to_string() };
+        self.persist();
+        cx.notify();
+    }
+
+    /// Change how many stops the model slider has (kept within 2 to 7). Stops past the new count are dropped.
+    pub fn set_stop_count(&mut self, n: usize, cx: &mut Context<Self>) {
+        let n = lh_gui::tiers::clamp_count(n);
+        self.prefs.stop_count = n;
+        self.prefs.tiers.resize(n, String::new());
+        self.persist();
+        cx.notify();
+    }
+
+    /// Save the titles typed in Settings for each stop. A blank box means the default title for that stop.
+    pub fn save_stop_titles(&mut self, cx: &mut Context<Self>) {
+        let n = self.stop_count();
+        let titles: Vec<String> = (0..n).map(|i| self.pg_val(&format!("stop-title-{i}"), cx).trim().to_string()).collect();
+        self.prefs.stop_titles = titles;
         self.persist();
         cx.notify();
     }
@@ -792,11 +905,14 @@ impl App {
     /// Ask the assistant to rank the models from public benchmarks; it answers in a new chat and changes nothing.
     pub fn rank_models(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let names: Vec<String> = self.models.groups().iter().map(|g| format!("{} ({})", g.label, if g.size.is_empty() { "size unknown" } else { &g.size })).collect();
+        let n = self.stop_count();
+        let titles: Vec<String> = (0..n).map(|i| self.stop_title(i)).collect();
         let prompt = format!(
             "Look up public benchmark results for these local models and rank them from fastest to smartest: {}. \
-             Then propose which model goes on each of the five stops of my model slider (Fastest, Fast, Balanced, Smart, Smartest), \
+             Then propose which model goes on each of the {n} stops of my model slider ({}), from first to last, \
              with one line on why for each. Do not change any settings or files.",
-            names.join(", ")
+            names.join(", "),
+            titles.join(", ")
         );
         self.model_menu = false;
         self.new_chat(cx);
@@ -968,8 +1084,6 @@ impl App {
                 if let Some(c) = self.chats.by_key(chat) {
                     c.session = Some(session);
                 }
-                let name = self.models.name_of(&model);
-                let _ = name;
                 self.core_models.insert(chat, self.models.name_of(&model));
             }
             Ev::Server { chat, event } => {
@@ -1527,3 +1641,12 @@ impl App {
 #[cfg(test)]
 #[path = "shots.rs"]
 mod shots;
+
+/// The look with the person's Glass colours applied when it is the Glass look; any other look as it is.
+fn glass_tinted(t: &theme::Theme, prefs: &lh_gui::prefs::Prefs) -> theme::Theme {
+    if t.name != "Glass" {
+        return t.clone();
+    }
+    let picks: Vec<theme::Color> = prefs.glass_colours.iter().filter_map(|c| theme::Color::parse(c).ok()).take(3).collect();
+    theme::tint_glass(t, &picks, prefs.glass_opacity.unwrap_or(0.5))
+}
