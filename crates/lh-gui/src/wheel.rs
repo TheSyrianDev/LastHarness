@@ -77,6 +77,28 @@ pub fn value_of(hex: &str) -> f32 {
     parse_hex(hex).map(|(r, g, b)| rgb_to_hsv(r, g, b).2).unwrap_or(1.)
 }
 
+/// The lowest brightness the slider gives: below it hue and saturation would be lost in 8-bit colour, and the ball
+/// would jump to the centre of the wheel.
+pub const MIN_VALUE: f32 = 0.04;
+
+/// The same colour at brightness `value`, keeping hue and saturation.
+pub fn with_value(hex: &str, value: f32) -> String {
+    let (r, g, b) = parse_hex(hex).unwrap_or((128, 128, 128));
+    let (h, s, _) = rgb_to_hsv(r, g, b);
+    let (r, g, b) = hsv_to_rgb(h, s, value.clamp(MIN_VALUE, 1.));
+    to_hex(r, g, b)
+}
+
+/// The brightness at `y` pixels down a slider `height` tall: full at the top, darkest at the bottom.
+pub fn value_at(y: f32, height: f32) -> f32 {
+    (1. - y / height.max(1.)).clamp(MIN_VALUE, 1.)
+}
+
+/// Where the slider's knob sits for `value`, in pixels from the top.
+pub fn value_y(value: f32, height: f32) -> f32 {
+    (1. - value.clamp(0., 1.)) * height
+}
+
 /// The wheel's pixels, `size` square, RGBA, full brightness. The edge fades over one pixel so the circle is smooth.
 pub fn disc_rgba(size: u32) -> Vec<u8> {
     let mut out = vec![0u8; (size * size * 4) as usize];
@@ -135,6 +157,33 @@ mod tests {
         // off the wheel is pulled onto its edge
         assert_eq!(colour_at(500., 0., 80., 1.), "#FF0000");
         assert_eq!(colour_at(0., 0., 80., 1.), "#FFFFFF");
+    }
+
+    #[test]
+    fn brightness_is_kept_per_colour() {
+        let dim = with_value("#FF0000", 0.5);
+        assert_eq!(dim, "#800000");
+        assert!((value_of(&dim) - 0.5).abs() < 0.01);
+        // hue and saturation stay, so the ball does not move on the wheel
+        let (x, y) = position("#3A7BD5", 80.);
+        let (x2, y2) = position(&with_value("#3A7BD5", 0.3), 80.);
+        assert!((x - x2).abs() < 2. && (y - y2).abs() < 2.);
+        // never all the way to black, which would lose the hue
+        assert_eq!(with_value("#00FF00", 0.), with_value("#00FF00", MIN_VALUE));
+        assert_ne!(position(&with_value("#00FF00", 0.), 80.), (0., 0.));
+    }
+
+    #[test]
+    fn the_slider_runs_bright_to_dark() {
+        assert_eq!(value_at(0., 160.), 1.);
+        assert_eq!(value_at(160., 160.), MIN_VALUE);
+        assert_eq!(value_at(-20., 160.), 1.);
+        assert!((value_at(80., 160.) - 0.5).abs() < 1e-6);
+        assert_eq!(value_y(1., 160.), 0.);
+        assert_eq!(value_y(0.25, 160.), 120.);
+        for v in [0.1_f32, 0.5, 0.9] {
+            assert!((value_at(value_y(v, 160.), 160.) - v).abs() < 1e-6);
+        }
     }
 
     #[test]
