@@ -10,7 +10,7 @@ button[aria-pressed=true]{background:var(--fg);color:var(--bg)}
 #stage{width:min(512px,100%);aspect-ratio:1;margin:auto;border-radius:16px;overflow:hidden}
 input[type=range]{width:100%}.mono{font:12px ui-monospace,monospace;color:var(--muted)}
 </style></head><body><div class="wrap">
-<h1>LastHarness · mark motion</h1>
+<h1>LastHarness · motion</h1>
 <div class="row"><span class="mono">file</span><select id="file"></select></div>
 <div class="row" id="segs"></div>
 <div id="stage"></div>
@@ -19,12 +19,14 @@ input[type=range]{width:100%}.mono{font:12px ui-monospace,monospace;color:var(--
 </div>
 <script src="lottie.min.js"></script>
 <script>
-const files=['grove-dark-bg','grove-light-bg','tokyo-night-bg','mono-black-bg','grove-dark','grove-light','tokyo-night','mono-black'];
-const sel=document.getElementById('file');sel.innerHTML=files.map(f=>`<option>${f}</option>`).join('');
+const v1=[...['grove-dark','grove-light','tokyo-night','mono-black'].map(p=>'mark-'+p),...['lead','researcher','writer','coder','designer','planner'].map(b=>'bot-'+b)].flatMap(n=>[n+'-bg',n]).map(n=>['v1 '+n,`../out/lottie/lastharness-${n}.json`]);
+const v0=['grove-dark-bg','grove-light-bg','tokyo-night-bg','mono-black-bg','grove-dark','grove-light','tokyo-night','mono-black'].map(n=>['v0 mark-'+n,`../lottie/lastharness-mark-${n}.json`]);
+const files=[...v1,...v0];
+const sel=document.getElementById('file');sel.innerHTML=files.map(([n,u])=>`<option value="${u}">${n}</option>`).join('');
 let A,slow=false;
 function load(){if(A)A.destroy();
-  A=lottie.loadAnimation({container:document.getElementById('stage'),renderer:'svg',loop:true,autoplay:true,path:`../lottie/lastharness-mark-${sel.value}.json`});
-  A.addEventListener('DOMLoaded',()=>{const m=A.markers||[];
+  A=lottie.loadAnimation({container:document.getElementById('stage'),renderer:'svg',loop:true,autoplay:true,path:sel.value});
+  A.addEventListener('DOMLoaded',()=>{document.getElementById('scrub').max=A.totalFrames-1;const m=A.markers||[];
     document.getElementById('segs').innerHTML='<button data-a>All</button>'+m.map(x=>`<button data-s="${x.time}" data-d="${x.duration}">${x.payload.name}</button>`).join('');
     document.querySelectorAll('#segs button').forEach(b=>b.onclick=()=>{if(b.dataset.a!==undefined){A.resetSegments(true);A.goToAndPlay(0,true);}else A.playSegments([+b.dataset.s,+b.dataset.s+ +b.dataset.d],true);});
     A.setSpeed(slow?.25:1);});

@@ -386,3 +386,8 @@ Built as the user asked; no new decisions. A native phone app comes later. New s
 ## Web UI look (2026-11-04)
 
 - Web UI redesigned using ui-ux-pro-max, taste, soft, apple-design, shadcn patterns and motion.dev at the user's request; web may now differ from the desktop look; whether the desktop follows is open.
+
+## Separate Omarchy release (2026-11-05)
+
+- The user chose a separate Omarchy release. `crates/lh-gui` has a Cargo feature `omarchy`, on by default for local builds and off in the generic Linux (AppImage), Windows and macOS release builds (`--no-default-features`). Without it the Omarchy looks are not listed, Hyprland is never asked, and the window-rule hint in Settings is hidden.
+- The release adds `LastHarness-<version>-omarchy-x86_64.tar.gz`: the binaries built `--features omarchy`, `install-omarchy.sh` (installs into the home folder, safe to run again, `--uninstall`, `--dry-run`), the icon refresh script and the theme-set hook. The script never edits the Hyprland config; it prints the one window rule for class `lastharness-gui`.

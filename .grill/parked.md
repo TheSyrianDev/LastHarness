@@ -2,7 +2,7 @@
 
 Things that need the user. Agents add to this list instead of asking while the user is away. Nothing here is decided.
 
-- **GUI and branding design.** The user wants to design these together with the planning session once back. Do not invent visual design or branding. Build only functional, unstyled front ends until then.
+- **GUI and branding design.** The user wants to design these together with the planning session once back. Update 2026-11-05: the user lifted the no-inventing rule ("we need creativity"). Propose creative design freely; the user decides.
 - **Cloud API run** for spike 1 (sends requests off the machine): needs a go-ahead.
 - **Ollama or LM Studio run** for spike 1: neither is installed.
 - **Arabic test set** for memory retrieval needs a native reader.
@@ -296,3 +296,7 @@ Benchmaxx (the Strata engine session) proposed working together, and this sessio
 - Plan lives in docs/iisu-plan.md (ideas only, no iiSU code or assets). Parked until the user returns to it. First slice if resumed: Effects setting (Full / Calm / Off) plus glass menu buttons.
 - Still open: five questions in the plan; nobody has watched iiSU's walkthrough video yet.
 - Focus now: app functionality, the system prompt and the tools each chat mode gets.
+
+## Chat-mode read-only tools (proposal, 2026-11-05)
+
+- Proposal: when tools are otherwise off, offer `show`, `recall`, `web_search` and `web_fetch` behind `tools.chat_readonly` (default true). This changes what the Chat mode can do; it is not built until the user confirms.
