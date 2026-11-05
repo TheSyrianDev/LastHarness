@@ -17,45 +17,15 @@ pub fn load(p: &Path) -> Result<Hooks, String> {
 
 /// The file text for these hooks, in the same form the user would write by hand.
 pub fn to_toml(h: &Hooks) -> String {
-    let mut out = String::from("# Commands run before or after a tool call. Edited in Settings, Hooks.\n");
-    for (name, list) in [("before", &h.before), ("after", &h.after)] {
-        for k in list {
-            out.push_str(&format!("\n[[{name}]]\n"));
-            if !k.tools.is_empty() {
-                out.push_str(&format!("tools = {}\n", toml::Value::Array(k.tools.iter().map(|t| toml::Value::String(t.clone())).collect())));
-            }
-            out.push_str(&format!("run = {}\n", toml::Value::String(k.run.clone())));
-            out.push_str(&format!("timeout_secs = {}\n", k.timeout.as_secs()));
-        }
-    }
-    out
+    h.to_toml()
 }
 
 /// Check the new file reads back the same, then write it.
 pub fn save(p: &Path, h: &Hooks) -> Result<(), String> {
-    let text = to_toml(h);
-    if Hooks::parse(&text)? != *h {
-        return Err("the hooks could not be written the way they read back".into());
-    }
-    if let Some(d) = p.parent() {
-        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(p, text).map_err(|e| format!("{}: {e}", p.display()))
+    h.save(p)
 }
 
-/// A hook from what was typed: tools as a comma list (empty for every tool), the command, and seconds.
-pub fn from_form(tools: &str, run: &str, secs: &str) -> Result<Hook, String> {
-    let run = run.trim();
-    if run.is_empty() {
-        return Err("Write the command to run.".into());
-    }
-    let secs: u64 = if secs.trim().is_empty() { 30 } else { secs.trim().parse().map_err(|_| "The time limit is a whole number of seconds.".to_string())? };
-    if secs == 0 || secs > 600 {
-        return Err("The time limit is 1 to 600 seconds.".into());
-    }
-    let tools = tools.split(',').map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect();
-    Ok(Hook { tools, run: run.to_string(), timeout: std::time::Duration::from_secs(secs) })
-}
+pub use lh_tools::hooks::from_form;
 
 #[cfg(test)]
 mod tests {

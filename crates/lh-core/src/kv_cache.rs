@@ -1,6 +1,6 @@
 //! Saving the model's KV cache (the work it did reading a chat) per local chat, so a stored chat can go on
 //! without the whole chat being read again. A 32k-token chat on a large local model takes about six minutes
-//! to read and under a second to restore.
+//! to read and under a second to restore (see `spikes/kv-cache/RESULT.md`).
 //!
 //! How it works: after a turn the core asks the local server (llama-server, behind llama-swap or alone) to save
 //! its slot to a file named for the chat and the model; before the first turn of a chat that was opened again it

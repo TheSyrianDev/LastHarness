@@ -241,7 +241,7 @@ async fn questions_go_to_the_phone_and_the_answer_comes_back_from_it() {
     r.channel(json!({"mode": "assistant"})).await;
     r.tg.say(42, "write a file for me");
     let sent = r.tg.wait_sent(1).await;
-    assert!(sent[0].1.contains("wants to use write_file") && sent[0].1.contains("Reply yes or no"), "{sent:?}");
+    assert!(sent[0].1.contains("wants to use write") && sent[0].1.contains("Reply yes or no"), "{sent:?}");
     // saying something else while a question is open does not slip past it
     r.tg.say(42, "no");
     let sent = r.tg.wait_sent(3).await;

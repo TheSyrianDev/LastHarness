@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f5f5f3">
+<meta name="theme-color" content="#f5f5f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)">
 <title>LastHarness</title>
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='8' y='18' width='38' height='38' rx='15' fill='%2315251c'/><g transform='translate(2.4 -2) rotate(-8 27 37)'><rect x='18.6' y='30.6' width='6' height='11' rx='3' fill='%23f2ead6'/><rect x='30.1' y='31.4' width='4.6' height='10.2' rx='2.3' fill='%23f2ead6'/></g><circle cx='49' cy='15' r='6' fill='%23e0a050'/></svg>">
@@ -11,49 +12,54 @@
 <body>
 <a href="#chat-input" class="skip">Skip to the message box</a>
 <div class="app" id="app" hidden>
-  <nav class="rail" aria-label="Main">
-    <button type="button" data-go="chats" aria-keyshortcuts="Control+B" title="Chats (Ctrl+B)" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="sr">Chats</span></button>
-    <button type="button" data-go="team" title="Departments" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M3 19c0-3 2-5 5-5s5 2 5 5M11 19c0-3 2-5 5-5s5 2 5 5"/></svg><span class="sr">Departments</span></button>
-    <button type="button" data-go="memory" title="Memory" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg><span class="sr">Memory</span></button>
-    <button type="button" data-go="review" title="Review" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4 10-10"/></svg><span class="sr">Review</span></button>
-    <span class="grow"></span>
-    <button type="button" data-go="settings" title="Settings" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg><span class="sr">Settings</span></button>
-  </nav>
   <aside class="chats" id="chats" aria-label="Chats">
-    <button type="button" class="new-chat" id="new-chat">New chat</button>
+    <div class="side-head"><button type="button" class="side-logo" id="side-logo" aria-label="Open the chats" title="Open the chats (Ctrl+B)" tabindex="-1"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect class="mk-face" x="8" y="18" width="38" height="38" rx="15"/><g transform="translate(2.4 -2) rotate(-8 27 37)"><rect class="mk-eye" x="18.6" y="30.6" width="6" height="11" rx="3"/><rect class="mk-eye" x="30.1" y="31.4" width="4.6" height="10.2" rx="2.3"/></g><circle class="mk-dot" cx="49" cy="15" r="6"/></svg><svg class="open-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9.5 5v14M13.5 9.5L16 12l-2.5 2.5"/></svg></button><span class="grow"></span><button type="button" class="icon-btn" id="side-toggle" aria-label="Fold the chats" title="Fold the chats (Ctrl+B)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9.5 5v14M16 9.5L13.5 12l2.5 2.5"/></svg></button></div>
+    <div class="side-new"><button type="button" class="nav-row new-chat" id="new-chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l.5-4.5L15 5l4 4L8.5 19.5zM13 7l4 4"/></svg><span>New chat</span></button><button type="button" class="icon-btn" id="side-search" aria-label="Search chats" title="Search (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg></button></div>
     <ul id="chat-list"></ul>
+    <div class="side-foot"><button type="button" class="nav-row" data-foot="team"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v5l-6 5M12 12l6 5"/></svg><span>Departments</span></button><button type="button" class="nav-row" data-foot="memory"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5zM8 11h8M8 15h8"/></svg><span>Memory</span></button><button type="button" class="nav-row" data-foot="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.4l1.6 2.8 3.1-.9.7 3.1 3.1.7-.9 3.1 2.8 1.6-2.8 1.6.9 3.1-3.1.7-.7 3.1-3.1-.9L12 21.6l-1.6-2.8-3.1.9-.7-3.1-3.1-.7.9-3.1L1.6 12l2.8-1.6-.9-3.1 3.1-.7.7-3.1 3.1.9z"/></svg><span>Settings</span></button></div>
   </aside>
   <main class="main" id="main" tabindex="-1">
     <header class="titlebar" role="banner">
       <span id="chat-title" class="chat-title">New chat</span>
       <span id="chat-meta" class="meta"></span>
-      <div class="model"><button type="button" id="model-btn" class="model-btn" aria-haspopup="dialog" aria-expanded="false" title="Choose a model"><span id="model-btn-label">Model</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button></div>
+      <span class="grow"></span>
+      <button type="button" class="icon-btn" id="panel-toggle" aria-label="Show the side panel" title="Side panel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M14 5v14"/></svg></button>
+      <button type="button" class="pill" id="private-btn" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Private</span></button>
     </header>
     <div class="scroll" id="scroll">
       <div class="column" id="log" role="log" aria-live="polite" aria-label="Conversation"></div>
     </div>
     <div class="composer-wrap" id="composer-wrap">
       <div class="column">
-        <!-- the LastHarness mark in the logo pose, from the brand kit -->
-        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="18" width="38" height="38" rx="15" fill="#15251c"/><g transform="translate(2.4 -2) rotate(-8 27 37)"><rect x="18.6" y="30.6" width="6" height="11" rx="3" fill="#f2ead6"/><rect x="30.1" y="31.4" width="4.6" height="10.2" rx="2.3" fill="#f2ead6"/></g><circle cx="49" cy="15" r="6" fill="#e0a050"/></svg>
+        <!-- the LastHarness mark in the logo pose, from the brand kit (brand/motion-kit/source/brand-geometry.js) -->
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><rect class="mk-face" x="8" y="18" width="38" height="38" rx="15"/><g transform="translate(2.4 -2) rotate(-8 27 37)"><rect class="mk-eye" x="18.6" y="30.6" width="6" height="11" rx="3"/><rect class="mk-eye" x="30.1" y="31.4" width="4.6" height="10.2" rx="2.3"/></g><circle class="mk-dot" cx="49" cy="15" r="6"/></svg>
         <h1 class="greeting" id="greeting"></h1>
+        <p class="greeting-sub" id="greeting-sub">Everything stays on this computer</p>
         <div id="asks"></div>
         <form class="composer" id="composer">
           <label for="chat-input" class="sr">Your message</label>
-          <textarea id="chat-input" rows="1" placeholder="Ask anything…"></textarea>
+          <textarea id="chat-input" rows="1" placeholder="Message"></textarea>
+          <input type="text" id="project-dir" class="project-dir" placeholder="Project folder, for example ~/code/app" aria-label="Project folder" hidden>
+          <div class="bar">
+          <div class="modes" id="modes" role="group" aria-label="Kind of chat"><span class="mode-thumb" aria-hidden="true"></span><button type="button" data-mode="chat" aria-pressed="true">Chat</button><button type="button" data-mode="assistant" aria-pressed="false">Assistant</button><button type="button" data-mode="project" aria-pressed="false">Project</button></div>
+          <span class="kind-hint" id="kind-hint"></span>
+          <div class="model"><button type="button" id="model-btn" class="model-btn" aria-haspopup="dialog" aria-expanded="false" title="Choose a model"><span id="model-btn-label">Model</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button></div>
           <button type="submit" id="send" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+          </div>
         </form>
+        <div class="chips" id="chips"><button type="button" data-text="Help me plan a project: ">Plan a project</button><button type="button" data-text="Summarise this file: ">Summarise a file</button><button type="button" data-text="What do my notes say about ">Ask about my notes</button><button type="button" data-text="">Just chat</button></div>
         <p class="hint">Models can make mistakes. Check important details.</p>
       </div>
     </div>
   </main>
   <aside class="panel" id="panel" aria-label="Side panel" hidden>
-    <div class="panel-head"><span id="panel-title"></span><button type="button" id="panel-close" aria-label="Close the panel">×</button></div>
+    <div class="panel-head"><div class="dock-tabs" id="dock-tabs" role="tablist" aria-label="Side panel sections"></div><span id="panel-title"></span><span class="grow"></span><button type="button" class="icon-btn" id="panel-widen" aria-label="Widen" title="Widen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg></button><button type="button" class="icon-btn" id="panel-close" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="panel-body" id="panel-body"></div>
   </aside>
 </div>
 <p id="status" class="status" role="status" aria-live="polite"></p>
 <div id="gate"><noscript><p>This page needs JavaScript.</p></noscript></div>
+<script src="/motion.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

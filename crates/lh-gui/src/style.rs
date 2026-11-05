@@ -51,7 +51,7 @@ pub struct Pal {
 #[derive(Clone)]
 pub enum Background {
     Solid(Hsla),
-    Gradient { angle: f32, from: Hsla, to: Hsla },
+    Gradient { angle: f32, from: Hsla, to: Hsla, via: Option<Hsla> },
     Image { path: std::path::PathBuf, opacity: f32, under: Hsla },
 }
 
@@ -67,7 +67,7 @@ impl Pal {
         };
         let background = match t.background.kind {
             BackgroundKind::Solid => Background::Solid(hsla(c.background)),
-            BackgroundKind::Gradient => Background::Gradient { angle: t.background.angle, from: hsla(t.background.from), to: hsla(t.background.to) },
+            BackgroundKind::Gradient => Background::Gradient { angle: t.background.angle, from: hsla(t.background.from), to: hsla(t.background.to), via: t.background.via.map(hsla) },
             BackgroundKind::Image => match &t.background.image {
                 Some(p) => Background::Image { path: p.clone(), opacity: t.background.image_opacity, under: hsla(c.background) },
                 None => Background::Solid(hsla(c.background)),
@@ -107,7 +107,9 @@ impl Pal {
     pub fn paint_background(&self, root: Div) -> Div {
         match &self.background {
             Background::Solid(c) => root.bg(*c),
-            Background::Gradient { angle, from, to } => root.bg(linear_gradient(*angle, linear_color_stop(*from, 0.), linear_color_stop(*to, 1.))),
+            Background::Gradient { angle, from, to, via: None } => root.bg(linear_gradient(*angle, linear_color_stop(*from, 0.), linear_color_stop(*to, 1.))),
+            // gpui gradients have two stops: the first half here, the second half in `image_layer`
+            Background::Gradient { angle, from, via: Some(via), .. } => root.bg(linear_gradient(*angle, linear_color_stop(*from, 0.), linear_color_stop(*via, 0.5))),
             Background::Image { under, .. } => root.bg(*under),
         }
     }
@@ -115,6 +117,9 @@ impl Pal {
     pub fn image_layer(&self) -> Option<AnyElement> {
         match &self.background {
             Background::Image { path, opacity, .. } => Some(img(path.clone()).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(*opacity).into_any_element()),
+            Background::Gradient { angle, to, via: Some(via), .. } => Some(
+                div().absolute().top_0().left_0().size_full().bg(linear_gradient(*angle, linear_color_stop(via.opacity(0.), 0.5), linear_color_stop(*to, 1.))).into_any_element(),
+            ),
             _ => None,
         }
     }
@@ -128,6 +133,9 @@ pub trait PanelExt: Sized {
     fn elevated(self, p: &Pal, level: u8) -> Self;
     /// The panel on the right: a panel, in the theme's side-panel material.
     fn side_panel(self, p: &Pal) -> Self;
+    /// Only the fill of a panel, at `radius`: the panel material in glass looks, the plain surface otherwise. For
+    /// pieces that set their own shadow and border (the composer, chips). Never inside another glass surface.
+    fn glass_fill(self, p: &Pal, radius: Pixels) -> Self;
 }
 
 /// The shadows of an elevation level: a tight one for the edge and a wide soft one for the lift.
@@ -207,6 +215,12 @@ impl PanelExt for $t {
             None => d.bg(elevation_fill(p, level)),
         }
     }
+    fn glass_fill(self, p: &Pal, radius: Pixels) -> $t {
+        match surface_glass(p, Surface::Panel) {
+            Some(g) => self.child_under(glass_layer(g, radius)),
+            None => self.bg(p.surface),
+        }
+    }
     fn side_panel(self, p: &Pal) -> $t {
         match surface_glass(p, Surface::Side) {
             Some(g) => self.rounded(p.radius).shadow(p.shadow.clone()).border_1().border_color(p.border).child_under(glass_layer(g, p.radius)),
@@ -226,12 +240,12 @@ pub fn apply_component_theme(p: &Pal, cx: &mut App) {
     let mode = if p.dark { ThemeMode::Dark } else { ThemeMode::Light };
     CT::change(mode, None, cx);
     let t = CT::global_mut(cx);
-    // the root surface of the toolkit paints this behind everything; ours is painted by the app itself, and a
+    // The root surface of the toolkit paints this behind everything; ours is painted by the app itself, and a
     // translucent look must be able to show the desktop through
     t.tokens.background = gpui::hsla(0., 0., 0., 0.).into();
     let c = &mut t.colors;
     c.foreground = p.text;
-    // text fields take the background colour
+    // Text fields take the background colour
     c.background = p.bg;
     c.border = p.border;
     c.input = p.border;
@@ -322,5 +336,4 @@ mod tests {
             }
         }
     }
-
 }

@@ -160,7 +160,7 @@ impl App {
         }
         Some(match page {
             Category::Models => {
-                let rank = self.button("rank-models", "Rank my models from benchmarks", crate::ui::Kind::Normal, cx, |a, w, cx| {
+                let rank = self.button("rank-models", "Rank my models from benchmarks", Kind::Normal, cx, |a, w, cx| {
                     a.close_settings(w, cx);
                     a.rank_models(w, cx);
                 });
@@ -182,7 +182,7 @@ impl App {
                     }
                     titles = titles.child(Input::new(&input).aria_label(format!("Title of stop {}", i + 1)));
                 }
-                let save = self.button("stops-save-titles", "Save stop titles", crate::ui::Kind::Normal, cx, |a, _, cx| a.save_stop_titles(cx));
+                let save = self.button("stops-save-titles", "Save stop titles", Kind::Normal, cx, |a, _, cx| a.save_stop_titles(cx));
                 div().flex().flex_col().gap_3()
                     .child(div().flex().flex_col().gap_1()
                         .child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).child("Model slider"))
@@ -338,7 +338,7 @@ impl App {
                     })
                 })
                 .collect();
-            col = col.child(div().id(SharedString::from(format!("{id}-options"))).role(Role::List).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.button).children(rows));
+            col = col.child(div().on_scroll_wheel(|_, _, cx| cx.stop_propagation()).child(div().id(SharedString::from(format!("{id}-options"))).role(Role::List).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.button).children(rows)));
         }
         col.into_any_element()
     }

@@ -14,10 +14,13 @@
 *.local
 *.log
 
-# Model files
+# Spike scratch data (models, indexes, test corpora)
+/spikes/**/data/
+/spikes/**/models/
 *.gguf
 *.onnx
 *.safetensors
 
 # Agent worktrees and local tool state
 /.claude/
+/.codegraph/

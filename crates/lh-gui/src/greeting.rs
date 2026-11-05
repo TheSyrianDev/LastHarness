@@ -24,7 +24,7 @@ pub fn system_name(pref: &str) -> String {
     pick_name(pref, &passwd, &user)
 }
 
-/// A name from the system written in lower case gets capitals: "alex doe" becomes "Alex Doe". A name with
+/// A name from the system written in lower case gets capitals: "sam example" becomes "Sam Example". A name with
 /// any capital already is left as the person wrote it.
 pub fn tidy_name(name: &str) -> String {
     let name = name.trim();
@@ -81,38 +81,38 @@ pub fn suggestions(rtl: bool) -> [(&'static str, &'static str); 4] {
 mod tests {
     use super::*;
 
-    const PASSWD: &str = "root:x:0:0:root:/root:/bin/bash\nalex:x:1000:1000:Alex Doe,,,:/home/alex:/bin/zsh\nbare:x:1001:1001::/home/bare:/bin/sh\n";
+    const PASSWD: &str = "root:x:0:0:root:/root:/bin/bash\nsam:x:1000:1000:Sam Example,,,:/home/sam:/bin/zsh\nbare:x:1001:1001::/home/bare:/bin/sh\n";
 
     #[test]
     fn real_name_comes_from_the_first_gecos_part() {
-        assert_eq!(gecos_name(PASSWD, "alex").as_deref(), Some("Alex Doe"));
+        assert_eq!(gecos_name(PASSWD, "sam").as_deref(), Some("Sam Example"));
         assert_eq!(gecos_name(PASSWD, "bare"), None);
         assert_eq!(gecos_name(PASSWD, "nobody"), None);
     }
 
     #[test]
     fn the_name_is_the_pref_then_the_real_name_then_the_login() {
-        assert_eq!(pick_name(" Sam ", PASSWD, "alex"), "Sam");
-        assert_eq!(pick_name("", PASSWD, "alex"), "Alex Doe");
+        assert_eq!(pick_name(" Sam ", PASSWD, "sam"), "Sam");
+        assert_eq!(pick_name("", PASSWD, "sam"), "Sam Example");
         assert_eq!(pick_name("  ", PASSWD, "bare"), "bare");
     }
 
     #[test]
     fn greeting_follows_the_hour_and_tidies_the_name() {
-        assert_eq!(greeting_at("alex", 8, false), "Good morning, Alex");
-        assert_eq!(greeting_at("alex doe", 14, false), "Good afternoon, Alex Doe");
+        assert_eq!(greeting_at("sam", 8, false), "Good morning, Sam");
+        assert_eq!(greeting_at("sam example", 14, false), "Good afternoon, Sam Example");
         assert_eq!(greeting_at("McKay", 22, false), "Good evening, McKay");
         assert_eq!(greeting_at("", 3, false), "Good evening");
-        assert!(greeting_at("سامي", 9, true).starts_with("صباح الخير"));
-        assert_eq!(tidy_name("سامي"), "سامي");
+        assert!(greeting_at("عمر", 9, true).starts_with("صباح الخير"));
+        assert_eq!(tidy_name("عمر"), "عمر");
     }
 
     #[test]
     fn greeting_depends_on_past_chats() {
-        assert_eq!(greeting("Alex", true, false), "Alex is back!");
-        assert_eq!(greeting("Alex", false, false), "Hello, Alex");
+        assert_eq!(greeting("Sam", true, false), "Sam is back!");
+        assert_eq!(greeting("Sam", false, false), "Hello, Sam");
         assert_eq!(greeting("", false, false), "Hello");
-        assert!(greeting("Alex", true, true).contains("Alex"));
-        assert!(greeting("Alex", false, true).starts_with("مرحبًا"));
+        assert!(greeting("Sam", true, true).contains("Sam"));
+        assert!(greeting("Sam", false, true).starts_with("مرحبًا"));
     }
 }

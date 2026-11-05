@@ -125,7 +125,7 @@ fn real_setup() -> Option<ManagedConfig> {
     let home = PathBuf::from(std::env::var_os("HOME")?);
     let engine = home.join("AI/engines/_prebuilt/mainline-b11541/llama-b11541");
     let libs = format!("{}:{}", engine.display(), home.join("AI/engines/_prebuilt/mainline-b11538/cudart-llama-b11538-bin-ubuntu-cuda-13.4-x64").display());
-    let model = PathBuf::from(std::env::var_os("LH_EMBEDDING_MODEL")?);
+    let model = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../spikes/memory-retrieval/models/embeddinggemma-2-Q8_0.gguf");
     (engine.join("llama-server").exists() && model.exists()).then(|| ManagedConfig {
         server: engine.join("llama-server"),
         library_path: Some(libs),
@@ -138,7 +138,7 @@ fn real_setup() -> Option<ManagedConfig> {
 
 const GOLD: [(&str, &str, &str, &str, &str); 8] = [
     ("dog", "User cried for an hour after their dog died last spring.", "بكى المستخدم لمدة ساعة كاملة بعد موت كلبه في الربيع الماضي.", "when was the user sad about a pet", "متى كان المستخدم حزينا بسبب حيوان أليف"),
-    ("style", "Alex prefers short answers, no bullet lists, and plain words.", "يفضل سامي الإجابات القصيرة بدون قوائم وبكلمات بسيطة.", "how does the user like replies to look", "كيف يحب المستخدم شكل الردود"),
+    ("style", "Omar prefers short answers, no bullet lists, and plain words.", "يفضل عمر الإجابات القصيرة بدون قوائم وبكلمات بسيطة.", "how does the user like replies to look", "كيف يحب المستخدم شكل الردود"),
     ("db", "Decided on 3 March: the project uses SQLite for storage because it needs no server.", "تقرر في ٣ مارس أن المشروع يستخدم SQLite للتخزين لأنه لا يحتاج إلى خادم.", "which database did we pick and why", "أي نظام تخزين اخترنا ولماذا"),
     ("money", "Salary is 4200 per month after tax and rent is 1100.", "الراتب ٤٢٠٠ شهريا بعد الضريبة والإيجار ١١٠٠.", "how much money does the user earn", "كم يكسب المستخدم من المال"),
     ("trip", "Flight to Berlin on 14 June, seat 22A, with Lufthansa.", "رحلة إلى برلين يوم ١٤ يونيو على مقعد ٢٢أ مع الخطوط اللوفتهانزا.", "upcoming trip to Germany", "سفر قادم إلى ألمانيا"),

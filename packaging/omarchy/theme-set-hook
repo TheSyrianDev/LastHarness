@@ -1,0 +1,3 @@
+#!/bin/bash
+# Omarchy theme-set hook: recolour the LastHarness launcher icon for the new theme.
+"${LASTHARNESS_BIN:-$HOME/.local/bin}/lastharness-icon-refresh" >/dev/null 2>&1 || true

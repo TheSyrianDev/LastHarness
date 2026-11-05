@@ -59,8 +59,17 @@ async fn reads_then_answers() {
     let perms = Permissions::new(d.path()).unwrap();
     let model = Script::new(vec![tools_reply(vec![call("1", "read_file", r#"{"path":"a.txt"}"#)]), text_reply("it says hello")]);
     let (u, mut r) = (user(Answer::No), req());
-    let end = run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    let mut started = Vec::new();
+    let end = run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |event| {
+        if let TurnEvent::ToolStart { name, .. } = event {
+            started.push(name);
+        }
+    })
+    .await
+    .unwrap();
     assert!(matches!(end, TurnEnd::Done(ref x) if x.text == "it says hello"));
+    assert_eq!(started, ["read"], "the UI event uses the canonical name");
+    assert_eq!(r.messages.iter().find(|m| !m.tool_calls.is_empty()).unwrap().tool_calls[0].name, "read_file", "the model's original call remains in conversation history");
     assert_eq!(tool_results(&r), ["hello file"]);
     assert_eq!(u.asked.load(Ordering::SeqCst), 0, "reads in the project do not ask");
     assert_eq!(r.messages.last().unwrap().content.as_deref(), Some("it says hello"));
@@ -133,7 +142,7 @@ async fn cut_off_calls_are_never_run() {
 async fn a_worker_only_gets_its_tools_and_steps_are_capped() {
     let d = tempfile::tempdir().unwrap();
     let perms = Permissions::new(d.path()).unwrap();
-    let read_only = ToolSet::new([Tool::ReadFile, Tool::ListDir]);
+    let read_only = ToolSet::new([Tool::ReadFile, Tool::Grep, Tool::Glob]);
     let looping: Vec<_> = (0..5).map(|i| tools_reply(vec![call(&i.to_string(), "write_file", r#"{"path":"a","content":"x"}"#)])).collect();
     let model = Script::new(looping);
     let (u, mut r) = (user(Answer::Yes), req());
@@ -141,7 +150,7 @@ async fn a_worker_only_gets_its_tools_and_steps_are_capped() {
     assert!(matches!(end, TurnEnd::StepLimit));
     assert!(!d.path().join("a").exists());
     assert!(tool_results(&r).iter().all(|t| t.contains("not available")));
-    assert_eq!(r.tools.len(), 2, "the model is only told about its own tools");
+    assert_eq!(r.tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["read", "grep", "glob"], "the model is only told about its own tools using canonical names");
 }
 
 #[tokio::test]
@@ -318,10 +327,10 @@ async fn tools_from_outside_the_crate_go_through_the_same_rules() {
         }
     }
     let t = default_tools().with_extra(std::sync::Arc::new(Fake));
-    assert_eq!(t.defs().iter().filter(|d| d.name == "read_file").count(), 1);
+    assert_eq!(t.defs().iter().filter(|d| d.name == "read").count(), 1);
     assert!(t.defs().iter().all(|d| d.description != "evil"));
     let only = default_tools().with_extra(std::sync::Arc::new(Echo(Risk::ReadOnly))).only(&["read_file".to_string(), "echo".to_string()]);
-    assert_eq!(only.defs().iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), ["read_file", "echo"]);
+    assert_eq!(only.defs().iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), ["read", "echo"]);
     assert!(default_tools().without(&["run_command"]).get("run_command").is_none());
 }
 
@@ -330,9 +339,9 @@ async fn a_codemode_script_calls_tools_under_the_same_rules() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("a.txt"), "alpha\nbeta\ngamma").unwrap();
     let perms = Permissions::new(d.path()).unwrap();
-    let script = r#"const t = await tools.read_file({path: "a.txt"});
+    let script = r#"const t = await tools.read({path: "a.txt"});
 let wrote = "yes";
-try { await tools.write_file({path: "b.txt", content: "x"}); } catch (e) { wrote = e.message; }
+try { await tools.write({path: "b.txt", content: "x"}); } catch (e) { wrote = e.message; }
 return t.split("\n").filter(l => l.startsWith("g")).join(",") + " | " + wrote;"#;
     let args = serde_json::json!({ "script": script }).to_string();
     let model = Script::new(vec![tools_reply(vec![call("1", "codemode", &args)]), text_reply("done")]);
@@ -353,11 +362,14 @@ return t.split("\n").filter(l => l.startsWith("g")).join(",") + " | " + wrote;"#
     assert!(out.contains("gamma | The user said no"), "the filtered line, and the refused write as an error: {out}");
     assert_eq!(u.asked.load(Ordering::SeqCst), 1, "the write inside the script asked like a direct one");
     assert!(!d.path().join("b.txt").exists());
-    assert_eq!(events, ["1 codemode", "1.1 read_file", "1.2 write_file"], "each inner call is shown");
+    assert_eq!(events, ["1 codemode", "1.1 read", "1.2 write"], "each inner call is shown with canonical names");
 }
 
 /// One sandboxed `cat /proc/net/dev` under the given network rules; returns its output and how often the user was asked.
 async fn net_run(net: SandboxNet, extra: Vec<Response>, answer: Answer, bypass: bool) -> Option<(String, usize)> {
+    net_run_cmd("cat /proc/net/dev", net, extra, answer, bypass, Mode::Tiered).await
+}
+async fn net_run_cmd(cmd: &str, net: SandboxNet, extra: Vec<Response>, answer: Answer, bypass: bool, mode: Mode) -> Option<(String, usize)> {
     if !std::path::Path::new("/usr/bin/bwrap").is_file() {
         return None; // nothing to test without bubblewrap
     }
@@ -365,10 +377,9 @@ async fn net_run(net: SandboxNet, extra: Vec<Response>, answer: Answer, bypass: 
     let d = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
     let mut perms = Permissions::new(d.path()).unwrap();
     perms.allow_rules = vec!["cat /proc/net/dev".into()]; // only the network question is left to ask
-    if bypass {
-        perms.mode = Mode::Bypass;
-    }
-    let mut script = vec![tools_reply(vec![call("1", "run_command", r#"{"command":"cat /proc/net/dev"}"#)])];
+    perms.mode = if bypass { Mode::Bypass } else { mode };
+    let args = serde_json::json!({ "command": cmd }).to_string();
+    let mut script = vec![tools_reply(vec![call("1", "run_command", &args)])];
     script.extend(extra);
     script.push(text_reply("done"));
     let model = Script::new(script);
@@ -409,6 +420,24 @@ async fn sandbox_network_on_and_allowlist_modes() {
 }
 
 #[tokio::test]
+async fn allowed_sites_never_ask_in_any_mode() {
+    // the user rule: what is allowed is not asked about, even in ask or ask-for-everything mode
+    let cmd = "cat /proc/net/dev example.com";
+    for mode in ["ask", "auto"] {
+        for perm_mode in [Mode::Tiered, Mode::AskAll] {
+            let net = SandboxNet::from_settings(mode, "example.com", "");
+            let Some((out, asked)) = net_run_cmd(cmd, net, vec![], Answer::No, false, perm_mode).await else { return };
+            assert_eq!(asked, 0, "{mode} {perm_mode:?}: {out}");
+            let host = std::fs::read_to_string("/proc/net/dev").unwrap().lines().filter_map(|l| l.split_once(':')).count();
+            assert!(has_net(&out) || host == 1, "{out}");
+        }
+    }
+    // a site not on the list is still asked about in ask mode
+    let (_, asked) = net_run_cmd("cat /proc/net/dev other.org", SandboxNet::from_settings("ask", "example.com", ""), vec![], Answer::No, false, Mode::Tiered).await.unwrap();
+    assert_eq!(asked, 1);
+}
+
+#[tokio::test]
 async fn sandbox_network_auto_mode() {
     let auto = SandboxNet::from_settings("auto", "", "small");
     let Some((out, asked)) = net_run(auto.clone(), vec![text_reply("NO")], Answer::Yes, false).await else { return };
@@ -434,4 +463,113 @@ async fn the_model_cannot_grant_itself_the_network() {
     let (u, mut r) = (user(Answer::Yes), req());
     run_turn(&model, &NoMeter, &mut r, &tools, &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
     assert!(!has_net(&tool_results(&r).join("\n")));
+}
+
+#[tokio::test]
+async fn every_common_tool_is_callable_by_canonical_name_and_alias() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(d.path().join("src")).unwrap();
+    std::fs::write(d.path().join("src/a.txt"), "one\ntwo\nthree\nfour\n").unwrap();
+    let mut perms = Permissions::new(d.path()).unwrap();
+    perms.allow_rules = vec!["echo".into()];
+    let model = Script::new(vec![
+        tools_reply(vec![
+            call("1", "read", r#"{"path":"src/a.txt","offset":2,"limit":2}"#),
+            call("2", "read", r#"{"path":"src"}"#),
+            call("3", "write", r#"{"path":"b.txt","content":"alpha beta"}"#),
+            call("4", "edit", r#"{"path":"b.txt","old_string":"beta","new_string":"gamma"}"#),
+            call("5", "grep", r#"{"pattern":"GAMMA","-i":true,"output_mode":"files_with_matches"}"#),
+            call("6", "glob", r#"{"pattern":"**/*.txt"}"#),
+            call("7", "bash", r#"{"command":"echo hi"}"#),
+            call("8", "web_fetch", r#"{"url":"http://example.invalid/"}"#),
+            call("9", "web_search", r#"{"query":"rust"}"#),
+        ]),
+        tools_reply(vec![
+            call("10", "edit_file", r#"{"path":"b.txt","old_string":"a","new_string":"A"}"#),
+            call("11", "edit", r#"{"path":"b.txt","old_string":"alpha","new_string":"x"}"#),
+            call("12", "list_dir", r#"{"path":"."}"#),
+            call("13", "run_command", r#"{"command":"echo old"}"#),
+            call("14", "write_file", r#"{"path":"c.txt","content":"c"}"#),
+            call("15", "read_file", r#"{"path":"b.txt"}"#),
+            call("16", "edit", r#"{"path":"b.txt","old_string":"zzz","new_string":"y"}"#),
+        ]),
+        text_reply("done"),
+    ]);
+    let (u, mut r) = (user(Answer::Yes), req());
+    let (mut started, mut ended) = (Vec::new(), 0);
+    run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |e| match e {
+        TurnEvent::ToolStart { name, .. } => started.push(name),
+        TurnEvent::ToolResult { .. } => ended += 1,
+        _ => {}
+    })
+    .await
+    .unwrap();
+    assert_eq!(started, ["read", "read", "write", "edit", "grep", "glob", "bash", "web_fetch", "web_search", "edit", "edit", "read", "bash", "write", "read", "edit"]);
+    assert_eq!(ended, 16, "every call has a result event");
+    let res = tool_results(&r);
+    assert_eq!(res[0], "two\nthree");
+    assert_eq!(res[1], "a.txt");
+    assert!(res[2].starts_with("wrote 10 bytes to b.txt"), "{}", res[2]);
+    assert!(res[3].starts_with("wrote 11 bytes"), "{}", res[3]);
+    assert_eq!(res[4], "b.txt");
+    assert_eq!(res[5], "b.txt\nsrc/a.txt");
+    assert_eq!(res[6], "exit code 0\nhi\n");
+    // the web tools were reached and went through the permission question, not "not available"
+    assert!(!res[7].contains("not available") && !res[8].contains("not available"), "{:?}", &res[7..9]);
+    // "a" is in both "alpha" and "gamma": not unique
+    assert!(res[9].contains("found") && res[9].contains("times"), "{}", res[9]);
+    assert!(res[10].starts_with("wrote"), "{}", res[10]);
+    assert!(res[11].contains("b.txt") && res[11].contains("src/"), "{}", res[11]);
+    assert_eq!(res[12], "exit code 0\nold\n");
+    assert!(res[13].starts_with("wrote 1 bytes to c.txt"));
+    assert_eq!(res[14], "x gamma");
+    assert!(res[15].contains("not found"), "{}", res[15]);
+    assert_eq!(std::fs::read_to_string(d.path().join("b.txt")).unwrap(), "x gamma");
+}
+
+#[tokio::test]
+async fn write_edit_bash_ask_and_search_cannot_leave_the_project() {
+    let d = tempfile::tempdir().unwrap();
+    let perms = Permissions::new(d.path()).unwrap();
+    let model = Script::new(vec![
+        tools_reply(vec![
+            call("1", "write", r#"{"path":"../escape.txt","content":"x"}"#),
+            call("2", "edit", r#"{"path":"/etc/hostname","old_string":"a","new_string":"b"}"#),
+            call("3", "grep", r#"{"pattern":"root","path":"/etc"}"#),
+            call("4", "glob", r#"{"pattern":"*","path":"../.."}"#),
+            call("5", "bash", r#"{"command":"cat /etc/hostname"}"#),
+        ]),
+        text_reply("ok"),
+    ]);
+    let (u, mut r) = (user(Answer::No), req());
+    run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    assert!(tool_results(&r).iter().all(|t| t.starts_with("The user said no")), "{:?}", tool_results(&r));
+    assert_eq!(u.asked.load(Ordering::SeqCst), 5);
+}
+
+#[tokio::test]
+async fn big_tool_output_is_capped() {
+    let d = tempfile::tempdir().unwrap();
+    for i in 0..300 {
+        std::fs::write(d.path().join(format!("f{i}.txt")), "needle\n").unwrap();
+    }
+    std::fs::write(d.path().join("big.txt"), "x".repeat(400 * 1024)).unwrap();
+    let mut perms = Permissions::new(d.path()).unwrap();
+    perms.allow_rules = vec!["yes".into()];
+    let model = Script::new(vec![
+        tools_reply(vec![
+            call("1", "grep", r#"{"pattern":"needle"}"#),
+            call("2", "glob", r#"{"pattern":"*.txt"}"#),
+            call("3", "read", r#"{"path":"big.txt"}"#),
+            call("4", "bash", r#"{"command":"yes | head -c 400000"}"#),
+        ]),
+        text_reply("ok"),
+    ]);
+    let (u, mut r) = (user(Answer::Yes), req());
+    run_turn(&model, &NoMeter, &mut r, &default_tools(), &perms, &u, &TurnOptions::default(), |_| {}).await.unwrap();
+    let res = tool_results(&r);
+    assert!(res[0].contains("more than 200 results") && res[0].lines().count() <= 202, "grep is capped");
+    assert!(res[1].contains("more than 200 results"), "glob is capped");
+    assert!(res[2].len() < 270 * 1024 && res[2].contains("cut at 256 KB"), "read is capped: {}", res[2].len());
+    assert!(res[3].len() < 40 * 1024, "bash is capped: {}", res[3].len());
 }

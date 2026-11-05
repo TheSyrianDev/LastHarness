@@ -280,7 +280,7 @@ impl Web {
     }
 
     /// Start taking pairing requests for a while. Without this, `/pair/start` refuses everyone, so a stranger
-    /// on the network cannot fill the waiting list or make noise.
+    /// on the network cannot fill the waiting list or flood the core with requests.
     pub fn open_pairing(&self, for_how_long: Duration) {
         *self.open_until.lock().unwrap() = Some(Instant::now() + for_how_long);
     }
@@ -409,9 +409,66 @@ impl Web {
 const INDEX: &str = include_str!("../web/index.html");
 const APP: &str = include_str!("../web/app.js");
 const STYLE: &str = include_str!("../web/style.css");
+/// motion 12.23.12 (motion.dev, MIT), vendored unchanged; see THIRD-PARTY-NOTICES.md.
+const MOTION: &str = include_str!("../web/motion.js");
+/// The desktop app's built-in looks, so the browser page offers the same ones.
+const THEMES: [&str; 14] = [
+    include_str!("../../lh-gui/themes/calm-light.toml"),
+    include_str!("../../lh-gui/themes/calm-dark.toml"),
+    include_str!("../../lh-gui/themes/chatgpt-light.toml"),
+    include_str!("../../lh-gui/themes/chatgpt-dark.toml"),
+    include_str!("../../lh-gui/themes/claude-light.toml"),
+    include_str!("../../lh-gui/themes/claude-dark.toml"),
+    include_str!("../../lh-gui/themes/cobalt-light.toml"),
+    include_str!("../../lh-gui/themes/cobalt-dark.toml"),
+    include_str!("../../lh-gui/themes/glass-light.toml"),
+    include_str!("../../lh-gui/themes/glass-dark.toml"),
+    include_str!("../../lh-gui/themes/grove-light.toml"),
+    include_str!("../../lh-gui/themes/grove-dark.toml"),
+    include_str!("../../lh-gui/themes/matte-light.toml"),
+    include_str!("../../lh-gui/themes/matte-dark.toml"),
+];
+
+/// The looks as JSON, read once: a file that does not parse is left out.
+fn themes_json() -> &'static str {
+    static J: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    J.get_or_init(|| {
+        let list: Vec<serde_json::Value> = THEMES.iter().filter_map(|t| toml::from_str::<serde_json::Value>(t).ok()).collect();
+        json!({ "themes": list }).to_string()
+    })
+}
+
 pub const SANDBOX: &str = include_str!("../web/sandbox.html");
 /// The frame for an assistant-made app: its scripts run, but it may fetch nothing and only this site may hold it.
 pub const SANDBOX_CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+
+/// A short id for this build of the page, from a hash of the files it is made of. It changes whenever any of them do.
+pub fn build_id() -> &'static str {
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        for part in [INDEX, APP, STYLE, SANDBOX, MOTION] {
+            h.update(part.as_bytes());
+            h.update([0]);
+        }
+        h.finalize().iter().take(6).map(|b| format!("{b:02x}")).collect()
+    })
+}
+
+/// The page with its build stamped in: a meta tag the script reads, and the script and style asked for with
+/// `?v=<build>` so no browser can keep a stale copy.
+pub fn index_page() -> &'static str {
+    static PAGE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PAGE.get_or_init(|| {
+        let id = build_id();
+        INDEX
+            .replacen("<head>", &format!("<head>\n<meta name=\"lh-build\" content=\"{id}\">"), 1)
+            .replace("href=\"/style.css\"", &format!("href=\"/style.css?v={id}\""))
+            .replace("src=\"/app.js\"", &format!("src=\"/app.js?v={id}\""))
+            .replace("src=\"/motion.js\"", &format!("src=\"/motion.js?v={id}\""))
+    })
+}
 
 fn page(body: &'static str, content_type: &'static str) -> Response {
     let mut r = Response::new(Body::from(body));
@@ -479,9 +536,11 @@ pub fn sandbox_page() -> Response {
 /// The public part: pages, pairing and sign-in. Nothing here reveals anything private.
 pub fn public_routes(web: Arc<Web>) -> Router {
     Router::new()
-        .route("/", get(|| async { page(INDEX, "text/html; charset=utf-8") }))
+        .route("/", get(|| async { page(index_page(), "text/html; charset=utf-8") }))
         .route("/app.js", get(|| async { page(APP, "text/javascript; charset=utf-8") }))
+        .route("/motion.js", get(|| async { page(MOTION, "text/javascript; charset=utf-8") }))
         .route("/style.css", get(|| async { page(STYLE, "text/css; charset=utf-8") }))
+        .route("/themes.json", get(|| async { page(themes_json(), "application/json") }))
         .route("/sandbox.html", get(|| async { sandbox_page() }))
         .route(
             "/pair/start",
@@ -553,7 +612,7 @@ pub fn device_may(method: &Method, path: &str) -> bool {
     if method == Method::GET || method == Method::HEAD {
         return path.starts_with("/v1/");
     }
-    ["/v1/sessions", "/v1/memory", "/v1/learn", "/v1/team", "/v1/settings", "/v1/devices", "/v1/activity"].iter().any(|d| path == *d || path.starts_with(&format!("{d}/")))
+    ["/v1/sessions", "/v1/memory", "/v1/learn", "/v1/team", "/v1/settings", "/v1/devices", "/v1/activity", "/v1/chats"].iter().any(|d| path == *d || path.starts_with(&format!("{d}/")))
 }
 
 fn cookie(req: &Request, name: &str) -> Option<String> {

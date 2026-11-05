@@ -291,6 +291,8 @@ pub struct Background {
     pub kind: BackgroundKind,
     pub from: Color,
     pub to: Color,
+    /// A middle stop, set when Glass has three colours; themes never set it.
+    pub via: Option<Color>,
     pub angle: f32,
     /// An absolute path, resolved against the theme file's folder.
     pub image: Option<PathBuf>,
@@ -446,7 +448,7 @@ impl Theme {
             name: raw.name.trim().to_string(),
             mode: raw.mode,
             colors,
-            background: Background { kind, from, to, angle, image: b.image.as_ref().map(|i| dir.join(i)), image_opacity: b.image_opacity },
+            background: Background { kind, from, to, via: None, angle, image: b.image.as_ref().map(|i| dir.join(i)), image_opacity: b.image_opacity },
             roundness: raw.shape.roundness,
             match_window: raw.shape.match_window,
             blur: raw.effects.blur,
@@ -492,7 +494,7 @@ const BUILTIN: &[(&str, &str)] = &[
     ("matte-dark", include_str!("../themes/matte-dark.toml")),
     ("glass-light", include_str!("../themes/glass-light.toml")),
     ("glass-dark", include_str!("../themes/glass-dark.toml")),
-    // from the user's brand kit palettes
+    // from the user's brand kit palettes (brand/motion-kit/source/tokens.json)
     ("grove-light", include_str!("../themes/grove-light.toml")),
     ("grove-dark", include_str!("../themes/grove-dark.toml")),
     ("cobalt-light", include_str!("../themes/cobalt-light.toml")),
@@ -562,6 +564,10 @@ impl ThemeSet {
         let hypr = ask_hypr(omarchy.as_deref());
         if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load(d, hypr)) {
             themes.insert(0, t);
+            // its see-through variant next to it, as see-through as Hyprland's window rule for this app says
+            if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load_transparent(d, hypr)) {
+                themes.insert(1, t);
+            }
         }
         let mut problems = vec![];
         let mut old_things: Vec<(String, Vec<&'static str>)> = vec![];
@@ -622,6 +628,12 @@ impl ThemeSet {
         }
         self.hypr_asked.set(std::time::Instant::now());
         ask_hypr(self.omarchy.as_deref()) != self.hypr
+    }
+
+    /// For Settings: the transparent Omarchy look is chosen-able but no Hyprland window rule makes this app
+    /// see-through, so the look is opaque. False off Hyprland (nothing to add a rule to).
+    pub fn needs_window_rule(&self) -> bool {
+        self.hypr.is_some_and(|h| !h.has_see_through_rule())
     }
 
     pub fn reload(&mut self) {
@@ -743,8 +755,13 @@ pub fn tint_glass(t: &Theme, picks: &[Color], opacity: f32) -> Theme {
         c.surface = towards(c.surface, mid, s * 0.25);
         c.button = towards(c.button, mid, s * 0.3);
         c.button_hover = towards(c.button_hover, mid, s * 0.35);
-        g.background.from = towards(g.background.from, first, s * 0.6);
-        g.background.to = towards(g.background.to, last, s * 0.6);
+        // every chosen colour gets its own stop: first, then the second in the middle (three colours) or at the end
+        g.background.from = towards(g.background.from, first, s * 0.9);
+        g.background.to = towards(g.background.to, last, s * 0.9);
+        g.background.via = (picks.len() >= 3).then(|| {
+            let base = g.background.from.mix(g.background.to, 0.5);
+            Color { a: base.a, ..base.mix(Color { a: base.a, ..mid }, s * 0.9) }
+        });
         // the accent is the first colour, darkened (light) or lightened (dark) until it reads as a mark
         let bg = over(c.background, if dark { black } else { white });
         let surface = over(c.surface, bg);
@@ -1118,8 +1135,6 @@ mod tests {
         assert_eq!(b.with_alpha(0.5).a, 128);
     }
 
-    pub(crate) use super::contrast;
-
     #[test]
     fn every_look_keeps_text_readable_on_every_surface() {
         let low: Vec<String> = builtin().iter().flat_map(readability_problems).collect();
@@ -1221,7 +1236,6 @@ mod tests {
         assert_eq!((old.colors.danger, old.colors.warn), (Color::parse("#aa0000").unwrap(), Color::parse("#aaaa00").unwrap()));
     }
 
-
     #[test]
     fn on_omarchy_its_look_comes_first_and_follows_a_theme_change() {
         let root = std::env::temp_dir().join(format!("lh-theme-omarchy-{}", std::process::id()));
@@ -1232,6 +1246,8 @@ mod tests {
         std::fs::write(cur.join("theme/colors.toml"), include_str!("../tests/fixtures/omarchy-dark.toml")).unwrap();
         let mut set = ThemeSet::load_with(&root.join("none"), Some(cur.clone()));
         assert_eq!(set.families()[0], "Omarchy");
+        assert_eq!(set.families()[1], crate::omarchy::TRANSPARENT, "the see-through variant sits next to it");
+        assert!(!set.needs_window_rule(), "no Hyprland in tests: no hint");
         assert_eq!(set.themes[set.resolve("", false)].label(), "Omarchy dark", "no look chosen: the desktop's, in its own mode");
         assert!(!set.changed());
         std::fs::write(cur.join("theme.name"), "b").unwrap();

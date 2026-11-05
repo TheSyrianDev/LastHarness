@@ -30,7 +30,7 @@ impl App {
             col = col.child(e);
         }
         let Some(info) = info else {
-            // while the core cannot be reached, "asking" would be untrue
+            // Core unreachable: do not show the "asking" text.
             if failed {
                 return col.into_any_element();
             }

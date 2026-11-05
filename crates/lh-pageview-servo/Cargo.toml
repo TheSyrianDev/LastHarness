@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 lh-pageview = { path = "../lh-pageview" }
-# pinned: Servo is pre-1.0 and breaks its API from one release to the next (tested with 0.7.0)
+# pinned: Servo is pre-1.0 and breaks its API from one release to the next (tested with 0.7.0 in spikes/gui-toolkits)
 servo = "=0.7.0"
 dpi = "0.1"
 url = "2.5"

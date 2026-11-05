@@ -175,7 +175,10 @@ impl App {
         let frac = ((self.layout().column.position(room) - COLUMN_MIN) / (max - COLUMN_MIN).max(1.)).clamp(0., 1.);
         let frac = if self.rtl { 1. - frac } else { frac };
         let held = self.width.dragging;
-        let g = self.swell("width-thumb", held, 3.);
+        let g = self.swell("width-thumb", held, 3., None);
+        if held || self.glass_fx.borrow().target("width-thumb/swell").is_some_and(|t| t > 0.) {
+            cx.notify();
+        }
         let (track, me, dragging) = (self.width.track.clone(), cx.entity().downgrade(), held);
         let fill = div().absolute().top(px(KNOB / 2. - 2.)).h(px(4.)).rounded_full().bg(p.accent.opacity(0.7));
         let fill = if self.rtl { fill.right(px(0.)).w(relative(1. - frac)) } else { fill.left(px(0.)).w(relative(frac)) };

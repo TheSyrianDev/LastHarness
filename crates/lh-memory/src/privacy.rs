@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn unsure_identifiers_count_as_sensitive() {
-        for t in ["Reach me at alex@example.com", "Call +20 100 123 4567", "My address is 12 Palm Street", "The id is 3f9a8c7d6e5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f"] {
+        for t in ["Reach me at omar@example.com", "Call +20 100 123 4567", "My address is 12 Palm Street", "The id is 3f9a8c7d6e5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f"] {
             let c = detect(t);
             assert_eq!(c.privacy, Privacy::Sensitive, "{t}");
             assert!(c.reason.contains("unsure") || c.reason.contains("identifier"), "{t}: {}", c.reason);

@@ -327,7 +327,7 @@ async fn a_tool_that_needs_permission_asks_and_goes_ahead_when_the_user_says_yes
             Ev::Server { event, .. } => {
                 chat.apply(&event);
                 if let Some(a) = chat.asks.first().cloned() {
-                    assert_eq!(a.tool, "write_file");
+                    assert_eq!(a.tool, "write");
                     assert!(!file_exists(folder.path()), "nothing is written before the answer");
                     w.backend.send(Cmd::Answer { session: session.clone(), ask: a.id.clone(), yes: true });
                     chat.answer(&a.id);
@@ -340,7 +340,7 @@ async fn a_tool_that_needs_permission_asks_and_goes_ahead_when_the_user_says_yes
     }
     assert!(file_exists(folder.path()), "the file was written after yes");
     assert!(!chat.busy);
-    assert!(chat.blocks.iter().any(|b| matches!(b, lh_gui::model::Block::Tool { name, result: Some(_), .. } if name == "write_file")));
+    assert!(chat.blocks.iter().any(|b| matches!(b, lh_gui::model::Block::Tool { name, result: Some(_), .. } if name == "write")));
     assert!(chat.blocks.iter().any(|b| matches!(b, lh_gui::model::Block::Assistant { text, .. } if text == "Saved the note.")));
 }
 

@@ -197,6 +197,12 @@ impl DirectXRenderer {
         })
     }
 
+    /// True when frames go through DirectComposition with a premultiplied-alpha swap chain,
+    /// the only path where the window can be see-through.
+    pub(crate) fn uses_direct_composition(&self) -> bool {
+        self.direct_composition.is_some()
+    }
+
     pub(crate) fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         self.atlas.clone()
     }
@@ -1502,7 +1508,10 @@ fn create_blend_state(device: &ID3D11Device) -> Result<ID3D11BlendState> {
     desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
     desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
     desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-    desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    // "Over" for alpha too (a + d * (1 - a)), as the wgpu renderer does. With ONE here the
+    // alpha of stacked translucent layers adds up and saturates, so a translucent window
+    // turns opaque wherever two layers overlap.
+    desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
     desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8;
     unsafe {
         let mut state = None;

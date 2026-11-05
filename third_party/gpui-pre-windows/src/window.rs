@@ -913,30 +913,40 @@ impl PlatformWindow for WindowsWindow {
     }
 
     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {
-        self.state.background_appearance.set(background_appearance);
         let hwnd = self.0.hwnd;
-
-        // using Dwm APIs for Mica and MicaAlt backdrops.
-        // others follow the set_window_composition_attribute approach
-        match background_appearance {
-            WindowBackgroundAppearance::Opaque => {
-                set_window_composition_attribute(hwnd, None, 0);
-            }
-            WindowBackgroundAppearance::Transparent => {
-                set_window_composition_attribute(hwnd, None, 2);
-            }
-            WindowBackgroundAppearance::Blurred => {
-                set_window_composition_attribute(hwnd, Some((0, 0, 0, 0)), 4);
-            }
-            WindowBackgroundAppearance::MicaBackdrop => {
-                // DWMSBT_MAINWINDOW => MicaBase
-                dwm_set_window_composition_attribute(hwnd, 2);
-            }
-            WindowBackgroundAppearance::MicaAltBackdrop => {
-                // DWMSBT_TABBEDWINDOW => MicaAlt
-                dwm_set_window_composition_attribute(hwnd, 4);
-            }
+        let composition = self
+            .state
+            .renderer
+            .try_borrow()
+            .map(|renderer| renderer.uses_direct_composition())
+            .unwrap_or(true);
+        let plan =
+            crate::backdrop::backdrop_plan(background_appearance, windows_build(), composition);
+        if plan.effective != background_appearance {
+            log::info!(
+                "Window background {background_appearance:?} is not available here, using {:?}",
+                plan.effective
+            );
         }
+        // The renderer clears for what the window can really show.
+        self.state.background_appearance.set(plan.effective);
+
+        set_window_composition_attribute(
+            hwnd,
+            (plan.accent_state == crate::backdrop::ACCENT_ACRYLIC).then_some((0, 0, 0, 0)),
+            plan.accent_state,
+        );
+        if let Some(backdrop) = plan.system_backdrop {
+            dwm_set_window_composition_attribute(hwnd, backdrop);
+        }
+        let inset = if plan.extend_frame { -1 } else { 0 };
+        let margins = MARGINS {
+            cxLeftWidth: inset,
+            cxRightWidth: inset,
+            cyTopHeight: inset,
+            cyBottomHeight: inset,
+        };
+        unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins) }.log_err();
     }
 
     fn minimize(&self) {
@@ -1594,6 +1604,16 @@ fn retrieve_window_placement(
     let bounds = bounds.to_device_pixels(display.scale_factor());
     placement.rcNormalPosition = calculate_window_rect(bounds, border_offset);
     Ok(placement)
+}
+
+fn windows_build() -> u32 {
+    let mut version = unsafe { std::mem::zeroed() };
+    let status = unsafe { windows::Wdk::System::SystemServices::RtlGetVersion(&mut version) };
+    if status.is_ok() {
+        version.dwBuildNumber
+    } else {
+        0
+    }
 }
 
 fn dwm_set_window_composition_attribute(hwnd: HWND, backdrop_type: u32) {

@@ -27,7 +27,7 @@ pub const HELP: &str = "lh learn <command>
   proposals                                  suggestions waiting for you
   accept <id> [--text <your wording>]        apply a suggestion, optionally with your own wording (all words after --text)
   reject <id>
-  habits [--min N]                           wishes you have repeated across sessions
+  habits [--min N]                           suggestions you have repeated across sessions
   signals                                    the raw things you said that look like rules";
 
 fn need<'a>(a: &'a [String], i: usize, what: &str) -> std::result::Result<&'a str, String> {

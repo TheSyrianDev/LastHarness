@@ -1,5 +1,5 @@
 //! The LastHarness mark, drawn natively. Geometry and colours are copied from the user's brand kit
-//! (the LastHarness brand kit); nothing here is designed anew.
+//! (`brand/motion-kit/source/tokens.json` and `brand-geometry.js`); nothing here is designed anew.
 //! Everything is on the kit's 64-unit grid and scaled when painted.
 
 use gpui::{Hsla, Path, PathBuilder, Pixels, Point, point, px};

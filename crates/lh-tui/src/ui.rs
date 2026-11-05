@@ -92,7 +92,7 @@ fn draw_tree(f: &mut Frame, screen: &crate::tree_ui::TreeScreen) {
     f.render_widget(Paragraph::new(vec![first_line, Line::from(Span::styled(second, dim))]), footer);
 }
 
-/// The status colours of the LastHarness brand (Grove palette).
+/// The status colours of the LastHarness brand (Grove palette in brand/motion-kit/source/tokens.json).
 pub fn slot_colour(asking: bool, busy: bool) -> Color {
     if asking {
         Color::Rgb(0xd0, 0x78, 0x4f)
@@ -203,12 +203,12 @@ mod tests {
         let mut a = App::new("tiny-model");
         a.start_turn("read it".into());
         a.apply(ServerEvent::Reasoning("hmm".into()));
-        a.apply(ServerEvent::ToolStart { id: "1".into(), name: "read_file".into(), arguments: "{\"path\":\"a.txt\"}".into() });
+        a.apply(ServerEvent::ToolStart { id: "1".into(), name: "read".into(), arguments: "{\"path\":\"a.txt\"}".into() });
         a.apply(ServerEvent::ToolResult { id: "1".into(), text: "file text".into() });
         a.apply(ServerEvent::Text("It says file text.".into()));
         a.apply(ServerEvent::Usage { prompt_tokens: 10, completion_tokens: 5, cached_tokens: 2 });
         let s = screen(&a, 80, 20);
-        for want in ["you", "read it", "thinking (3 characters", "read_file", "file text", "assistant", "It says file text.", "tiny-model", "10 in (2 cached)"] {
+        for want in ["you", "read it", "thinking (3 characters", "read", "file text", "assistant", "It says file text.", "tiny-model", "10 in (2 cached)"] {
             assert!(s.contains(want), "missing {want:?} in:\n{s}");
         }
     }
@@ -239,9 +239,9 @@ mod tests {
     #[test]
     fn a_question_is_drawn_over_the_chat() {
         let mut a = App::new("m");
-        a.apply(ServerEvent::Ask { id: "a1".into(), tool: "write_file".into(), what: "Write(\"/p/x\")".into(), reason: "changes files in the project".into(), worker: "assistant".into(), detail: String::new() });
+        a.apply(ServerEvent::Ask { id: "a1".into(), tool: "write".into(), what: "Write(\"/p/x\")".into(), reason: "changes files in the project".into(), worker: "assistant".into(), detail: String::new() });
         let s = screen(&a, 80, 20);
-        assert!(s.contains("Permission needed") && s.contains("assistant wants to use write_file") && s.contains("y = allow"), "{s}");
+        assert!(s.contains("Permission needed") && s.contains("assistant wants to use write") && s.contains("y = allow"), "{s}");
     }
 
     #[test]

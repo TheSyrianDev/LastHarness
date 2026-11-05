@@ -116,9 +116,9 @@ pub fn step_words(name: &str, arguments: &str) -> String {
     let pick = |keys: &[&str]| keys.iter().find_map(|k| args.get(*k).and_then(|v| v.as_str()).map(|v| one_line(v)));
     let target = pick(&["path", "file", "command", "url", "query", "name", "text"]);
     let verb = match name {
-        "read_file" => "Read",
-        "write_file" => "Wrote",
-        "edit_file" => "Edited",
+        "read" | "read_file" => "Read",
+        "write" | "write_file" => "Wrote",
+        "edit" | "edit_file" => "Edited",
         "list_dir" | "list_files" => "Listed",
         "run_command" | "bash" | "shell" => "Ran",
         "web_fetch" | "fetch" => "Opened",
@@ -283,7 +283,7 @@ impl Chat {
 
     /// Did the last turn write a file? Then "undo the last turn" has something to put back.
     pub fn last_turn_wrote(&self) -> bool {
-        !self.busy && self.session.is_some() && self.blocks.iter().rev().take_while(|b| !matches!(b, Block::User(_))).any(|b| matches!(b, Block::Tool { name, .. } if name == "write_file"))
+        !self.busy && self.session.is_some() && self.blocks.iter().rev().take_while(|b| !matches!(b, Block::User(_))).any(|b| matches!(b, Block::Tool { name, .. } if matches!(name.as_str(), "write" | "write_file")))
     }
 
     /// A chat nobody has written in and the core has never stored. It is not listed.

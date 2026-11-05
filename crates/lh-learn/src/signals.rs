@@ -76,7 +76,7 @@ pub fn classify_message(text: &str) -> Option<SignalKind> {
     }
 }
 
-/// The part of a message that states a wish: its questions are the task, not the wish. A message made
+/// The part of a message that states a suggestion: its questions are the task, not the suggestion. A message made
 /// only of questions is kept whole.
 pub fn wish_part(text: &str) -> String {
     let mut parts: Vec<String> = vec![];

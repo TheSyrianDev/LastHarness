@@ -4076,6 +4076,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls",
+ "toml 1.1.8+spec-1.1.0",
  "tower",
 ]
 
@@ -4231,10 +4232,13 @@ dependencies = [
 name = "lh-tools"
 version = "0.0.0"
 dependencies = [
+ "globset",
+ "ignore",
  "lh-learn",
  "lh-memory",
  "lh-provider",
  "lh-store",
+ "regex",
  "reqwest",
  "rquickjs",
  "serde_json",

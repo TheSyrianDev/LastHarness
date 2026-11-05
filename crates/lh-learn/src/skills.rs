@@ -312,10 +312,10 @@ mod tests {
 
     #[test]
     fn a_header_is_read_checked_and_written_back_unchanged() {
-        let src = "---\nname: pdf-tools\ndescription: >\n  Work with PDF files.\n  Use for forms.\nlicense: Apache-2.0\ncompatibility: Needs python3\nallowed-tools: Bash Read\nmetadata:\n  author: alex\n---\n\n# PDF tools\n\nDo the steps.\n";
+        let src = "---\nname: pdf-tools\ndescription: >\n  Work with PDF files.\n  Use for forms.\nlicense: Apache-2.0\ncompatibility: Needs python3\nallowed-tools: Bash Read\nmetadata:\n  author: omar\n---\n\n# PDF tools\n\nDo the steps.\n";
         let (m, body) = parse_skill_md(src, Some("pdf-tools")).unwrap();
         assert_eq!((m.name.as_str(), m.description.as_str(), m.license.as_deref(), m.compatibility.as_deref()), ("pdf-tools", "Work with PDF files. Use for forms.", Some("Apache-2.0"), Some("Needs python3")));
-        assert_eq!((m.allowed_tools.as_slice(), m.metadata.get("author").map(String::as_str), body.as_str()), (&["Bash".to_string(), "Read".to_string()][..], Some("alex"), "# PDF tools\n\nDo the steps."));
+        assert_eq!((m.allowed_tools.as_slice(), m.metadata.get("author").map(String::as_str), body.as_str()), (&["Bash".to_string(), "Read".to_string()][..], Some("omar"), "# PDF tools\n\nDo the steps."));
         let again = parse_skill_md(&render_skill_md(&m, &body), Some("pdf-tools")).unwrap();
         assert_eq!(again, (m, body));
     }

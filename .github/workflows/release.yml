@@ -35,6 +35,42 @@ jobs:
           prerelease: true
           files: dist/*.AppImage
 
+  omarchy:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libvulkan-dev libfontconfig-dev libssl-dev libdbus-1-dev libasound2-dev libgtk-3-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: |
+          cargo build --release -p lh-core -p lh-tui
+          cargo build --release -p lh-gui --features omarchy
+      - name: Package
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          [[ $GITHUB_REF == refs/tags/* ]] || ver="dev-${GITHUB_SHA::7}"
+          name="LastHarness-$ver-omarchy-x86_64"
+          d="dist/$name"
+          mkdir -p "$d"
+          for b in lastharness-gui lhd lh lastharness; do cp "target/release/$b" "$d/"; done
+          cp scripts/install-omarchy.sh packaging/omarchy/lastharness-icon-refresh packaging/omarchy/theme-set-hook packaging/lastharness.desktop packaging/omarchy/README.md LICENSE COMMERCIAL-LICENSING.md "$d/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omarchy
+          path: dist/*.tar.gz
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: dist/*.tar.gz
+
   windows:
     runs-on: windows-latest
     steps:
@@ -42,7 +78,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: cargo build --release -p lh-core -p lh-tui -p lh-gui
+        run: |
+          cargo build --release -p lh-core -p lh-tui
+          cargo build --release -p lh-gui --no-default-features
       - name: Package
         shell: pwsh
         run: |
@@ -99,7 +137,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: cargo build --release -p lh-core -p lh-tui -p lh-gui
+        run: |
+          cargo build --release -p lh-core -p lh-tui
+          cargo build --release -p lh-gui --no-default-features
       - name: Bundle the app and the disk image
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then ver="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA:0:7}"; fi

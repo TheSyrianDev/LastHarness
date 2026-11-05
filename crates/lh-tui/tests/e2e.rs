@@ -56,7 +56,7 @@ async fn models_turn_question_and_wrong_token() {
     }
     assert!(!app.busy);
     assert_eq!(std::fs::read_to_string(dir.path().join("out.txt")).unwrap(), "hi");
-    assert!(app.entries.iter().any(|e| matches!(e, Entry::Tool { name, result: Some(_), .. } if name == "write_file")));
+    assert!(app.entries.iter().any(|e| matches!(e, Entry::Tool { name, result: Some(_), .. } if name == "write")));
     assert!(matches!(app.entries.last(), Some(Entry::Assistant(t)) if t == "All done."));
 
     let bad = Client::new("http://127.0.0.1:1", "x");

@@ -239,6 +239,43 @@ pub fn knob_n(raw: f32, gap: f32, n: usize) -> (f32, f32) {
     (shown.min(raw), stretch)
 }
 
+/// `knob_n` for a thumb `height` pixels tall, with the stretch reined in so a wide thumb (the mode switch) and a
+/// small one (a slider ball) give way alike: the stretch eases toward at most 40% of the height instead of reaching
+/// the pointer. The trailing edge stays where the stop holds it, so only the leading edge moves with the pull.
+pub fn thumb_n(raw: f32, gap: f32, n: usize, height: f32) -> (f32, f32) {
+    let (shown, s) = held_n(raw, gap, n);
+    let cap = (height * 0.4).max(1.);
+    let soft = cap * (1. - (-s / cap).exp());
+    let raw = raw.clamp(0., gap * (n.max(2) - 1) as f32);
+    (if raw < shown { shown - soft } else { shown }, soft)
+}
+
+/// How much a thumb stretched by `stretch` pixels flattens, so it keeps its volume like a drop: a quarter of the
+/// stretch, taken evenly off the top and bottom.
+pub fn squash(stretch: f32) -> f32 {
+    stretch.max(0.) * 0.25
+}
+
+#[cfg(test)]
+mod thumb_tests {
+    use super::{held_n, thumb_n};
+
+    #[test]
+    fn the_trailing_edge_never_moves_and_the_stretch_is_capped() {
+        let mut prev = thumb_n(0., 60., 5, 22.);
+        for i in 1..=2400 {
+            let raw = i as f32 * 0.1;
+            let (left, s) = thumb_n(raw, 60., 5, 22.);
+            assert!(s <= 22. * 0.4 + 1e-3, "capped at {raw}: {s}");
+            let (shown, _) = held_n(raw, 60., 5);
+            let right = left + s;
+            assert!((left - shown).abs() < 1e-3 || (right - shown).abs() < 1e-3, "one edge on the held place at {raw}");
+            assert!((left - prev.0).abs() < 1.5 && (s - prev.1).abs() < 1.5, "no jump at {raw}");
+            prev = (left, s);
+        }
+    }
+}
+
 #[cfg(test)]
 mod held_tests {
     use super::held;
@@ -286,7 +323,6 @@ mod knob_tests {
 
     #[test]
     fn the_glass_follows_the_pointer_and_release_starts_where_it_was_drawn() {
-        use super::knob;
         let gap = 40.;
         for raw in [0., 7., 19., 20., 21., 33., 40., 61., 80., 160.] {
             let (left, stretch) = knob(raw, gap);

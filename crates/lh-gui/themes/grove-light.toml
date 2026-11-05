@@ -1,4 +1,4 @@
-# Built-in look from the LastHarness brand palette "grove".
+# Built-in look from the LastHarness brand palette "grove" (brand/motion-kit/source/tokens.json).
 # Brand colours are used as given; surfaces, buttons and borders are mixes of them, and a few
 # text colours are mixed darker or lighter so text stays readable (the contrast test checks this).
 name = "Grove"

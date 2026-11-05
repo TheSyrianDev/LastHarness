@@ -10,11 +10,15 @@ use crate::theme::{contrast, Color, Mode, Theme};
 
 /// Where Omarchy keeps the theme in use: `~/.local/state/omarchy/current`. `None` without a home folder.
 pub fn current_dir() -> Option<PathBuf> {
+    // built without the `omarchy` feature: the Omarchy looks, the Hyprland reads and the window-rule hint are never offered
+    if !cfg!(feature = "omarchy") {
+        return None;
+    }
     let state = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
     Some(state.join("omarchy").join("current"))
 }
 
-/// What says the Omarchy theme changed: the name in `theme.name` and the time `colors.toml` was written. Checked on
+/// What tells the app the Omarchy theme changed: the name in `theme.name` and the time `colors.toml` was written. Checked on
 /// the app's 400 ms theme tick; two small reads, no watcher thread.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Stamp {
@@ -36,12 +40,16 @@ pub struct Hypr {
     pub blur_size: f32,
     /// `decoration:blur:passes`.
     pub blur_passes: f32,
+    /// The opacity a window rule gives this app's own window (`hyprctl getprop pid:<ours> opacity`), and whether
+    /// the rule says `override` (the rule's value replaces `active_opacity` instead of multiplying it). `None` when
+    /// Hyprland has no window of ours yet or cannot say.
+    pub window_opacity: Option<(f32, bool)>,
 }
 
 impl Default for Hypr {
     /// Off Hyprland (or when hyprctl cannot answer): the look's own roundness, opaque, a gentle blur.
     fn default() -> Self {
-        Hypr { rounding: 10., active_opacity: 1., inactive_opacity: 1., blur_size: 4., blur_passes: 2. }
+        Hypr { rounding: 10., active_opacity: 1., inactive_opacity: 1., blur_size: 4., blur_passes: 2., window_opacity: None }
     }
 }
 
@@ -50,8 +58,16 @@ pub const HYPR_OPTIONS: [&str; 5] = ["decoration:rounding", "decoration:active_o
 impl Hypr {
     /// Ask the running Hyprland. `None` when hyprctl is missing, Hyprland is not running, or nothing was readable.
     pub fn read() -> Option<Hypr> {
+        if !cfg!(feature = "omarchy") {
+            return None;
+        }
         std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
-        let batch = HYPR_OPTIONS.iter().map(|o| format!("getoption {o}")).collect::<Vec<_>>().join("; ");
+        // the window's own opacity last: when Hyprland has no window of ours it answers in plain text, which ends the read
+        let pid = std::process::id();
+        let mut batch = HYPR_OPTIONS.iter().map(|o| format!("getoption {o}")).collect::<Vec<_>>();
+        batch.push(format!("getprop pid:{pid} opacity"));
+        batch.push(format!("getprop pid:{pid} opacity_override"));
+        let batch = batch.join("; ");
         let out = std::process::Command::new("hyprctl").args(["-j", "--batch", &batch]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output().ok()?;
         if !out.status.success() {
             return None;
@@ -66,6 +82,18 @@ impl Hypr {
         let mut found = false;
         for v in serde_json::Deserializer::from_str(out).into_iter::<serde_json::Value>() {
             let Ok(v) = v else { break };
+            // the window rule's answers (`getprop`): plain text instead when there is no window of ours, ending the read
+            if let Some(o) = v.get("opacity").and_then(|n| n.as_f64()).filter(|n| n.is_finite()) {
+                h.window_opacity = Some((o.clamp(0., 1.) as f32, h.window_opacity.is_some_and(|w| w.1)));
+                found = true;
+                continue;
+            }
+            if let Some(b) = v.get("opacity_override").and_then(|b| b.as_bool()) {
+                if let Some(w) = h.window_opacity.as_mut() {
+                    w.1 = b;
+                }
+                continue;
+            }
             let Some(name) = v.get("option").and_then(|o| o.as_str()) else { continue };
             let Some(n) = v.get("int").or(v.get("float")).and_then(|n| n.as_f64()) else { continue };
             let n = n as f32;
@@ -91,16 +119,55 @@ impl Hypr {
         (self.blur_size * self.blur_passes / 2.).clamp(0., 24.)
     }
 
-    /// How covered the window's background is: the active window opacity.
+    /// The window background's opacity: the active window opacity.
     pub fn background_alpha(&self) -> f32 {
         self.active_opacity.clamp(0.3, 1.)
     }
 
-    /// How covered panels are: always see-through enough for the glass to show, a little more so when the desktop
+    /// How see-through the transparent Omarchy look is: what the window rule for this app gives, times
+    /// `active_opacity` unless the rule says `override`, as Hyprland itself works it out. No window rule (or no
+    /// window yet): 1, opaque.
+    pub fn rule_alpha(&self) -> f32 {
+        match self.window_opacity {
+            Some((o, true)) => o,
+            Some((o, false)) => o * self.active_opacity,
+            None => 1.,
+        }
+        .clamp(0.3, 1.)
+    }
+
+    /// Does a window rule make this app see-through? False when there is none, so Settings can show the line to add.
+    pub fn has_see_through_rule(&self) -> bool {
+        self.window_opacity.is_some_and(|(o, _)| o < 0.98)
+    }
+
+    /// Panel opacity: always see-through enough for the glass to show, a little more so when the desktop
     /// itself makes windows see-through.
     pub fn surface_alpha(&self) -> f32 {
-        (0.62 * self.active_opacity).clamp(0.35, 0.62)
+        surface_alpha_for(self.active_opacity)
     }
+}
+
+fn surface_alpha_for(window: f32) -> f32 {
+    (0.62 * window).clamp(0.35, 0.62)
+}
+
+/// This app's window class on Wayland (the `app_id`), for the window rule that makes it see-through.
+pub const APP_CLASS: &str = "lastharness-gui";
+
+/// The name of the see-through variant of the Omarchy look.
+pub const TRANSPARENT: &str = "Omarchy (transparent)";
+
+/// The line to add to Hyprland's config for the transparent look, shown in Settings when no rule matches.
+/// In Omarchy's Lua config (`~/.config/hypr/hyprland.lua`); the number is how see-through the window is.
+pub const RULE_HINT: &str = "o.window(\"lastharness-gui\", { opacity = \"0.85 override 0.85 override\" })";
+
+/// The Omarchy theme's foreground colour (the text in its bar and panels), from `colors.toml`. `None` when there is
+/// no theme, or it has no readable `foreground` key.
+pub fn foreground(current: &Path) -> Option<Color> {
+    let src = std::fs::read_to_string(current.join("theme").join("colors.toml")).ok()?;
+    let table: toml::Table = toml::from_str(&src).ok()?;
+    Color::parse(table.get("foreground")?.as_str()?).ok()
 }
 
 pub fn stamp(current: &Path) -> Stamp {
@@ -116,6 +183,29 @@ pub fn load(current: &Path, hypr: Option<Hypr>) -> Option<Theme> {
     from_colors_with(&src, hypr).ok()
 }
 
+/// The transparent Omarchy look from the current theme folder, as [`load`].
+pub fn load_transparent(current: &Path, hypr: Option<Hypr>) -> Option<Theme> {
+    let src = std::fs::read_to_string(current.join("theme").join("colors.toml")).ok()?;
+    transparent_from_colors(&src, hypr).ok()
+}
+
+/// The see-through variant: Omarchy's colours, the window as see-through as Hyprland's window rule for this app
+/// makes it ([`Hypr::rule_alpha`]; opaque without a rule), Hyprland's rounding and blur, and the liquid glass
+/// material of the built-in Glass look in the same mode.
+pub fn transparent_from_colors(src: &str, hypr: Option<Hypr>) -> Result<Theme, String> {
+    let h = hypr.unwrap_or_default();
+    let mut t = build(src, &h, TRANSPARENT, h.rule_alpha())?;
+    let glass = glass_material(t.mode);
+    t.material = crate::theme::Material { blur: h.glass_blur(), ..glass };
+    Ok(t)
+}
+
+/// The `[material]` of the built-in Glass look in that mode.
+pub fn glass_material(mode: Mode) -> crate::theme::Material {
+    let src = if mode == Mode::Light { include_str!("../themes/glass-light.toml") } else { include_str!("../themes/glass-dark.toml") };
+    Theme::parse(src, Path::new("")).expect("the built-in Glass look parses").material
+}
+
 /// Turn an Omarchy `colors.toml` into a look. Keys that are missing are made from the ones that are there; only
 /// `background` and `foreground` are needed. Pairs that would be hard to read are nudged until they pass the same
 /// contrast rules as the built-in looks (text 4.5:1, marks 3:1).
@@ -127,6 +217,11 @@ pub fn from_colors(src: &str) -> Result<Theme, String> {
 /// liquid glass throughout, like the Glass look.
 pub fn from_colors_with(src: &str, hypr: Option<Hypr>) -> Result<Theme, String> {
     let h = hypr.unwrap_or_default();
+    build(src, &h, "Omarchy", h.background_alpha())
+}
+
+/// The look from `colors.toml`, named `name`, with the window background covered `window` (0 to 1).
+fn build(src: &str, h: &Hypr, name: &str, window: f32) -> Result<Theme, String> {
     let table: toml::Table = toml::from_str(src).map_err(|e| e.message().to_string())?;
     let mut keys: HashMap<String, Color> = HashMap::new();
     for (k, v) in &table {
@@ -165,10 +260,10 @@ pub fn from_colors_with(src: &str, hypr: Option<Hypr>) -> Result<Theme, String> 
 
     let hex = |c: Color| format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b);
     let alpha = |a: f32| format!("{:02x}", (a.clamp(0., 1.) * 255.).round() as u8);
-    let (bg_a, surface_a) = (alpha(h.background_alpha()), alpha(h.surface_alpha()));
-    let see_through = h.background_alpha() < 1.;
+    let (bg_a, surface_a) = (alpha(window), alpha(surface_alpha_for(window)));
+    let see_through = window < 1.;
     let file = format!(
-        "name = \"Omarchy\"\nmode = \"{}\"\n[colors]\nbackground = \"{}{bg_a}\"\nsurface = \"{}{surface_a}\"\nsunken = \"{}\"\ntext = \"{}\"\nmuted = \"{}\"\naccent = \"{}\"\naccent_text = \"{}\"\nbutton = \"{}\"\nbutton_hover = \"{}\"\nborder = \"{}\"\ndanger = \"{}\"\nwarn = \"{}\"\ngood = \"{}\"\nfocus_ring = \"{}\"\n[shape]\nroundness = {}\n[effects]\nblur = {see_through}\n[material]\npanels = \"regular\"\nside_panel = \"clear\"\npopups = \"regular_tinted\"\ncontrols = \"clear\"\nblur = {}\nrefraction = 8\nrim = 0.45\n[animation]\nduration_ms = 140\n",
+        "name = \"{name}\"\nmode = \"{}\"\n[colors]\nbackground = \"{}{bg_a}\"\nsurface = \"{}{surface_a}\"\nsunken = \"{}\"\ntext = \"{}\"\nmuted = \"{}\"\naccent = \"{}\"\naccent_text = \"{}\"\nbutton = \"{}\"\nbutton_hover = \"{}\"\nborder = \"{}\"\ndanger = \"{}\"\nwarn = \"{}\"\ngood = \"{}\"\nfocus_ring = \"{}\"\n[shape]\nroundness = {}\n[effects]\nblur = {see_through}\n[material]\npanels = \"regular\"\nside_panel = \"clear\"\npopups = \"regular_tinted\"\ncontrols = \"clear\"\nblur = {}\nrefraction = 8\nrim = 0.45\n[animation]\nduration_ms = 140\n",
         if dark { "dark" } else { "light" },
         hex(bg), hex(surface), hex(sunken), hex(text), hex(muted), hex(accent), hex(accent_text), hex(button), hex(button_hover), hex(border), hex(danger), hex(warn), hex(good), hex(focus_ring),
         h.rounding.round(), h.glass_blur(),
@@ -275,6 +370,19 @@ mod tests {
     }
 
     #[test]
+    fn the_foreground_is_read_from_the_theme_folder() {
+        let dir = std::env::temp_dir().join(format!("lh-omarchy-fg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(foreground(&dir), None, "no theme folder: no foreground");
+        std::fs::create_dir_all(dir.join("theme")).unwrap();
+        std::fs::write(dir.join("theme/colors.toml"), DARK).unwrap();
+        assert_eq!(foreground(&dir), Some(Color::parse("#e1e7d9").unwrap()));
+        std::fs::write(dir.join("theme/colors.toml"), "background = \"#000000\"\n").unwrap();
+        assert_eq!(foreground(&dir), None, "no foreground key: none");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn missing_keys_are_made_from_the_ones_there() {
         let t = from_colors("background = \"#1a1b26\"\nforeground = \"#c0caf5\"\n").unwrap();
         assert_eq!(t.mode, Mode::Dark, "no mode key: the background decides");
@@ -322,7 +430,7 @@ mod tests {
     fn hyprctl_batch_output_is_read_and_unknown_options_keep_the_default() {
         let out = "{\"option\": \"decoration:rounding\", \"int\": 24, \"set\": true }\n\n\n{\"option\": \"decoration:active_opacity\", \"float\": 0.900000, \"set\": true }\n\n\n{\"option\": \"decoration:inactive_opacity\", \"float\": 0.800000, \"set\": true }\n\n\n{\"option\": \"decoration:blur:size\", \"int\": 8, \"set\": true }\n\n\n{\"option\": \"decoration:blur:passes\", \"int\": 3, \"set\": true }\n\n";
         let h = Hypr::parse(out).unwrap();
-        assert_eq!(h, Hypr { rounding: 24., active_opacity: 0.9, inactive_opacity: 0.8, blur_size: 8., blur_passes: 3. });
+        assert_eq!(h, Hypr { rounding: 24., active_opacity: 0.9, inactive_opacity: 0.8, blur_size: 8., blur_passes: 3., window_opacity: None });
         // an older Hyprland that lacks one option answers "no such option" in plain text, which ends the read
         let part = Hypr::parse("{\"option\": \"decoration:rounding\", \"int\": 6, \"set\": true }\nno such option").unwrap();
         assert_eq!((part.rounding, part.active_opacity), (6., 1.));
@@ -333,7 +441,7 @@ mod tests {
 
     #[test]
     fn hyprland_sets_the_roundness_opacity_and_glass_blur_and_the_look_is_glass() {
-        let h = Hypr { rounding: 24., active_opacity: 0.9, inactive_opacity: 0.8, blur_size: 8., blur_passes: 3. };
+        let h = Hypr { rounding: 24., active_opacity: 0.9, inactive_opacity: 0.8, blur_size: 8., blur_passes: 3., window_opacity: None };
         let t = from_colors_with(DARK, Some(h)).unwrap();
         assert_eq!(t.roundness, 24.);
         assert_eq!(t.material.blur, 12., "size 8 times 3 passes, halved");
@@ -349,5 +457,48 @@ mod tests {
         assert_eq!((f.roundness, f.colors.background.a, f.blur), (10., 255, false));
         assert_ne!(f.material.panels, K::None);
         assert_eq!(f.material.blur, Hypr::default().glass_blur());
+    }
+
+    #[test]
+    fn the_window_rule_for_this_app_is_read_from_hyprctl() {
+        let opts = "{\"option\": \"decoration:active_opacity\", \"float\": 0.900000, \"set\": true }\n\n";
+        let h = Hypr::parse(&format!("{opts}{{\"opacity\": 0.75}}\n\n{{\"opacity_override\": true}}\n")).unwrap();
+        assert_eq!(h.window_opacity, Some((0.75, true)));
+        assert_eq!(h.rule_alpha(), 0.75, "override: the rule's own value");
+        assert!(h.has_see_through_rule());
+        let h = Hypr::parse(&format!("{opts}{{\"opacity\": 0.8}}\n\n{{\"opacity_override\": false}}\n")).unwrap();
+        assert!((h.rule_alpha() - 0.72).abs() < 1e-5, "no override: times active_opacity, as Hyprland does");
+        // no window of ours yet: plain text, the rest of the read still counts and the look is opaque
+        let h = Hypr::parse(&format!("{opts}window not found\n\nwindow not found")).unwrap();
+        assert_eq!((h.window_opacity, h.rule_alpha(), h.has_see_through_rule()), (None, 1., false));
+        // a rule that keeps it opaque is no see-through rule
+        let h = Hypr::parse("{\"opacity\": 1}\n{\"opacity_override\": true}").unwrap();
+        assert!(!h.has_see_through_rule());
+        assert_eq!(Hypr::parse("{\"opacity\": 0.1}").unwrap().rule_alpha(), 0.3, "never so faint the words go");
+    }
+
+    #[test]
+    fn the_transparent_look_follows_the_rule_and_takes_the_glass_material() {
+        let h = Hypr { window_opacity: Some((0.75, true)), blur_size: 8., blur_passes: 3., rounding: 14., ..Hypr::default() };
+        let t = transparent_from_colors(DARK, Some(h)).unwrap();
+        assert_eq!(t.name, TRANSPARENT);
+        assert_eq!(t.colors.background.a, (0.75f32 * 255.).round() as u8, "the window rule's level");
+        assert!(t.blur, "see-through: blurred behind");
+        assert_eq!(t.roundness, 14.);
+        let g = glass_material(Mode::Dark);
+        assert_eq!((t.material.panels, t.material.side_panel, t.material.popups, t.material.controls), (g.panels, g.side_panel, g.popups, g.controls));
+        assert_eq!((t.material.refraction, t.material.rim), (g.refraction, g.rim), "Glass's bend and rim");
+        assert_eq!(t.material.blur, 12., "blur still from Hyprland");
+        readable_everywhere(&t);
+        // the colours are Omarchy's, not Glass's
+        let o = from_colors_with(DARK, Some(h)).unwrap();
+        assert_eq!((t.colors.text, t.colors.accent), (o.colors.text, o.colors.accent));
+        // no rule: opaque, no blur behind
+        let f = transparent_from_colors(DARK, Some(Hypr::default())).unwrap();
+        assert_eq!((f.colors.background.a, f.blur), (255, false));
+        // a light Omarchy theme takes the light Glass material
+        let l = transparent_from_colors(include_str!("../tests/fixtures/omarchy-light.toml"), None).unwrap();
+        assert_eq!(l.mode, Mode::Light);
+        assert_eq!(l.material.panels, glass_material(Mode::Light).panels);
     }
 }

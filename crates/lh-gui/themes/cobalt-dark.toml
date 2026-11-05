@@ -1,6 +1,6 @@
-# Built-in look from the LastHarness brand palette "cobalt".
-# Brand colours are used as given; surfaces, buttons and borders are mixes of them, and a few
-# text colours are mixed darker or lighter so text stays readable (the contrast test checks this).
+# Built-in look from the LastHarness brand palette "cobalt" (brand/motion-kit/source/tokens.json).
+# Brand colors are used as given; surfaces, buttons and borders are mixes of them, and a few
+# text colors are mixed darker or lighter so text stays readable (the contrast test checks this).
 name = "Cobalt"
 mode = "dark"
 

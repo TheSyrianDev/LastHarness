@@ -16,7 +16,7 @@ pub const INSTRUCTIONS_MAX: usize = 600;
 
 /// Tools a role may list. Memory and skill tools only work in a session that has them.
 pub const KNOWN_TOOLS: &[&str] = &[
-    "read_file", "write_file", "list_dir", "run_command", "web_fetch", "web_search", "generate_image", "recall", "open_note", "remember", "forget", "use_skill", "read_skill_file",
+    "read_file", "write_file", "list_dir", "run_command", "web_fetch", "web_search", "generate_image", "recall", "open_note", "remember", "forget", "use_skill", "read_skill_file", "code_lookup", "codemode",
 ];
 
 /// Which model a role uses: a kind of model (resolved through the model types) or one exact model.
@@ -164,7 +164,7 @@ fn starters() -> Vec<Role> {
           "You find and check information. Use the files you are given and the web. Say where each fact came from. Say plainly what you could not confirm. Do not guess. Finish with a short summary of what you found."),
         r("writer", "Writes and edits clear text to a brief.", "mid-tier", "read_file write_file list_dir recall", MemorySlice::Layers(vec![Layer::Preferences]), 0.7,
           "You write clear text for the brief you are given. Keep to the brief and the length asked for. Plain words, no filler. Save the finished text where the brief says. Finish with a one-line summary of what you wrote and where it is."),
-        r("coder", "Writes, changes and tests code.", "mid-tier", "read_file write_file list_dir run_command", MemorySlice::Layers(vec![Layer::Preferences, Layer::Projects]), 0.2,
+        r("coder", "Writes, changes and tests code.", "mid-tier", "read_file write_file list_dir run_command code_lookup", MemorySlice::Layers(vec![Layer::Preferences, Layer::Projects]), 0.2,
           "You write and change code. Read the existing code first and keep your changes small. Run the tests or the program when you can, and report the real result. Never say something works if you did not run it. Finish with a summary of what changed and what you checked."),
         r("designer", "Plans structure and layout and makes images when asked.", "mid-tier", "read_file write_file list_dir generate_image recall", MemorySlice::Layers(vec![Layer::Preferences, Layer::Projects]), 0.7,
           "You design structure, layout and wording for the brief. Explain each choice in a sentence. Make images only when asked. Do not invent a brand name, logo or visual identity: if the brief needs one, say so in your summary so the lead can ask the user."),

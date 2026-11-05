@@ -41,10 +41,22 @@ fn glass_sdf(p: vec2<f32>, half_size: vec2<f32>, radius: f32) -> f32 {
 
 // How strongly the backdrop is pulled inward, 0 to 1, at `depth` pixels inside
 // the edge. Full at the edge, fading to nothing `zone` pixels in, with a
-// smoothstep profile like a rounded bevel.
+// smoothstep profile like a rounded bevel. Kept for reference and tests.
 fn glass_bend(depth: f32, zone: f32) -> f32 {
     let t = saturate(1.0 - depth / max(zone, 0.001));
     return t * t * (3.0 - 2.0 * t);
+}
+
+// Lens bevel: the glass surface is a quarter circle `bezel` pixels wide at the
+// rim and flat inside. Returns (displacement 0..1, surface normal z 0..1) at
+// `depth` pixels inside the edge. The displacement is the height lost to the
+// curve, so it is steep at the very rim and gone where the surface is flat,
+// which is how a real lens squeezes what is behind it into the edge.
+fn glass_lens(depth: f32, bezel: f32) -> vec2<f32> {
+    let x = saturate(depth / max(bezel, 0.001));
+    let u = 1.0 - x;
+    let nz = sqrt(max(1.0 - u * u, 0.0));
+    return vec2<f32>(1.0 - nz, nz);
 }
 
 @vertex
@@ -93,13 +105,21 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
     let tinted = glass.variant >= 2u;
     let energy = saturate(glass.energy);
 
-    // Lens: sample from further inside the closer we are to the edge. The bevel
-    // is at most 16 px wide; Clear bends harder.
+    // Lens. The bevel is wide enough to bend whole letters behind the rim:
+    // three times the refraction, at least 12 px, at most the half size.
     let depth = max(-d, 0.0);
-    let zone = min(min(half_size.x, half_size.y), 16.0);
-    let edge = saturate(1.0 - depth / max(zone, 0.001));
-    let strength = select(1.0, 1.5, clear);
-    let center = input.position.xy - n * glass.refraction * strength * glass_bend(depth, zone);
+    let min_half = min(half_size.x, half_size.y);
+    let bezel = min(min_half, max(glass.refraction * 3.0, 12.0));
+    let lens = glass_lens(depth, bezel);
+    let edge = lens.x;
+    let strength = select(1.6, 2.2, clear) * (1.0 + 0.35 * energy);
+    let shift = glass.refraction * strength * lens.x;
+    // The flat middle magnifies a little too, so what is behind reads as seen
+    // through a thick lens and not only at the rim.
+    let magnify = select(0.035, 0.05, clear) * min(glass.refraction / 8.0, 1.5);
+    let center = input.position.xy - n * shift - p * magnify;
+    // Slight dispersion: red bends less than blue, only where the rim bends.
+    let spread = n * shift * 0.12;
 
     // Same margin as the copy in wgpu_renderer.rs.
     let margin = glass.blur + 2.0;
@@ -121,14 +141,18 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
         color += glass_backdrop(center + vec2<f32>(-h, -h), lo, hi);
         color /= 9.0;
     }
+    if (shift > 0.5) {
+        // Two extra taps, only near the rim: red from less bend, blue from more.
+        let red = glass_backdrop(center + spread, lo, hi);
+        let blue = glass_backdrop(center - spread, lo, hi);
+        color = vec4<f32>(mix(color.r, red.r, 0.6), color.g, mix(color.b, blue.b, 0.6), color.a);
+    }
 
     // Grade the backdrop in straight colour.
     var c = color.rgb / max(color.a, 0.0001);
     let luma = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
-    if (!clear) {
-        // Regular lifts saturation a touch.
-        c = saturate((luma + (c - luma) * 1.05) * 1.01 + 2.0 / 255.0);
-    }
+    // A thick lens lifts saturation; Clear only a little.
+    c = saturate((luma + (c - luma) * select(1.12, 1.05, clear)) * select(1.01, 1.0, clear) + 2.0 / 255.0);
 
     // Tint. Regular warms on colourful backdrops (chroma-adaptive); tinted
     // variants let the tint colour carry the body, shaded by the backdrop.
@@ -138,30 +162,45 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
         let warmth = 0.45 * saturate((chroma * 255.0 - 10.0) / 46.0);
         tint *= vec3<f32>(1.0, 1.0 - 0.067 * warmth, 1.0 - 0.165 * warmth);
     }
-    let inner_glow = pow(edge, 1.7) * select(0.025, 0.008, clear);
+    let inner_glow = pow(edge, 1.2) * select(0.03, 0.01, clear);
     var ta = saturate(input.tint.a + inner_glow + energy * 0.025);
     if (tinted) {
         tint *= 0.6 + 0.6 * luma;
         ta = 0.35 + 0.65 * ta;
     }
+    // The bevel stays clearer than the body, so the bend of what is behind
+    // (words, edges) shows at the rim even on a nearly solid pop-up. The middle,
+    // where the panel's own words sit, keeps its full tint.
+    ta *= 1.0 - 0.45 * pow(edge, 0.7);
     var rgb = c * (1.0 - ta) + saturate(tint) * ta;
     var alpha = color.a * (1.0 - ta) + ta;
 
-    // Light from the top left: 1 on edges facing it, 0 facing away.
-    let light = saturate((-n.x - n.y) * 0.5 + 0.5);
-    // Specular bevel: a broad bright band near the edge, sharper on Clear.
-    let spec = select(pow(edge, 5.0) * (0.06 + 0.18 * light), pow(edge, 6.0) * (0.12 + 0.58 * light), clear);
-    // Shade on the bevel facing away from the light.
-    let shade = pow(edge, 4.0) * (1.0 - light) * select(0.04, 0.13, clear);
-    // Rim: a thin bright line at the very edge, scaled by `rim`.
-    let band = saturate(1.0 - depth / 1.5);
-    let line = band * (0.35 + 0.65 * light * light);
-    let rim = saturate(glass.rim * (line + spec));
+    // Light from the top left. `facing` is 1 on rims facing it, `away` on the
+    // opposite rim, which catches a softer bounce like real glass.
+    let light_dir = vec2<f32>(-0.6, -0.8);
+    let facing = saturate(dot(n, light_dir));
+    let away = saturate(-dot(n, light_dir));
+    // Moving or pressed glass catches more light.
+    let lit = glass.rim * (1.0 + 0.9 * energy);
+    // Fresnel: the surface turns edge-on at the rim and reflects more there.
+    let fresnel = pow(1.0 - lens.y, 2.0);
+    // Specular on the bevel: bright on the lit side, softer opposite.
+    let spec = fresnel * (select(0.12, 0.2, clear) + select(0.6, 0.9, clear) * facing * facing + 0.3 * away * away);
+    // A broad sheen across the lit part of the bevel, like light caught in the
+    // curve, reaching well inside the rim and not only the last pixel.
+    let sheen = pow(edge, 0.6) * pow(facing, 1.5) * 0.32 + pow(edge, 0.8) * away * away * 0.1;
+    // Thin rim line at the very edge, two pixels wide.
+    let band = saturate(1.0 - depth / 2.0);
+    let line = band * (0.45 + 0.8 * facing + 0.4 * away);
+    let rim = saturate(lit * (line + spec + sheen));
+    // Inner shadow: a soft dark ring just inside the rim, deeper away from the light.
+    let ring = saturate(1.0 - abs(depth - 3.0) / 3.0) * saturate(depth / 1.0);
+    let shade = ring * (0.05 + 0.10 * (1.0 - facing)) * select(1.0, 1.4, clear) * saturate(glass.rim * 1.5);
     rgb = (rgb * (1.0 - rim) + vec3<f32>(rim)) * (1.0 - shade);
     alpha = alpha * (1.0 - rim) + rim;
 
     // Interaction energy brightens the body, most near the edge.
-    let glow = energy * (0.055 + pow(edge, 2.2) * 0.12);
+    let glow = energy * (0.055 + pow(edge, 1.5) * 0.12);
     rgb = rgb * (1.0 - glow) + vec3<f32>(glow);
     alpha = alpha * (1.0 - glow) + glow;
     rgb *= alpha;

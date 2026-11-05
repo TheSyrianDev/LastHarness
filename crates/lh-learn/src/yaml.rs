@@ -151,8 +151,8 @@ mod tests {
 
     #[test]
     fn maps_lists_and_literal_blocks() {
-        let v = parse("name: x\nmetadata:\n  author: alex\n  version: \"1.0\"\nallowed-tools:\n  - Bash\n  - Read\nnotes: |\n  line one\n  line two\n").unwrap();
-        assert_eq!(get(&v, "metadata"), &Value::Map([("author".to_string(), "alex".to_string()), ("version".to_string(), "1.0".to_string())].into()));
+        let v = parse("name: x\nmetadata:\n  author: omar\n  version: \"1.0\"\nallowed-tools:\n  - Bash\n  - Read\nnotes: |\n  line one\n  line two\n").unwrap();
+        assert_eq!(get(&v, "metadata"), &Value::Map([("author".to_string(), "omar".to_string()), ("version".to_string(), "1.0".to_string())].into()));
         assert_eq!(get(&v, "allowed-tools"), &Value::List(vec!["Bash".into(), "Read".into()]));
         assert_eq!(get(&v, "notes"), &Value::Str("line one\nline two".into()));
     }

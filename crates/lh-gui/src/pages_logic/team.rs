@@ -11,7 +11,7 @@ use super::{arr, text};
 pub const INSTRUCTIONS_MAX: usize = 600;
 
 /// The tools a role may list (the core's own list; a test keeps the two the same).
-pub const KNOWN_TOOLS: [&str; 13] = ["read_file", "write_file", "list_dir", "run_command", "web_fetch", "web_search", "generate_image", "recall", "open_note", "remember", "forget", "use_skill", "read_skill_file"];
+pub const KNOWN_TOOLS: [&str; 15] = ["read_file", "write_file", "list_dir", "run_command", "web_fetch", "web_search", "generate_image", "recall", "open_note", "remember", "forget", "use_skill", "read_skill_file", "code_lookup", "codemode"];
 
 /// Names are lower case letters, digits and single hyphens.
 pub fn valid_name(n: &str) -> bool {

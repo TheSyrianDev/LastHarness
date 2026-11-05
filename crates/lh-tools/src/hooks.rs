@@ -5,11 +5,11 @@
 //!
 //! ```toml
 //! [[before]]
-//! tools = ["run_command"]          # leave out for every tool
+//! tools = ["bash"]                 # leave out for every tool
 //! run = "my-check"                 # run by `sh -c` in the chat's folder
 //!
 //! [[after]]
-//! tools = ["write_file"]
+//! tools = ["write"]
 //! run = "cargo fmt"
 //! timeout_secs = 30                # default 30
 //! ```
@@ -24,6 +24,20 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use tokio::io::AsyncWriteExt;
+
+/// A hook from what was typed: tools as a comma list (empty for every tool), the command, and seconds.
+pub fn from_form(tools: &str, run: &str, secs: &str) -> Result<Hook, String> {
+    let run = run.trim();
+    if run.is_empty() {
+        return Err("Write the command to run.".into());
+    }
+    let secs: u64 = if secs.trim().is_empty() { 30 } else { secs.trim().parse().map_err(|_| "The time limit is a whole number of seconds.".to_string())? };
+    if secs == 0 || secs > 600 {
+        return Err("The time limit is 1 to 600 seconds.".into());
+    }
+    let tools = tools.split(',').map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect();
+    Ok(Hook { tools, run: run.to_string(), timeout: Duration::from_secs(secs) })
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hooks {
@@ -89,6 +103,34 @@ impl Hooks {
         self.before.is_empty() && self.after.is_empty()
     }
 
+    /// The file text for these hooks, in the same form the user would write by hand.
+    pub fn to_toml(&self) -> String {
+        let mut out = String::from("# Commands run before or after a tool call. Edited in Settings, Hooks.\n");
+        for (name, list) in [("before", &self.before), ("after", &self.after)] {
+            for k in list {
+                out.push_str(&format!("\n[[{name}]]\n"));
+                if !k.tools.is_empty() {
+                    out.push_str(&format!("tools = {}\n", toml::Value::Array(k.tools.iter().map(|t| toml::Value::String(t.clone())).collect())));
+                }
+                out.push_str(&format!("run = {}\n", toml::Value::String(k.run.clone())));
+                out.push_str(&format!("timeout_secs = {}\n", k.timeout.as_secs()));
+            }
+        }
+        out
+    }
+
+    /// Check the new file reads back the same, then write it.
+    pub fn save(&self, p: &Path) -> Result<(), String> {
+        let text = self.to_toml();
+        if Hooks::parse(&text)? != *self {
+            return Err("the hooks could not be written the way they read back".into());
+        }
+        if let Some(d) = p.parent() {
+            std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(p, text).map_err(|e| format!("{}: {e}", p.display()))
+    }
+
     /// Run the `before` hooks for this tool. `Err` holds the words for the model when one of them said no.
     pub async fn before(&self, tool: &str, args: &Value, folder: &Path) -> Result<(), String> {
         for h in self.before.iter().filter(|h| h.applies(tool)) {
@@ -117,7 +159,7 @@ impl Hooks {
 
 impl Hook {
     fn applies(&self, tool: &str) -> bool {
-        self.tools.is_empty() || self.tools.iter().any(|t| t == tool)
+        self.tools.is_empty() || self.tools.iter().any(|t| crate::canonical_name(t) == crate::canonical_name(tool))
     }
 
     async fn call(&self, input: &Value) -> HookOutput {

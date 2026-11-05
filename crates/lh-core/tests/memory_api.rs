@@ -129,7 +129,7 @@ async fn about_you_and_matching_notes_reach_the_model_once_and_what_was_sent_is_
 
     let seen = s.seen.lock().unwrap().clone();
     let sys = seen[0].messages[0].content.clone().unwrap();
-    assert!(sys.starts_with("You are m. You work in LastHarness") && sys.contains("Be helpful.") && sys.contains("What you know about the user") && sys.contains("- Prefers plain words"), "{sys}");
+    assert!(sys.starts_with("You are m. LastHarness, made by LastSoftware, is the app you run in;") && sys.contains("Be helpful.") && sys.contains("What you know about the user") && sys.contains("- Prefers plain words"), "{sys}");
     let first_user = seen[0].messages.last().unwrap().content.clone().unwrap();
     assert!(first_user.contains("Flight to Berlin on 14 June") && first_user.ends_with("tell me about Berlin"), "{first_user}");
     let second_user = seen[1].messages.last().unwrap().content.clone().unwrap();

@@ -31,7 +31,7 @@ pub struct LearnRuntime {
     /// How far the model endpoint is trusted; sensitive rules and signals stay away from clouds.
     pub trust: Trust,
     pub mode: LearnMode,
-    /// A wish seen in this many different sessions is a habit.
+    /// A suggestion seen in this many different sessions is a habit.
     pub threshold: usize,
     /// A session with at least this many tool calls is considered for a skill suggestion.
     pub skill_min_calls: usize,
@@ -359,7 +359,7 @@ async fn learn_inner<M: Model + 'static>(st: &Arc<AppState<M>>, r: &LearnRuntime
         r.learn.mark_asked(&mine.iter().map(|x| x.id).collect::<Vec<_>>(), 1).map_err(err)?;
     }
 
-    // 2. wishes seen in several sessions: only the matching messages are sent, nothing else
+    // 2. suggestions seen in several sessions: only the matching messages are sent, nothing else
     for c in r.learn.new_habits(r.threshold).map_err(err)? {
         let sigs: Vec<_> = c.signals.iter().filter(|x| local || x.privacy == Privacy::Normal).collect();
         if sigs.len() < r.threshold {

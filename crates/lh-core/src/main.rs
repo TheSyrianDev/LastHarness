@@ -237,7 +237,7 @@ async fn main() {
         let ts = tailscale.then(|| match lh_core::web::tailscale_ipv4() {
             Ok(ip) => Some(SocketAddr::new(ip.into(), waddr.map(|a| a.port()).unwrap_or(7843))),
             Err(e) => {
-                eprintln!("lhd: web.tailscale is on but {e}; the phone door stays closed");
+                eprintln!("lhd: web.tailscale is on but {e}; the phone access stays closed");
                 None
             }
         }).flatten();

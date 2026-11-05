@@ -1,5 +1,6 @@
 #![cfg(target_os = "windows")]
 
+mod backdrop;
 mod clipboard;
 mod destination_list;
 mod dialog;

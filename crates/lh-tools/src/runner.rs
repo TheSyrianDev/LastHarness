@@ -200,7 +200,7 @@ pub async fn run_turn<M: Model, A: Asker, T: Meter>(
         let cut_off = resp.finish == Some(FinishReason::Length);
         req.messages.push(resp.into_message());
         for call in calls {
-            on_event(TurnEvent::ToolStart { id: call.id.clone(), name: call.name.clone(), arguments: call.arguments.clone() });
+            on_event(TurnEvent::ToolStart { id: call.id.clone(), name: crate::canonical_name(&call.name).to_string(), arguments: call.arguments.clone() });
             let result = if call.repaired || cut_off {
                 // Arguments that were cut short are a guess. Never run a guessed command.
                 ("This tool call was cut off before it was complete, so it was not run. Try again with a shorter call.".to_string(), None)
@@ -270,7 +270,7 @@ async fn codemode<M: Model, T: Meter, A: Asker>(
                     let _ = reply.send(Err("a script cannot start another script".into()));
                     continue;
                 }
-                // listing the models changes nothing and leaves no record
+                // Listing the models changes nothing and leaves no record
                 if name == crate::codemode::MODELS_CALL {
                     let r = model.models().await.map(|m| serde_json::to_string(&m).unwrap_or_default()).map_err(|e| e.to_string());
                     let _ = reply.send(r);
@@ -278,7 +278,7 @@ async fn codemode<M: Model, T: Meter, A: Asker>(
                 }
                 n += 1;
                 let sub = format!("{id}.{n}");
-                emit(TurnEvent::ToolStart { id: sub.clone(), name: name.clone(), arguments: args.to_string() });
+                emit(TurnEvent::ToolStart { id: sub.clone(), name: crate::canonical_name(&name).to_string(), arguments: args.to_string() });
                 let (text, undo) = execute_boxed(model, meter, &sub, &name, Ok(args), tools, perms, asker, opts, &mut *emit).await;
                 emit(TurnEvent::ToolResult { id: sub, text: text.clone(), undo });
                 let failed = ["Error:", "Denied:", "The user said no", "Blocked by the hook"].iter().any(|p| text.starts_with(p));
@@ -294,12 +294,16 @@ async fn codemode<M: Model, T: Meter, A: Asker>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 /// May this sandboxed command use the network? Returns the answer and how it was reached
 /// (`tools.net`). A bypassed session answers yes without asking; the sandbox itself stays on.
+#[allow(clippy::too_many_arguments)]
 async fn sandbox_net<M: Model, T: Meter, A: Asker>(model: &M, meter: &T, cmd: &str, tools: &ToolSet, perms: &Permissions, asker: &A, opts: &TurnOptions) -> (bool, &'static str) {
     use crate::NetMode;
     let net = &tools.net;
+    // What the user allowed never asks, in any mode: a command whose every site is on the list gets the network.
+    if net.mode != NetMode::On && net.allows(cmd) {
+        return (true, "allowlist");
+    }
     match net.mode {
         NetMode::On => return (true, "on"),
         NetMode::Allowlist => return (net.allows(cmd), "allowlist"),
@@ -353,6 +357,7 @@ async fn execute<M: Model, T: Meter, A: Asker>(
     emit: &mut (dyn FnMut(TurnEvent) + Send),
 ) -> (String, Option<Undo>) {
     let fail = |m: String| (m, None);
+    let name = crate::canonical_name(name); // old names from saved chats still work
     if name == "codemode" && tools.get(name).is_some() {
         return match args {
             Ok(a) => (codemode(model, meter, id, &a, tools, perms, asker, opts, emit).await, None),
@@ -393,7 +398,7 @@ async fn execute<M: Model, T: Meter, A: Asker>(
         }
         Decision::Ask { reason, session_grant } => {
             let detail = match &action {
-                Action::Write(path) if perms.show_diff().shows(perms.writes_trusted()) => write_diff(path, &args),
+                Action::Write(path) if perms.show_diff().shows(perms.writes_trusted()) => write_diff(path, name, &args),
                 _ => String::new(),
             };
             let req = AskRequest { tool: name, what: format!("{action:?}"), reason, worker: &opts.worker, detail };
@@ -414,12 +419,12 @@ async fn execute<M: Model, T: Meter, A: Asker>(
             decision(Outcome::Allowed);
             if let Action::Write(path) = &action {
                 if perms.show_diff().shows(perms.writes_trusted()) {
-                    emit(TurnEvent::Diff { id: id.into(), path: path.display().to_string(), diff: write_diff(path, &args) });
+                    emit(TurnEvent::Diff { id: id.into(), path: path.display().to_string(), diff: write_diff(path, name, &args) });
                 }
             }
         }
     }
-    // the user's own hooks, for calls the rules let through
+    // The user's own hooks, for calls the rules let through
     if let Some(h) = &tools.hooks {
         if let Err(why) = h.before(name, &args, perms.root()).await {
             return fail(why);
@@ -438,7 +443,7 @@ async fn execute<M: Model, T: Meter, A: Asker>(
             let mut args = args.clone();
             if tool == Tool::RunCommand {
                 if let Some(o) = args.as_object_mut() {
-                    o.remove(crate::NET_ARG); // only the runner sets it
+                    o.remove(crate::NET_ARG); // Only the runner sets it
                 }
                 if tools.sandboxed() {
                     let cmd = args["command"].as_str().unwrap_or("").to_string();
@@ -464,8 +469,21 @@ async fn execute<M: Model, T: Meter, A: Asker>(
     }
 }
 
-fn write_diff(path: &std::path::Path, args: &Value) -> String {
-    crate::diff::diff(std::fs::read_to_string(path).ok().as_deref(), args["content"].as_str().unwrap_or(""))
+fn write_diff(path: &std::path::Path, tool: &str, args: &Value) -> String {
+    let before = std::fs::read_to_string(path).ok();
+    if tool == "edit" {
+        let Some(before) = before.as_deref() else {
+            return "Cannot preview this edit because the file could not be read.".into();
+        };
+        let (Some(old), Some(new)) = (args["old_string"].as_str(), args["new_string"].as_str()) else {
+            return "Cannot preview this edit because its old or new text is missing.".into();
+        };
+        return match crate::edit_text(before, old, new, args["replace_all"].as_bool().unwrap_or(false)) {
+            Ok(after) => crate::diff::diff(Some(before), &after),
+            Err(e) => format!("Cannot preview this edit: {e}"),
+        };
+    }
+    crate::diff::diff(before.as_deref(), args["content"].as_str().unwrap_or(""))
 }
 
 /// Image generation needs the model endpoint, the spending rules and a place to save the file, so it

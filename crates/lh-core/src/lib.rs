@@ -40,6 +40,7 @@ mod session;
 pub mod web;
 mod settings_api;
 mod show_tool;
+mod hooks_api;
 mod team_api;
 mod titles;
 mod tree_api;
@@ -115,7 +116,8 @@ pub struct Settings {
 ///   spending (mode, approval limit, caps), `core.compact_at`, memory recall limits, `chats.title_model`,
 ///   `tree.summarize`, the KV cache settings, and `core.idle_after`.
 /// - New chats only, because the chat's tools and first prompt are built when it starts: `web.searxng`,
-///   `web.use_proxy`, `media.image_model`. The system prompt of an open chat also still describes the
+///   `web.use_proxy`, `media.image_model`, and `tools.codemode`, `tools.code_lookup`, `tools.generate_image`.
+///   The system prompt of an open chat also still describes the
 ///   permission mode and sudo as they were when it started; what is enforced follows the settings.
 /// - Not live (restart): the provider, memory on/off and trust, learning, the browser address, the embedding model.
 #[derive(Clone, Debug)]
@@ -136,6 +138,10 @@ pub struct Live {
     pub no_sandbox: bool,
     /// `tools.codemode`: offer the script tool.
     pub codemode: bool,
+    /// `tools.code_lookup`: offer code intelligence when an LSP server is installed.
+    pub code_lookup: bool,
+    /// `tools.generate_image`: offer image generation when an image model is configured.
+    pub generate_image: bool,
     pub web: lh_tools::WebConfig,
     pub image_model: Option<String>,
 }
@@ -266,6 +272,12 @@ impl<M: Model + 'static> AppState<M> {
             if touched("tools.codemode") {
                 l.codemode = cfg.get("tools.codemode") == "true";
             }
+            if touched("tools.code_lookup") {
+                l.code_lookup = cfg.get_bool("tools.code_lookup");
+            }
+            if touched("tools.generate_image") {
+                l.generate_image = cfg.get_bool("tools.generate_image");
+            }
             if touched("tools.sandbox") {
                 l.sandbox = cfg.get("tools.sandbox") != "false";
                 l.sandbox_net = lh_tools::SandboxNet::from_settings(&cfg.get("tools.sandbox_network"), &cfg.get("tools.sandbox_network_allow"), &cfg.get("tools.sandbox_network_model"));
@@ -303,7 +315,7 @@ impl<M: Model + 'static> AppState<M> {
     pub fn new(model: M, settings: Settings) -> Arc<Self> {
         let model = Arc::new(model);
         let idle = idle::Idle::new(settings.idle_after);
-        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, sandbox_net: Default::default(), no_sandbox: false, codemode: false, web: settings.web.clone(), image_model: settings.image_model.clone() };
+        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, sandbox_net: Default::default(), no_sandbox: false, codemode: false, code_lookup: false, generate_image: false, web: settings.web.clone(), image_model: settings.image_model.clone() };
         let perms = Arc::new(lh_tools::LivePerms::new(settings.bypass, settings.ask_all, settings.sudo_enabled));
         {
             let (model, store) = (model.clone(), settings.store.clone());
@@ -377,6 +389,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(team_api::routes::<M>())
         .merge(mcp_api::routes::<M>())
         .merge(settings_api::routes::<M>())
+        .merge(hooks_api::routes::<M>())
         .merge(provider_api::routes::<M>())
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
@@ -706,7 +719,7 @@ fn session_tools(s: &Settings, live: &Live, tools_on: bool, no_sandbox: bool) ->
     if !tools_on {
         return lh_tools::ToolSet::default(); // plain chat: the model is told about no tools
     }
-    let mut t = default_tools().with_web(live.web.clone()).with_sandbox(live.sandbox && !no_sandbox).with_sandbox_net(live.sandbox_net.clone()).with_codemode(live.codemode);
+    let mut t = default_tools().with_web(live.web.clone()).with_sandbox(live.sandbox && !no_sandbox).with_sandbox_net(live.sandbox_net.clone()).with_codemode(live.codemode).with_code_lookup(live.code_lookup);
     if let Some(g) = outbound_guard(s) {
         t = t.with_outbound_guard(g);
     }
@@ -719,10 +732,12 @@ fn session_tools(s: &Settings, live: &Live, tools_on: bool, no_sandbox: bool) ->
             }
         }
     }
-    match &live.image_model {
-        Some(m) => t.with_images(m.clone()),
-        None => t,
+    if live.generate_image {
+        if let Some(m) = &live.image_model {
+            return t.with_images(m.clone());
+        }
     }
+    t
 }
 
 async fn get_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
@@ -836,7 +851,7 @@ impl Recorder {
             }
             TurnEvent::ToolResult { id, text, undo } => {
                 let (tool, args) = self.calls.remove(id).unwrap_or_default();
-                if tool == "run_command" {
+                if matches!(tool.as_str(), "run_command" | "bash") {
                     let cmd = serde_json::from_str::<Value>(&args).ok().and_then(|v| v["command"].as_str().map(str::to_string)).unwrap_or_default();
                     if rewards::is_test_command(&cmd) {
                         if let Some(code) = rewards::exit_code(text) {

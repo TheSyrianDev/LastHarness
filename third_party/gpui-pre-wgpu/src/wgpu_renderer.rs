@@ -1226,6 +1226,12 @@ impl WgpuRenderer {
             .surface_config
             .usage
             .contains(wgpu::TextureUsages::COPY_SRC);
+        if !copyable && !scene.glasses.is_empty() {
+            static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                warn!("window surface cannot be copied (no COPY_SRC); liquid glass shows only its tint and rim, no refraction");
+            }
+        }
         if let Err(error) = core.render_frame(
             scene,
             copyable.then_some(&frame.texture),
@@ -3115,6 +3121,31 @@ mod tests {
         assert_eq!(glass_bend(0.0, 10.0), 1.0);
         assert_eq!(glass_bend(10.0, 10.0), 0.0);
         assert!(glass_bend(2.0, 10.0) > glass_bend(5.0, 10.0));
+    }
+
+    /// Rust mirror of `glass_lens` in shaders_glass.wgsl: (displacement, normal z).
+    fn glass_lens(depth: f32, bezel: f32) -> (f32, f32) {
+        let u = 1.0 - (depth / bezel.max(0.001)).clamp(0.0, 1.0);
+        let nz = (1.0 - u * u).max(0.0).sqrt();
+        (1.0 - nz, nz)
+    }
+
+    #[test]
+    fn glass_lens_bends_most_at_the_rim() {
+        // Edge-on at the rim: full bend, normal lying flat (strong fresnel).
+        assert_eq!(glass_lens(0.0, 24.0), (1.0, 0.0));
+        // Flat past the bevel: no bend, normal straight up.
+        assert_eq!(glass_lens(24.0, 24.0), (0.0, 1.0));
+        assert_eq!(glass_lens(40.0, 24.0), (0.0, 1.0));
+        // Falls steadily, and most of it sits in the outer part of the bevel.
+        let mut last = 1.0;
+        for i in 1..=24 {
+            let (b, _) = glass_lens(i as f32, 24.0);
+            assert!(b < last);
+            last = b;
+        }
+        assert!(glass_lens(6.0, 24.0).0 > 0.3);
+        assert!(glass_lens(12.0, 24.0).0 < 0.15);
     }
 
     #[test]

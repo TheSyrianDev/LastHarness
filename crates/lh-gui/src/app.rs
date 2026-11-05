@@ -203,6 +203,18 @@ pub struct App {
     pub font_note: String,
     /// The text boxes of the setting cards, one per setting, made when first shown.
     pub setting_inputs: HashMap<String, Entity<InputState>>,
+    /// The Glass colour wheel: a hex box per ball (made when first shown), the ball being dragged, the wheel's
+    /// centre in the window as of the last paint, and its picture.
+    pub glass_hex: Vec<Entity<InputState>>,
+    pub glass_drag: Option<usize>,
+    pub glass_wheel: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
+    pub glass_disc: Option<std::sync::Arc<RenderImage>>,
+    /// The ball the brightness slider edits, whether that slider is being dragged, and its top edge in the window.
+    pub glass_sel: usize,
+    pub glass_vdrag: bool,
+    /// Hue and saturation of each glass ball as it was placed, so brightness changes do not move the balls.
+    pub glass_placed: lh_gui::wheel::Placed,
+    pub glass_bar: std::rc::Rc<std::cell::Cell<f32>>,
     /// The setting whose list of options (or models) is open.
     pub setting_list: Option<String>,
     /// The web page drawn inside the Opened tab, while it is shown.
@@ -270,7 +282,7 @@ impl App {
         let system_dark = lh_gui::appearance::system_dark();
         let active_theme = themes.resolve(&prefs.theme, lh_gui::appearance::is_dark(prefs.mode, system_dark));
         let window_radius = theme::window_radius();
-        let pal = Pal::from(&glass_tinted(&themes.themes[active_theme], &prefs), window_radius, lh_gui::config::reduce_motion(), &lh_gui::fonts::installed_families());
+        let pal = Pal::from(&glass_tinted(&themes.themes[active_theme], &prefs), window_radius, lh_gui::config::reduce_motion(), &all_families(cx));
         apply_component_theme(&pal, cx);
 
         let (tx, mut rx) = futures_channel::unbounded::<Ev>();
@@ -297,6 +309,11 @@ impl App {
                         app.active_theme = app.themes.resolve(&app.prefs.theme, app.dark());
                         app.refresh_pal(cx);
                         cx.notify();
+                        crate::tray::refresh();
+                    }
+                    // the tray follows the system light or dark setting too: look about every 5 s
+                    if tick.is_multiple_of(12) {
+                        crate::tray::refresh();
                     }
                     // look for the core again every 3 s while it is away, and refresh the lists every 20 s
                     if (!app.connected && tick.is_multiple_of(8)) || tick.is_multiple_of(50) {
@@ -345,7 +362,6 @@ impl App {
             }
         })
         .detach();
-
         // while the model thinks, the progress line (count, speed, time) is redrawn once a second, not for every token
         cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| loop {
             cx.background_executor().timer(Duration::from_secs(1)).await;
@@ -492,10 +508,18 @@ impl App {
             tab_buttons: false,
             width: crate::width::WidthControls::new(window, cx, prefs_column, is_rtl),
             look_notice,
-            fonts: lh_gui::fonts::installed_families(),
+            fonts: all_families(cx),
             font_picker: None,
             font_note: String::new(),
             setting_inputs: HashMap::new(),
+            glass_hex: Vec::new(),
+            glass_drag: None,
+            glass_wheel: Default::default(),
+            glass_disc: None,
+            glass_sel: 0,
+            glass_vdrag: false,
+            glass_placed: Default::default(),
+            glass_bar: Default::default(),
             setting_list: None,
             page: None,
             page_stills: Vec::new(),
@@ -613,8 +637,10 @@ impl App {
         window.set_background_appearance(if t.blur { WindowBackgroundAppearance::Blurred } else if t.is_translucent() { WindowBackgroundAppearance::Transparent } else { WindowBackgroundAppearance::Opaque });
     }
 
-    /// Load every font in the added-fonts folder into the window's text system. Called once at start.
+    /// Load the fonts that ship with the app, then every font in the added-fonts folder, into the window's text
+    /// system. Called once at start.
     pub fn load_user_fonts(cx: &mut gpui::App) {
+        let _ = cx.text_system().add_fonts(lh_gui::fonts::bundled_fonts());
         let Some(dir) = lh_gui::fonts::user_font_dir() else { return };
         let fonts: Vec<std::borrow::Cow<'static, [u8]>> = lh_gui::fonts::user_font_files(&dir).iter().filter_map(|f| std::fs::read(f).ok()).map(std::borrow::Cow::Owned).collect();
         if !fonts.is_empty() {
@@ -644,7 +670,7 @@ impl App {
             Ok((_, names, bytes)) => {
                 let _ = cx.text_system().add_fonts(vec![std::borrow::Cow::Owned(bytes)]);
                 lh_gui::fonts::refresh_cache(&dir);
-                self.fonts = lh_gui::fonts::installed_families();
+                self.fonts = all_families(cx);
                 for n in &names {
                     if !self.fonts.contains(n) {
                         self.fonts.push(n.clone());
@@ -663,7 +689,7 @@ impl App {
         match lh_gui::fonts::remove_font_file(file, &dir) {
             Ok(()) => {
                 lh_gui::fonts::refresh_cache(&dir);
-                self.fonts = lh_gui::fonts::installed_families();
+                self.fonts = all_families(cx);
                 self.font_note = "Removed. It leaves the list now and the window fully on the next start.".into();
             }
             Err(e) => self.font_note = e,
@@ -1627,4 +1653,10 @@ fn glass_tinted(t: &theme::Theme, prefs: &lh_gui::prefs::Prefs) -> theme::Theme 
     }
     let picks: Vec<theme::Color> = prefs.glass_colours.iter().filter_map(|c| theme::Color::parse(c).ok()).take(3).collect();
     theme::tint_glass(t, &picks, prefs.glass_opacity.unwrap_or(0.5))
+}
+
+/// Every font family the window can use: fontconfig's list (Linux), the text system's own list (DirectWrite on
+/// Windows with per-user fonts, Core Text on macOS) and the fonts bundled with the app.
+fn all_families(cx: &gpui::App) -> Vec<String> {
+    lh_gui::fonts::merge_families(lh_gui::fonts::installed_families(), cx.text_system().all_font_names())
 }

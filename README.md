@@ -41,6 +41,12 @@ target/release/lastharness-gui # or the desktop app (needs the core running)
 
 The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastharness/themes/` (the six built-in ones, three families each in light and dark, are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat.
 
+The Omarchy release (`LastHarness-<version>-omarchy-x86_64.tar.gz`, installed with its `install-omarchy.sh`) also offers the desktop's own look, and an "Omarchy (transparent)" look that is liquid glass in the Omarchy colours. The transparent look is as see-through as the Hyprland window rule for the app's window (class `lastharness-gui`) says; without a rule it stays opaque. Other builds (AppImage, Windows, macOS, or a source build with `--no-default-features`) leave the Omarchy looks out. To add one, put this line in `~/.config/hypr/hyprland.lua` (0.85 is how much of the window shows):
+
+```lua
+o.window("lastharness-gui", { opacity = "0.85 override 0.85 override" })
+```
+
 To start the core at every login: `lh service preview`, then `lh service install` (a systemd user service; no sudo; closing the terminal never stops the core).
 
 ## Commands

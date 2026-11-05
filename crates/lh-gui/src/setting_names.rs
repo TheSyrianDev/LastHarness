@@ -171,20 +171,22 @@ pub const INFO: &[Info] = &[
     i("provider.url", Models, "Model server address", "Where your models are served from, for example http://localhost:9292/v1.", Show::Text("Not set"), false),
     i("provider.name", Models, "Name of the model service", "Told to the model so it knows what serves it. Leave it empty to use the name the server gives.", Show::Text("Use the server's own name"), false),
     i("provider.key", Models, "Key for the model service", "Points to the stored secret that holds your key. The key itself is never written in the settings file.", Show::Text("None"), false),
-    i("media.image_model", Models, "Image model", "The model that makes images. Leave it empty to turn image making off.", Show::Text("Off"), false),
+    i("media.image_model", Models, "Image model", "Choose the model for image generation. It is offered only when image generation is switched on under Tools.", Show::Text("Not set"), false),
     i("memory.enabled", Memory, "Remember between chats", "Keeps notes about you and your work so later chats can use them.", Show::OnOff, false),
     i("memory.trust", Memory, "Where memory may be sent", "Sensitive notes never leave this computer. This sets how far the model service may see the rest.", Show::Words(&[("auto", "Decide for me"), ("local", "This computer only"), ("own", "My own cloud account"), ("any", "Any cloud service")]), false),
     i("memory.recall_items", Memory, "Notes added to a message", "The most notes memory adds to one message you send.", Show::Count("note", "notes"), false),
     i("memory.recall_chars", Memory, "Memory added to a message, in characters", "The most text, all notes together, that memory adds to one message you send.", Show::Count("character", "characters"), false),
     i("learning.mode", Learning, "Learning from your habits", "How the app picks up your habits. It can suggest and wait for you, apply changes quietly, or not learn.", Show::Words(&[("propose", "Suggest and wait"), ("silent", "Apply quietly"), ("off", "Off")]), false),
-    i("learning.threshold", Learning, "Chats before it counts as a habit", "How many chats a wish must come up in before the app treats it as a habit.", Show::Count("chat", "chats"), false),
+    i("learning.threshold", Learning, "Chats before it counts as a habit", "How many chats a suggestion must come up in before the app treats it as a habit.", Show::Count("chat", "chats"), false),
     i("team.autonomy", Departments, "How much departments ask you", "How often a department checks with you while it works on a big goal.", Show::Words(&[("plan-first", "Show a plan first"), ("check-ins", "Check in as it goes"), ("fire-and-forget", "Just do it")]), false),
     i("team.parallel", Departments, "Workers at the same time", "How many workers a department may run at once.", Show::Count("worker", "workers"), false),
     i("team.attempts", Departments, "Tries for each step", "How many times a step is tried before the failure is passed up to you.", Show::Count("try", "tries"), false),
     i("team.unavailable", Departments, "When a model is missing", "Stop and tell you, or try the backup models listed for that kind of job.", Show::Words(&[("stop", "Stop and tell me"), ("fallback", "Try a backup model")]), false),
     i("web.listen", Web, "Address for the browser and phone", "Lets you use LastHarness in a browser over HTTPS, for example at 127.0.0.1:7843. Every device must be paired first. Leave it empty to keep this off.", Show::Text("Off"), true),
-    i("web.tailscale", Web, "Reach it from your phone over Tailscale", "Also opens the browser page on this computer's Tailscale address, so a phone on your tailnet can use it. It never listens on other networks. Sign the phone in under Phone. Needs a restart.", Show::OnOff, true),
+    i("web.tailscale", Web, "Reach it from your phone over Tailscale", "Opens the browser page on this computer's Tailscale address only, so a phone on your tailnet can use it. Sign the phone in under Phone, after a restart.", Show::OnOff, true),
     i("tools.codemode", Tools, "Let the model write small scripts", "The model can run a short script that calls its other tools and keeps only what matters from long results. Every call inside is checked like any other. Off by default: it adds one tool to every request.", Show::OnOff, false),
+    i("tools.code_lookup", Tools, "Give the model code intelligence", "Offers definitions, references, symbols and diagnostics when a supported language server is installed. Off by default.", Show::OnOff, false),
+    i("tools.generate_image", Tools, "Let the model make images", "Offers image generation when an image model is configured. Off by default.", Show::OnOff, false),
     i("tools.sandbox", Tools, "Keep commands in the chat's folder", "Commands the model runs can change files only in the chat's folder and a private temporary folder. They can still read the rest, and network access is set under Permissions. Needs bubblewrap.", Show::OnOff, true),
     i("web.use_proxy", Web, "Use the system proxy for web pages", "A proxy looks up names itself, so the check against private addresses cannot see where a request goes. This is off unless you turn it on.", Show::OnOff, true),
     i("web.searxng", Web, "Web search server", "The address of a SearXNG server used for web search. Leave it empty to turn search off.", Show::Text("Off"), false),
@@ -349,7 +351,7 @@ pub fn matches(key: &str, d: &Described, query: &str) -> bool {
 }
 
 /// Words that find the Appearance page in the search box: the controls on it are drawn by the app, not listed by the core.
-pub const APPEARANCE_WORDS: &str = "appearance name greeting hello web page pages html browser inside look theme mode light dark system direction left right language chat width wide column preset slider size chat list font fonts latin arabic naskh";
+pub const APPEARANCE_WORDS: &str = "appearance name greeting hello web page pages html browser inside look theme mode light dark system direction left right language chat width wide column preset slider size chat list font fonts latin arabic naskh omarchy transparent see-through glass hyprland window rule opacity";
 
 pub fn appearance_matches(query: &str) -> bool {
     query.split_whitespace().all(|w| APPEARANCE_WORDS.contains(&w.to_lowercase()))

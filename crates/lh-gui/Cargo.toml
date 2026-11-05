@@ -12,6 +12,12 @@ path = "src/lib.rs"
 name = "lastharness-gui"
 path = "src/main.rs"
 
+[features]
+# Omarchy desktop integration: the "Omarchy" theme entries (colors.toml), Hyprland look and window-rule hint.
+# On for local builds; the generic Linux, Windows and macOS releases build with --no-default-features.
+default = ["omarchy"]
+omarchy = []
+
 [dependencies]
 lh-client = { path = "../lh-client" }
 serde.workspace = true
