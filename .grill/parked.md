@@ -290,3 +290,9 @@ Benchmaxx (the Strata engine session) proposed working together, and this sessio
 - Web UI is parked at git tag `web-ui-archive` (commit d493a91). Code stays in crates/lh-core/web.
 - Left open: popups compare (model menu, slider, delete confirm); close compares of Spending, Updates and reports, More, Chats and speed; browser Hooks editing (read-only now, security call); whether the desktop app follows the web redesign.
 - Hooks browser-write decision parked with the Web UI (browser writes are 403 now).
+
+## iiSU ideas (parked 2026-11-05)
+
+- Plan lives in docs/iisu-plan.md (ideas only, no iiSU code or assets). Parked until the user returns to it. First slice if resumed: Effects setting (Full / Calm / Off) plus glass menu buttons.
+- Still open: five questions in the plan; nobody has watched iiSU's walkthrough video yet.
+- Focus now: app functionality, the system prompt and the tools each chat mode gets.
