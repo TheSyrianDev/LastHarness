@@ -52,13 +52,13 @@ async fn a_worker_gets_the_base_prompt_a_short_role_line_and_only_the_brief() {
     assert_eq!(req.messages.len(), 2, "system and the brief, nothing else");
     let sys = req.messages[0].content.clone().unwrap();
     assert!(sys.starts_with("You are m-7b"), "{sys}");
-    assert!(sys.contains("served by llama-swap, an endpoint made by someone else") && sys.ends_with("You write code. Keep it simple."));
+    assert!(sys.contains("served by llama-swap, an endpoint, not the model's maker") && sys.ends_with("You write code. Keep it simple."));
     assert!(sys.contains("stay inside it"), "a project worker is told its folder");
     assert!(lh_tools::estimate_text_tokens(&sys) <= 300, "{} tokens", lh_tools::estimate_text_tokens(&sys));
     let user = req.messages[1].content.clone().unwrap();
     assert_eq!(user, "Write hello.py.\n\nFrom the step \"Plan\":\nprint hello");
     let names: Vec<String> = req.tools.iter().map(|t| t.name.clone()).collect();
-    assert_eq!(names, ["read_file", "list_dir"], "only the role's tools exist for it");
+    assert_eq!(names, ["read"], "legacy read aliases resolve to one canonical tool");
     assert_eq!((req.sampling.temperature, req.max_tokens), (Some(0.2), Some(2000)));
     assert_eq!(req.sampling.extra["chat_template_kwargs"], serde_json::json!({"enable_thinking": false}));
 }

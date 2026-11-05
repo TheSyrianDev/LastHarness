@@ -7,6 +7,7 @@ mod compact;
 mod memory_tools;
 mod perm;
 mod runner;
+mod search;
 mod tools;
 mod web;
 
@@ -23,4 +24,4 @@ pub use compact::{compact_if_needed, SUMMARY_MARKER, estimate_tokens, CompactErr
 pub use perm::{Action, Answer, AskRequest, Asker, Decision, LivePerms, Mode, Permissions, ShowDiff};
 pub use runner::{run_turn, Gate, Meter, MeterVerdict, Model, NoMeter, Outcome, TurnEnd, TurnEvent, TurnOptions};
 pub use web::{html_to_text, is_public, WebConfig};
-pub use tools::{hosts_in, NetMode, SandboxNet, NET_ARG, default_tools, BoxFut, ExtraTool, GuardFn, OutboundGuard, Risk, Tool, ToolError, ToolOutput, ToolSet, Undo};
+pub use tools::{canonical_name, edit_text, hosts_in, NetMode, SandboxNet, NET_ARG, default_tools, BoxFut, ExtraTool, GuardFn, OutboundGuard, Risk, Tool, ToolError, ToolOutput, ToolSet, Undo};

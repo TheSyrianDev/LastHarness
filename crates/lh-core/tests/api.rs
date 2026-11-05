@@ -132,19 +132,19 @@ async fn a_turn_streams_and_is_kept_in_the_history() {
     let h: Value = s.get(&format!("/v1/sessions/{id}")).send().await.unwrap().json().await.unwrap();
     let all: Vec<_> = h["messages"].as_array().unwrap().iter().map(|m| (m["role"].as_str().unwrap(), m["content"].as_str().unwrap())).collect();
     assert_eq!(all[0].0, "system", "the built-in base prompt comes first");
-    assert!(all[0].1.starts_with("You are m. You work in LastHarness"));
+    assert!(all[0].1.starts_with("You are m. LastHarness, made by LastSoftware, is the app you run in;"));
     assert_eq!(&all[1..], [("user", "hi"), ("assistant", "hello there")]);
 }
 
 #[tokio::test]
 async fn a_write_asks_over_the_api_and_runs_after_yes() {
-    let s = start(vec![call("c1", "write_file", json!({"path":"note.txt","content":"saved"})), text("done")]).await;
+    let s = start(vec![call("c1", "write", json!({"path":"note.txt","content":"saved"})), text("done")]).await;
     let d = tempfile::tempdir().unwrap();
     let id = s.session(d.path()).await;
     let (mut resp, mut p, mut seen) = (s.post(&format!("/v1/sessions/{id}/turns"), json!({"text":"write it"})).send().await.unwrap(), SseParser::new(), vec![]);
     read_until(&mut resp, &mut p, &mut seen, |v| v["type"] == "ask").await;
     let ask = seen.last().unwrap().clone();
-    assert_eq!(ask["tool"], "write_file");
+    assert_eq!(ask["tool"], "write");
     assert!(!d.path().join("note.txt").exists(), "nothing happens before the answer");
     let r = s.post(&format!("/v1/sessions/{id}/answers/{}", ask["id"].as_str().unwrap()), json!({"answer":"yes"})).send().await.unwrap();
     assert_eq!(r.status(), 204);
@@ -219,7 +219,7 @@ async fn a_spending_cap_stops_the_turn_before_the_model_is_called() {
 #[tokio::test]
 async fn the_activity_log_records_tool_calls_and_a_write_can_be_undone() {
     let store = std::sync::Arc::new(lh_store::Store::open_memory().unwrap());
-    let s = start_with(vec![call("c1", "write_file", json!({"path":"n.txt","content":"v2"})), text("ok")], free_meter(), store, 0).await;
+    let s = start_with(vec![call("c1", "write", json!({"path":"n.txt","content":"v2"})), text("ok")], free_meter(), store, 0).await;
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("n.txt"), "v1").unwrap();
     let id = s.session(d.path()).await;
@@ -234,7 +234,7 @@ async fn the_activity_log_records_tool_calls_and_a_write_can_be_undone() {
     let kinds: Vec<_> = log["entries"].as_array().unwrap().iter().map(|e| e["kind"].as_str().unwrap()).collect();
     assert_eq!(kinds, ["tool_call", "permission"], "newest first");
     let call_entry = &log["entries"][0];
-    assert_eq!(call_entry["detail"]["tool"], "write_file");
+    assert_eq!(call_entry["detail"]["tool"], "write");
     assert_eq!(log["entries"][1]["detail"]["outcome"], "allowed_by_user");
 
     let seq = call_entry["seq"].as_i64().unwrap();
@@ -293,7 +293,7 @@ async fn sampling_and_limits_from_the_session_reach_the_model() {
     assert_eq!((r.sampling.temperature, r.sampling.top_k), (Some(0.3), Some(20)));
     assert_eq!(r.sampling.extra["chat_template_kwargs"]["enable_thinking"], false);
     let sys = r.messages[0].content.clone().unwrap();
-    assert!(sys.starts_with("You are m. You work in LastHarness") && sys.ends_with("\n\nBe brief."), "the client's text follows the base prompt: {sys}");
+    assert!(sys.starts_with("You are m. LastHarness, made by LastSoftware, is the app you run in;") && sys.ends_with("\n\nBe brief."), "the client's text follows the base prompt: {sys}");
 }
 
 #[tokio::test]
@@ -316,7 +316,7 @@ async fn folderless_sessions_chat_without_tools_or_work_from_home() {
     }
     let reqs = seen.lock().unwrap().clone();
     assert!(reqs[0].tools.is_empty(), "plain chat tells the model about no tools");
-    assert!(reqs[1].tools.iter().any(|t| t.name == "read_file"), "the assistant has the normal tools");
+    assert!(reqs[1].tools.iter().any(|t| t.name == "read"), "the assistant has the normal tools");
     assert!(reqs[1].tools.iter().any(|t| t.name == "show"), "and can open things beside the chat");
     assert!(!reqs[0].tools.iter().any(|t| t.name == "show"), "a plain chat cannot");
     let bad = s.post("/v1/sessions", json!({"model":"m","mode":"wizard"})).send().await.unwrap();
@@ -344,7 +344,7 @@ async fn the_base_prompt_comes_first_and_is_the_same_on_every_turn() {
     assert_eq!(reqs.len(), 3);
     let first = reqs[0].messages[0].content.clone().unwrap();
     assert_eq!(reqs[0].messages[0].role, lh_provider::Role::System);
-    assert!(first.starts_with("You are m. You work in LastHarness"), "{first}");
+    assert!(first.starts_with("You are m. LastHarness, made by LastSoftware, is the app you run in;"), "{first}");
     assert!(first.contains("Mode: project") && first.contains(&format!("folder {}", d.path().canonicalize().unwrap().display())) && first.contains("sudo is off") && first.contains("A refusal is final"), "{first}");
     assert!(first.find("Sensitive notes never go to a cloud model.").unwrap() < first.find("The user's own words.").unwrap(), "the client's text comes after the base prompt");
     for r in &reqs[1..] {
@@ -382,7 +382,7 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     turn("two").await;
     let reqs = seen.lock().unwrap().clone();
     let first = reqs[0].messages[0].content.clone().unwrap();
-    assert!(first.starts_with("You are Qwen3.6-35B-A3B (34.7B), served by llama-swap, an endpoint made by someone else, not a harness. You work in LastHarness"), "{first}");
+    assert!(first.starts_with("You are Qwen3.6-35B-A3B (34.7B), served by llama-swap, an endpoint, not the model's maker. LastHarness, made by LastSoftware, is the app you run in;"), "{first}");
     assert_eq!(reqs[1].messages[0], reqs[0].messages[0], "the same bytes on the next turn");
 
     // switching model: an unknown session is 404, a known one is 204, and the next turn names the new model
@@ -391,7 +391,7 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     turn("three").await;
     let reqs = seen.lock().unwrap().clone();
     let third = reqs[2].messages[0].content.clone().unwrap();
-    assert!(third.starts_with("You are gpt-4o (34.7B), served by llama-swap, an endpoint made by someone else, not a harness. You work in LastHarness"), "{third}");
+    assert!(third.starts_with("You are gpt-4o (34.7B), served by llama-swap, an endpoint, not the model's maker. LastHarness, made by LastSoftware, is the app you run in;"), "{third}");
     assert_eq!(reqs[2].model, "gpt-4o");
     assert_eq!(&reqs[2].messages[1..4], &reqs[1].messages[1..4], "the conversation itself is unchanged");
     let log = store.recent(10, Some("model_switched")).unwrap();

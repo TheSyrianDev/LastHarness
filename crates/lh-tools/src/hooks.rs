@@ -5,11 +5,11 @@
 //!
 //! ```toml
 //! [[before]]
-//! tools = ["run_command"]          # leave out for every tool
+//! tools = ["bash"]                 # leave out for every tool
 //! run = "my-check"                 # run by `sh -c` in the chat's folder
 //!
 //! [[after]]
-//! tools = ["write_file"]
+//! tools = ["write"]
 //! run = "cargo fmt"
 //! timeout_secs = 30                # default 30
 //! ```
@@ -159,7 +159,7 @@ impl Hooks {
 
 impl Hook {
     fn applies(&self, tool: &str) -> bool {
-        self.tools.is_empty() || self.tools.iter().any(|t| t == tool)
+        self.tools.is_empty() || self.tools.iter().any(|t| crate::canonical_name(t) == crate::canonical_name(tool))
     }
 
     async fn call(&self, input: &Value) -> HookOutput {

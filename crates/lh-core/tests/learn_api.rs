@@ -129,7 +129,7 @@ async fn rules_style_and_skills_follow_the_users_own_prompt_and_cloud_models_get
         let id = s.session(json!({"system": "You are the user's assistant."})).await;
         s.turn(&id, "hello").await;
         let sys = s.systems()[0].clone();
-        assert!(sys.starts_with("You are m. You work in LastHarness"), "the built-in base prompt is first: {sys}");
+        assert!(sys.starts_with("You are m. LastHarness, made by LastSoftware, is the app you run in;"), "the built-in base prompt is first: {sys}");
         let at = |t: &str| sys.find(t).unwrap_or_else(|| panic!("{t:?} missing in {sys}"));
         assert!(at("Sensitive notes never go to a cloud model.") < at("You are the user's assistant.") && at("You are the user's assistant.") < at("Rules the user has set"), "base, then the user's own words untouched, then what was learned: {sys}");
         assert!(sys.contains("- Always add links after research.") && sys.contains("How to talk to this user:\nTerse. Plain words.") && sys.contains("- release-notes: Write release notes."), "{sys}");

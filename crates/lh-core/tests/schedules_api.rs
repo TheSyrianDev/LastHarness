@@ -77,7 +77,7 @@ async fn a_task_is_added_run_unattended_and_removed() {
     assert_eq!(lh_core::schedules_api::run_due(&store, &base, &token).await, 1);
     let list: Value = call(reqwest::Method::GET, "/v1/schedules", None).await.unwrap().json().await.unwrap();
     // the write asks once per chat, and nobody is there to say yes
-    assert_eq!(list["schedules"][0]["last_result"], "ok, but said no to write_file");
+    assert_eq!(list["schedules"][0]["last_result"], "ok, but said no to write");
     assert!(!project.join("out.txt").exists());
     assert!(store.recent(10, Some("schedule_changed_files")).unwrap().is_empty(), "nothing changed, so no notice");
 

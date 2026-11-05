@@ -141,7 +141,7 @@ impl ExtraTool for ShowTool {
         format!("show \"{}\" beside the chat", a["title"].as_str().unwrap_or("?"))
     }
     fn guideline(&self) -> Option<String> {
-        Some("show opens a long answer, file, image, table, chart or small app.".into())
+        Some("show opens a long answer, file, image, table, chart or app.".into())
     }
     fn run(&self, a: Value) -> BoxFut<'_, Result<String, ToolError>> {
         Box::pin(async move {

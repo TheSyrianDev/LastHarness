@@ -500,12 +500,14 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
     let toolbox: Toolbox = Arc::new(move |role, job| {
         let s = &st2.settings;
         let live = st2.live();
-        let mut tools = lh_tools::default_tools().with_web(live.web.clone());
+        let mut tools = lh_tools::default_tools().with_web(live.web.clone()).with_code_lookup(live.code_lookup).with_codemode(live.codemode);
         if let Some(g) = crate::outbound_guard(s) {
             tools = tools.with_outbound_guard(g);
         }
-        if let Some(m) = &live.image_model {
-            tools = tools.with_images(m.clone());
+        if live.generate_image {
+            if let Some(m) = &live.image_model {
+                tools = tools.with_images(m.clone());
+            }
         }
         if let Some(rt) = &s.memory {
             let layers = match &role.memory {
@@ -677,7 +679,7 @@ impl<M: Model + 'static> ExtraTool for DeptTool<M> {
         }
     }
     fn guideline(&self) -> Option<String> {
-        self.project.then(|| "Departments do bigger jobs: call_department for a job here, start_project for a new project.".to_string())
+        self.project.then(|| "Departments do bigger jobs: call_department here, start_project for new ones.".to_string())
     }
     fn run(&self, a: Value) -> BoxFut<'_, Result<String, ToolError>> {
         Box::pin(async move {

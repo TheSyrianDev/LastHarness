@@ -20,7 +20,7 @@ pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
 }
 
 /// Live settings that an open chat does not pick up, because its tools are built when it starts.
-const NEW_CHATS_ONLY: &[&str] = &["web.searxng", "web.use_proxy", "media.image_model"];
+const NEW_CHATS_ONLY: &[&str] = &["web.searxng", "web.use_proxy", "media.image_model", "tools.codemode", "tools.code_lookup", "tools.generate_image"];
 
 fn load<M>(st: &AppState<M>) -> Result<ConfigFile, ApiError> {
     let path = st.settings.config.clone().ok_or(ApiError(StatusCode::NOT_FOUND, "this core was started without a settings file".into()))?;

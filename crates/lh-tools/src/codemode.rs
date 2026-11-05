@@ -210,7 +210,7 @@ mod tests {
     use super::*;
 
     fn tools() -> Vec<(String, String)> {
-        vec![("read_file".into(), "Read a file".into()), ("mcp__x-y__z".into(), "odd name".into())]
+        vec![("read".into(), "Read a file".into()), ("mcp__x-y__z".into(), "odd name".into())]
     }
 
     #[test]
@@ -226,9 +226,9 @@ mod tests {
             }
         });
         let script = r#"
-            const a = await tools.read_file({path: "a.txt"});
+            const a = await tools.read({path: "a.txt"});
             let missing = "";
-            try { await tools.read_file({path: "missing"}); } catch (e) { missing = e.message; }
+            try { await tools.read({path: "missing"}); } catch (e) { missing = e.message; }
             console.log("checked", 2);
             await tools.mcp__x_y__z();
             return { first: a.split("\n")[0], missing };
@@ -263,7 +263,7 @@ mod tests {
         let r = run("return load('seen').n", &tools(), kv.clone(), call());
         assert!(r.text.ends_with('2'), "a later script in the same chat sees it: {}", r.text);
         let r = run("return searchTools('READ file').map(t => t.name).join(',')", &tools(), kv.clone(), call());
-        assert!(r.text.ends_with("read_file"), "{}", r.text);
+        assert!(r.text.ends_with("read"), "{}", r.text);
         let r = run("return (await models()).join('+')", &tools(), kv.clone(), call());
         assert!(r.text.ends_with("alpha+beta"), "{}", r.text);
         let r = run("store('big', 'x'.repeat(5 * 1024 * 1024))", &tools(), kv, call());
