@@ -1135,8 +1135,6 @@ mod tests {
         assert_eq!(b.with_alpha(0.5).a, 128);
     }
 
-    pub(crate) use super::contrast;
-
     #[test]
     fn every_look_keeps_text_readable_on_every_surface() {
         let low: Vec<String> = builtin().iter().flat_map(readability_problems).collect();
@@ -1237,7 +1235,6 @@ mod tests {
         let old = Theme::parse("name = \"X\"\n[colors]\ndanger = \"#aa0000\"\nwarn = \"#aaaa00\"", Path::new(".")).unwrap();
         assert_eq!((old.colors.danger, old.colors.warn), (Color::parse("#aa0000").unwrap(), Color::parse("#aaaa00").unwrap()));
     }
-
 
     #[test]
     fn on_omarchy_its_look_comes_first_and_follows_a_theme_change() {

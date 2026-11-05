@@ -323,7 +323,6 @@ mod knob_tests {
 
     #[test]
     fn the_glass_follows_the_pointer_and_release_starts_where_it_was_drawn() {
-        use super::knob;
         let gap = 40.;
         for raw in [0., 7., 19., 20., 21., 33., 40., 61., 80., 160.] {
             let (left, stretch) = knob(raw, gap);

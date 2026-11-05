@@ -51,7 +51,7 @@ impl App {
         }
         col = col.child(self.pg_title("Add a hook"));
         col = col.child(self.xp_field("hook-run", "Command (run by sh in the chat's folder)", "cargo fmt", window, cx));
-        col = col.child(self.xp_field("hook-tools", "Tools, separated by commas (empty for every tool)", "write_file", window, cx));
+        col = col.child(self.xp_field("hook-tools", "Tools, separated by commas (empty for every tool)", "write", window, cx));
         col = col.child(self.xp_field("hook-secs", "Time limit in seconds", "30", window, cx));
         let add = |after: bool| move |a: &mut App, _: &mut Window, cx: &mut Context<App>| {
             let (tools, run, secs) = (a.pg_text("hook-tools", cx), a.pg_text("hook-run", cx), a.pg_text("hook-secs", cx));

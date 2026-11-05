@@ -644,6 +644,7 @@ impl App {
         };
         let default_label = match &theme_pick {
             Some(x) => lh_gui::fonts::theme_default_label(x, rtl),
+            None if slot == FontSlot::Latin => format!("{} ({})", if rtl { "الافتراضي" } else { "Default" }, lh_gui::fonts::UI_DEFAULT),
             None => (if rtl { "الافتراضي" } else { "Default" }).to_string(),
         };
         let shown = match slot {
@@ -678,7 +679,8 @@ impl App {
                     })
                 })
                 .collect();
-            col = col.child(div().id(SharedString::from(format!("font-list-{tag}"))).role(Role::List).aria_label(title).min_w(px(200.)).max_w(px(360.)).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.sunken).children(rows));
+            // the wheel scrolls only this list while the pointer is over it, never the Settings page behind
+            col = col.child(div().on_scroll_wheel(|_, _, cx| cx.stop_propagation()).child(div().id(SharedString::from(format!("font-list-{tag}"))).role(Role::List).aria_label(title).min_w(px(200.)).max_w(px(360.)).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.sunken).children(rows)));
         }
         col.into_any_element()
     }
@@ -904,7 +906,7 @@ impl App {
     /// A short scrolling list of options under a setting.
     fn option_list(&self, key: &str, rows: Vec<AnyElement>) -> AnyElement {
         let p = &self.pal;
-        div().id(SharedString::from(format!("options-{key}"))).role(Role::List).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.button).children(rows).into_any_element()
+        div().on_scroll_wheel(|_, _, cx| cx.stop_propagation()).child(div().id(SharedString::from(format!("options-{key}"))).role(Role::List).max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap_1().p_1().rounded(p.inner).bg(p.button).children(rows)).into_any_element()
     }
 
     /// The page for the chosen category, or the settings that match what is typed in the search box.
@@ -1251,7 +1253,6 @@ impl App {
         col.into_any_element()
     }
 
-
     pub fn open_content(&mut self, c: Content, cx: &mut Context<Self>) {
         self.content.push(c);
         self.content_index = self.content.len() - 1;
@@ -1521,7 +1522,6 @@ impl App {
         });
     }
 }
-
 
 /// Whether the open chat has no memory steps.
 fn col_is_empty(chats: &lh_gui::model::Chats, _rtl: bool) -> bool {

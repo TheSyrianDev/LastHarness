@@ -240,12 +240,12 @@ pub fn apply_component_theme(p: &Pal, cx: &mut App) {
     let mode = if p.dark { ThemeMode::Dark } else { ThemeMode::Light };
     CT::change(mode, None, cx);
     let t = CT::global_mut(cx);
-    // the root surface of the toolkit paints this behind everything; ours is painted by the app itself, and a
+    // The root surface of the toolkit paints this behind everything; ours is painted by the app itself, and a
     // translucent look must be able to show the desktop through
     t.tokens.background = gpui::hsla(0., 0., 0., 0.).into();
     let c = &mut t.colors;
     c.foreground = p.text;
-    // text fields take the background colour
+    // Text fields take the background colour
     c.background = p.bg;
     c.border = p.border;
     c.input = p.border;
@@ -336,5 +336,4 @@ mod tests {
             }
         }
     }
-
 }

@@ -3,14 +3,52 @@
 //! Arabic-script run is drawn by one Arabic font and Latin stays in the Latin font. No window code here.
 
 use std::ops::Range;
+use std::sync::OnceLock;
 
 /// Wanted for Arabic when the person has not chosen one, best first.
 pub const ARABIC_DEFAULTS: [&str; 2] = ["Noto Naskh Arabic", "Noto Sans Arabic"];
 
-/// The family names `fc-list` knows, one entry per family, sorted. Empty when fontconfig is not there.
+/// The app's own text font, shipped inside the binary (Geist, SIL OFL 1.1).
+pub const UI_DEFAULT: &str = "Geist";
+/// The app's own code font, shipped inside the binary (JetBrains Mono Nerd Font, SIL OFL 1.1).
+pub const MONO_DEFAULT: &str = "JetBrainsMono Nerd Font Mono";
+/// An optional display font, shipped inside the binary and offered in the pickers (Geist Pixel, SIL OFL 1.1).
+pub const DISPLAY_FONT: &str = "Geist Pixel";
+
+/// The fonts that ship inside the app, so it looks the same with nothing installed on Windows, macOS or Linux.
+/// Licences: `crates/lh-gui/fonts/OFL-*.txt` and THIRD-PARTY-NOTICES.md.
+pub fn bundled_fonts() -> Vec<std::borrow::Cow<'static, [u8]>> {
+    [
+        &include_bytes!("../fonts/Geist-Regular.ttf")[..],
+        &include_bytes!("../fonts/Geist-Medium.ttf")[..],
+        &include_bytes!("../fonts/Geist-SemiBold.ttf")[..],
+        &include_bytes!("../fonts/Geist-Bold.ttf")[..],
+        &include_bytes!("../fonts/GeistPixel-Square.ttf")[..],
+        &include_bytes!("../fonts/JetBrainsMonoNerdFontMono-Regular.ttf")[..],
+        &include_bytes!("../fonts/JetBrainsMonoNerdFontMono-Bold.ttf")[..],
+    ]
+    .into_iter()
+    .map(std::borrow::Cow::Borrowed)
+    .collect()
+}
+
+/// The families the bundled fonts add.
+pub const BUNDLED_FAMILIES: [&str; 3] = [UI_DEFAULT, DISPLAY_FONT, MONO_DEFAULT];
+
+/// The family names `fc-list` knows, one entry per family, sorted. Empty when fontconfig is not there (Windows,
+/// macOS): there the text system's own list fills it, see `merge_families`.
 pub fn installed_families() -> Vec<String> {
     let Some(o) = std::process::Command::new("fc-list").args([":", "family"]).output().ok().filter(|o| o.status.success()) else { return Vec::new() };
     parse_families(&String::from_utf8_lossy(&o.stdout))
+}
+
+/// Every family the window can draw: fontconfig's list, the text system's own list (DirectWrite on Windows, Core Text
+/// on macOS, which include per-user fonts) and the bundled ones. One entry each, sorted, case-insensitive.
+pub fn merge_families(fc: Vec<String>, text_system: Vec<String>) -> Vec<String> {
+    let mut v: Vec<String> = fc.into_iter().chain(text_system).chain(BUNDLED_FAMILIES.iter().map(|s| s.to_string())).map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && !s.starts_with('.')).collect();
+    v.sort_by_key(|s| s.to_lowercase());
+    v.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    v
 }
 
 /// `fc-list : family` prints `Name,Other name` per face. Take the first name of each line, once.
@@ -21,14 +59,37 @@ pub fn parse_families(out: &str) -> Vec<String> {
     v
 }
 
-/// Families worth offering for Arabic: the ones whose name says so first, then the rest.
+/// Families fontconfig reports as supporting Arabic. On platforms without fontconfig, name-based ordering remains.
+fn arabic_coverage() -> &'static [String] {
+    static FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
+    FAMILIES.get_or_init(|| {
+        let Some(o) = std::process::Command::new("fc-list")
+            .args([":lang=ar", "family"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+        else {
+            return Vec::new();
+        };
+        parse_families(&String::from_utf8_lossy(&o.stdout))
+    })
+}
+
+/// Families worth offering for Arabic: fonts known to cover Arabic first, then likely Arabic families by name, then
+/// all other families. Fontconfig supplies coverage on systems where it is available.
 pub fn arabic_first(all: &[String]) -> Vec<String> {
+    arabic_first_by_coverage(all, arabic_coverage())
+}
+
+fn arabic_first_by_coverage(all: &[String], covered: &[String]) -> Vec<String> {
+    let supports_arabic = |f: &String| covered.iter().any(|c| c.eq_ignore_ascii_case(f));
     let says_arabic = |f: &String| {
         let l = f.to_lowercase();
         l.contains("arab") || l.contains("naskh") || l.contains("kufi")
     };
-    let (a, b): (Vec<_>, Vec<_>) = all.iter().cloned().partition(says_arabic);
-    a.into_iter().chain(b).collect()
+    let (covered, rest): (Vec<_>, Vec<_>) = all.iter().cloned().partition(supports_arabic);
+    let (named, other): (Vec<_>, Vec<_>) = rest.into_iter().partition(says_arabic);
+    covered.into_iter().chain(named).chain(other).collect()
 }
 
 fn has_family(installed: &[String], n: &str) -> bool {
@@ -49,13 +110,13 @@ pub fn arabic_font(chosen: &str, theme: &[String], installed: &[String]) -> Opti
     first_installed(theme, installed).or_else(|| ARABIC_DEFAULTS.iter().find(|n| has_family(installed, n)).map(|n| n.to_string()))
 }
 
-/// The Latin font to set on the window: the choice in Settings, else the theme's first installed one, else none (the
-/// default of the window). A choice is kept even when it is not installed, as before.
+/// The Latin font to set on the window: the choice in Settings, else the theme's first installed one, else the bundled
+/// UI font. A choice is kept even when it is not installed, as before; GPUI then uses its system fallback.
 pub fn latin_font(chosen: &str, theme: &[String], installed: &[String]) -> Option<String> {
     if !chosen.is_empty() {
         return Some(chosen.to_string());
     }
-    first_installed(theme, installed)
+    first_installed(theme, installed).or_else(|| Some(UI_DEFAULT.to_string()))
 }
 
 /// The text of the picker's empty entry when the theme sets a font: "Theme default (Noto Serif)".
@@ -67,9 +128,9 @@ pub fn theme_default_label(font: &str, rtl: bool) -> String {
     }
 }
 
-/// The font for code blocks: the theme's first installed one, else DejaVu Sans Mono.
+/// The font for code blocks: the theme's first installed one, else the bundled JetBrains Mono Nerd Font.
 pub fn mono_font(theme: &[String], installed: &[String]) -> String {
-    first_installed(theme, installed).unwrap_or_else(|| "DejaVu Sans Mono".to_string())
+    first_installed(theme, installed).unwrap_or_else(|| MONO_DEFAULT.to_string())
 }
 
 /// Letters of the Arabic script, with the marks and presentation forms that belong to a word.
@@ -106,7 +167,6 @@ pub fn script_runs(text: &str) -> Vec<(Range<usize>, Script)> {
     }
     out
 }
-
 
 // ---- fonts the person adds ------------------------------------------------------------------------------------
 
@@ -197,14 +257,14 @@ mod tests {
         let th = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(latin_font("Mine", &th(&["Noto Serif"]), &inst).as_deref(), Some("Mine"), "settings win");
         assert_eq!(latin_font("", &th(&["Missing", "noto serif"]), &inst).as_deref(), Some("Noto Serif"), "first installed of the theme");
-        assert_eq!(latin_font("", &th(&["Missing"]), &inst), None, "nothing installed: the default");
-        assert_eq!(latin_font("", &[], &inst), None);
+        assert_eq!(latin_font("", &th(&["Missing"]), &inst).as_deref(), Some(UI_DEFAULT), "missing theme font falls back to the bundled UI font");
+        assert_eq!(latin_font("", &[], &inst).as_deref(), Some(UI_DEFAULT));
         assert_eq!(arabic_font("Noto Kufi Arabic", &th(&["Noto Sans Arabic"]), &inst).as_deref(), Some("Noto Kufi Arabic"));
         assert_eq!(arabic_font("", &th(&["Noto Sans Arabic"]), &inst).as_deref(), Some("Noto Sans Arabic"), "theme over default");
         assert_eq!(arabic_font("Gone", &th(&["Noto Sans Arabic"]), &inst).as_deref(), Some("Noto Sans Arabic"), "a missing choice falls to the theme");
         assert_eq!(arabic_font("", &th(&["Missing"]), &inst).as_deref(), Some("Noto Naskh Arabic"), "then the default");
         assert_eq!(theme_default_label("Noto Serif", false), "Theme default (Noto Serif)");
-        assert_eq!(mono_font(&th(&["Missing"]), &inst), "DejaVu Sans Mono");
+        assert_eq!(mono_font(&th(&["Missing"]), &inst), MONO_DEFAULT);
         assert_eq!(mono_font(&th(&["Noto Sans"]), &inst), "Noto Sans");
     }
 
@@ -213,6 +273,13 @@ mod tests {
         let all: Vec<String> = ["A Serif", "Noto Naskh Arabic", "Z Sans"].map(String::from).to_vec();
         assert_eq!(arabic_first(&all)[0], "Noto Naskh Arabic");
         assert_eq!(arabic_first(&all).len(), 3);
+    }
+
+    #[test]
+    fn arabic_family_coverage_beats_name_matching() {
+        let all: Vec<String> = ["A Arabic Display", "Plain Family", "Noto Sans"].map(String::from).to_vec();
+        let covered: Vec<String> = ["Noto Sans", "Plain Family"].map(String::from).to_vec();
+        assert_eq!(arabic_first_by_coverage(&all, &covered), ["Plain Family", "Noto Sans", "A Arabic Display"]);
     }
 
     #[test]

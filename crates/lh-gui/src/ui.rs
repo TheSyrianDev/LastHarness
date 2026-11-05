@@ -107,7 +107,7 @@ const CTX_GAP: f32 = 64.;
 /// The model slider's ball, the context slider's ball and the mode switch's drop, in pixels tall.
 const SLIDER_KNOB: f32 = 22.;
 const CTX_KNOB: f32 = 18.;
-const MODE_H: f32 = 28.;
+const MODE_H: f32 = 34.;
 
 /// Line icons on a 24 by 24 grid, drawn by the app in one stroke weight.
 pub(crate) mod icons {
@@ -611,6 +611,8 @@ impl App {
                     }
                 }))
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                // the wheel scrolls the picker's lists only, never the chat behind it
+                .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
                 .capture_key_down(cx.listener(|a, ev: &KeyDownEvent, _, cx| {
                     match ev.keystroke.key.as_str() {
                         "down" => a.picker_step(true, cx),
@@ -1254,7 +1256,7 @@ impl App {
         let fresh = chat.session.is_none() && chat.blocks.is_empty() && !chat.dormant;
         let mut bar: Vec<AnyElement> = vec![];
         if fresh {
-            const SEG: f32 = 88.;
+            const SEG: f32 = 96.;
             let modes = [(Mode::Chat, if rtl { "محادثة" } else { "Chat" }), (Mode::Assistant, if rtl { "مساعد" } else { "Assistant" }), (Mode::Project, if rtl { "مشروع" } else { "Project" })];
             let idx = modes.iter().position(|(m, _)| *m == chat.mode).unwrap_or(0);
             let slot = if rtl { modes.len() - 1 - idx } else { idx };
@@ -1282,7 +1284,7 @@ impl App {
                 .into_iter()
                 .map(|(m, label)| {
                     let on = chat.mode == m;
-                    div().id(SharedString::from(format!("mode-{label}"))).role(Role::Button).aria_label(label).aria_selected(on).w(px(SEG)).h(px(28.)).flex().items_center().justify_center().rounded(p.inner).cursor_pointer()
+                    div().id(SharedString::from(format!("mode-{label}"))).role(Role::Button).aria_label(label).aria_selected(on).w(px(SEG)).h(px(MODE_H)).flex().items_center().justify_center().rounded(p.inner).cursor_pointer()
                         .text_color(if on { p.text } else { p.muted })
                         .hover(|s| s.text_color(p.text))
                         .when(on, |d| d.font_weight(gpui::FontWeight::MEDIUM))

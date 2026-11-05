@@ -1,5 +1,13 @@
 # Third-party notices
 
+## Geist and Geist Pixel fonts
+
+`crates/lh-gui/fonts/Geist-*.ttf` and `GeistPixel-Square.ttf` are from the Geist font family by the Geist Project Authors, https://github.com/vercel/geist-font. The font files are licensed under the SIL Open Font License, Version 1.1. The full license text is in `crates/lh-gui/fonts/OFL-Geist.txt`.
+
+## JetBrains Mono Nerd Font
+
+`crates/lh-gui/fonts/JetBrainsMonoNerdFontMono-*.ttf` are JetBrains Mono patched with Nerd Fonts glyphs. The font is by the JetBrains Mono Project Authors, https://github.com/JetBrains/JetBrainsMono, and is licensed under the SIL Open Font License, Version 1.1. The full license text is in `crates/lh-gui/fonts/OFL-JetBrainsMono.txt`.
+
 ## gpui-liquid-glass
 
 The liquid glass material model in `third_party/gpui-pre-wgpu/src/shaders_glass.wgsl`
