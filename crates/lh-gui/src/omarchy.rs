@@ -10,11 +10,15 @@ use crate::theme::{contrast, Color, Mode, Theme};
 
 /// Where Omarchy keeps the theme in use: `~/.local/state/omarchy/current`. `None` without a home folder.
 pub fn current_dir() -> Option<PathBuf> {
+    // built without the `omarchy` feature: the Omarchy looks, the Hyprland reads and the window-rule hint are never offered
+    if !cfg!(feature = "omarchy") {
+        return None;
+    }
     let state = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
     Some(state.join("omarchy").join("current"))
 }
 
-/// What says the Omarchy theme changed: the name in `theme.name` and the time `colors.toml` was written. Checked on
+/// What tells the app the Omarchy theme changed: the name in `theme.name` and the time `colors.toml` was written. Checked on
 /// the app's 400 ms theme tick; two small reads, no watcher thread.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Stamp {
@@ -54,6 +58,9 @@ pub const HYPR_OPTIONS: [&str; 5] = ["decoration:rounding", "decoration:active_o
 impl Hypr {
     /// Ask the running Hyprland. `None` when hyprctl is missing, Hyprland is not running, or nothing was readable.
     pub fn read() -> Option<Hypr> {
+        if !cfg!(feature = "omarchy") {
+            return None;
+        }
         std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
         // the window's own opacity last: when Hyprland has no window of ours it answers in plain text, which ends the read
         let pid = std::process::id();
@@ -112,7 +119,7 @@ impl Hypr {
         (self.blur_size * self.blur_passes / 2.).clamp(0., 24.)
     }
 
-    /// How covered the window's background is: the active window opacity.
+    /// The window background's opacity: the active window opacity.
     pub fn background_alpha(&self) -> f32 {
         self.active_opacity.clamp(0.3, 1.)
     }
@@ -134,7 +141,7 @@ impl Hypr {
         self.window_opacity.is_some_and(|(o, _)| o < 0.98)
     }
 
-    /// How covered panels are: always see-through enough for the glass to show, a little more so when the desktop
+    /// Panel opacity: always see-through enough for the glass to show, a little more so when the desktop
     /// itself makes windows see-through.
     pub fn surface_alpha(&self) -> f32 {
         surface_alpha_for(self.active_opacity)

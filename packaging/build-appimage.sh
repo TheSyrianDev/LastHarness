@@ -5,7 +5,9 @@
 set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
-cargo build --release -p lh-gui -p lh-core
+# generic Linux build: no Omarchy integration (that ships as its own release, see scripts/install-omarchy.sh)
+cargo build --release -p lh-core
+cargo build --release -p lh-gui --no-default-features
 app="$root/target/AppDir"
 rm -rf "$app"
 mkdir -p "$app/usr/bin"
