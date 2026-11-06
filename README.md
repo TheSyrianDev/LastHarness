@@ -20,7 +20,7 @@ A local-first AI harness built around a team: departments, and the workers in th
 LastHarness is a local-first AI harness for one person's computer. A core program (`lhd`) holds the conversation, the team (departments and their workers), tools, memory and learning, and is model-agnostic, with no model lock-in. It works with any model or provider: local servers such as llama-swap, llama.cpp, Ollama and LM Studio, or any OpenAI-compatible or Anthropic-style cloud API (tested so far with llama.cpp through llama-swap). Front ends are thin clients of the core's local API: a terminal app, a browser page, and messaging channels.
 It remembers across sessions (notes you can read and edit as Markdown), learns your habits as rules you approve, and can hand bigger jobs to departments of role workers that plan, run and check the work.
 Sensitive notes and rules are used only with a model on this machine. Permissions are tiered: reads are free, writes ask once, and anything risky always asks.
-It is Linux only so far.
+It runs on Linux and Windows; macOS is early alpha.
 
 ## Build
 
@@ -77,7 +77,7 @@ The browser page is served over HTTPS when `web.listen` is set (for example `lh 
 - A phone app, and any final visual design (no logo, name styling or brand colours yet). The browser page and the desktop app's default look are plain on purpose.
 - macOS; installers; signed updates; crash reports are only prepared, not sent.
 - The hosted relay, subscription and memory sync.
-- Agents choosing or loading models and proposing new providers (the core talks to one endpoint).
+- Agents loading and unloading local models (they can already list models, pick one among your providers and propose a new provider for you to approve).
 - Installing a plugin from a link (folders only), and project-level skills.
 - No messaging channel has been tried against a real account; they are tested against mock services.
 
