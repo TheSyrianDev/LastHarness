@@ -308,6 +308,8 @@ const MIGRATIONS: &[&str] = &[r#"
 
 pub struct Store {
     conn: Mutex<Connection>,
+    /// Folder of the database file; `None` for an in-memory store.
+    dir: Option<std::path::PathBuf>,
 }
 
 impl Store {
@@ -315,7 +317,14 @@ impl Store {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        Self::init(Connection::open(path)?)
+        let mut s = Self::init(Connection::open(path)?)?;
+        s.dir = path.parent().map(|p| p.to_path_buf());
+        Ok(s)
+    }
+
+    /// The folder next to the database, where files that belong to the store (attachments) are kept.
+    pub fn dir(&self) -> Option<&Path> {
+        self.dir.as_deref()
     }
 
     pub fn open_memory() -> Result<Self> {
@@ -331,7 +340,7 @@ impl Store {
             tx.execute_batch(&format!("pragma user_version = {}", i + 1))?;
             tx.commit()?;
         }
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self { conn: Mutex::new(conn), dir: None })
     }
 
     /// Give memory back and fold the write-ahead log into the main file. For idle mode.

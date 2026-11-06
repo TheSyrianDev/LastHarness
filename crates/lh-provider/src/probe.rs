@@ -11,6 +11,8 @@ pub struct Capabilities {
     /// The chat template supports tool calls.
     pub tools: Option<bool>,
     pub vision: Option<bool>,
+    /// The model takes audio input (llama.cpp reports `modalities.audio`).
+    pub audio: Option<bool>,
     /// The template understands a reasoning-effort setting.
     pub reasoning_effort: Option<bool>,
     /// The model can think before answering (Ollama reports this).
@@ -32,6 +34,7 @@ impl Capabilities {
             context_tokens: n_ctx,
             tools: caps["supports_tools"].as_bool(),
             vision: v["modalities"]["vision"].as_bool(),
+            audio: v["modalities"]["audio"].as_bool(),
             reasoning_effort: caps["supports_reasoning_effort"].as_bool(),
             thinking: None,
             parameters: None,

@@ -107,7 +107,7 @@ const CTX_GAP: f32 = 64.;
 /// The model slider's ball, the context slider's ball and the mode switch's drop, in pixels tall.
 const SLIDER_KNOB: f32 = 22.;
 const CTX_KNOB: f32 = 18.;
-const MODE_H: f32 = 34.;
+const MODE_H: f32 = 42.;
 
 /// Line icons on a 24 by 24 grid, drawn by the app in one stroke weight.
 pub(crate) mod icons {
@@ -121,6 +121,8 @@ pub(crate) mod icons {
     pub fn pencil() -> Icon { Icon::new("new-chat", vec![vec![(4., 20.), (4.5, 15.5), (15., 5.), (19., 9.), (8.5, 19.5), (4., 20.)], vec![(13., 7.), (17., 11.)]]) }
     pub fn search() -> Icon { Icon::new("search", vec![circle(10.5, 10.5, 6.), vec![(15., 15.), (20., 20.)]]) }
     pub fn send() -> Icon { Icon::new("send", vec![vec![(12., 19.), (12., 5.5)], vec![(6., 11.), (12., 5.), (18., 11.)]]) }
+    /// A paperclip: attach files.
+    pub fn attach() -> Icon { Icon::new("attach", vec![vec![(19., 11.), (11.5, 18.5), (8., 18.5), (5.5, 16.), (5.5, 12.5), (13., 5.), (15.5, 5.), (17.5, 7.), (17.5, 9.5), (10., 17.), (8.8, 17.), (8., 16.2), (8., 15.), (14., 9.)]]) }
     pub fn stop() -> Icon { Icon::new("stop", vec![vec![(7., 7.), (17., 7.), (17., 17.), (7., 17.), (7., 7.)]]) }
     /// A window with its left pane marked: folds the sidebar away. Mirrored in right-to-left.
     pub fn sidebar_collapse(rtl: bool) -> Icon {
@@ -297,6 +299,24 @@ impl App {
             .size(px(32.)).flex().items_center().justify_center().rounded(p.inner).cursor_pointer().hover(|s| s.bg(p.button))
             .on_click(cx.listener(move |a, _, w, cx| click(a, w, cx)))
             .child(icon_view(&p, icon, p.muted, 17.))
+            .into_any_element()
+    }
+
+    /// A small chip for a file. With `remove` it carries a close button.
+    pub(crate) fn file_chip(&self, id: &str, name: &str, remove: Option<usize>, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let label = SharedString::from(name.to_string());
+        div().id(SharedString::from(id.to_string())).role(Role::ListItem).aria_label(label.clone())
+            .flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().pl_2().pr_1().py_0p5().max_w(px(220.)).rounded(p.inner).border_1().border_color(p.border.opacity(0.9)).bg(p.button)
+            .text_xs().text_color(p.text.opacity(0.85))
+            .child(icon_view(&p, icons::attach(), p.muted, 12.))
+            .child(div().min_w_0().truncate().child(label))
+            .children(remove.map(|n| {
+                div().id(SharedString::from(format!("{id}-x"))).role(Role::Button).aria_label(if rtl { "إزالة الملف" } else { "Remove file" }).size(px(18.)).flex().items_center().justify_center().rounded(p.inner).cursor_pointer().hover(|s| s.bg(p.hover))
+                    .on_click(cx.listener(move |a, _, _, cx| a.unstage(n, cx)))
+                    .child(icon_view(&p, icons::close(), p.muted, 11.))
+            }))
             .into_any_element()
     }
 
@@ -933,6 +953,10 @@ impl App {
                     div().id(SharedString::from(format!("u{key}-{i}"))).role(Role::Label).max_w(relative(0.8)).px_3().py_2().rounded(p.inner).bg(p.bubble).when(p.material.panels != lh_gui::theme::GlassKind::None, |d| d.border_2().border_color(gpui::white().opacity(if p.dark { 0.35 } else { 0.85 }))).text_color(p.text).when(is_rtl, |d| d.text_right()).child(t.clone()),
                 ).into_any_element()
             }
+            Block::Files(names) => {
+                let chips: Vec<AnyElement> = names.iter().enumerate().map(|(n, name)| self.file_chip(&format!("sent{key}-{i}-{n}"), name, None, _cx)).collect();
+                div().flex().w_full().when(!rtl, |d| d.justify_end()).when(rtl, |d| d.justify_start()).child(div().flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_1().max_w(relative(0.8)).children(chips)).into_any_element()
+            }
             Block::Assistant { .. } | Block::Tool { .. } => div().into_any_element(),
             Block::Shown(_) => div().into_any_element(), // drawn by `shown_view`
             Block::Notice(t) => div().w_full().flex().justify_center().text_sm().text_color(p.muted).child(t.clone()).into_any_element(),
@@ -1425,10 +1449,16 @@ impl App {
         let picker = self.menus(window, cx);
         let composer = div().relative().flex().flex_col().gap_2().px_3().pt_2().pb_2().rounded(p.radius).glass_fill(&p, p.radius).shadow(lift)
             .children(slider_card)
+            .when(!self.staged.is_empty(), |d| {
+                let chips: Vec<AnyElement> = self.staged.files.iter().enumerate().map(|(n, f)| self.file_chip(&format!("staged-{n}"), &format!("{} ({})", f.name, lh_client::attach::size_label(f.size)), Some(n), cx)).collect();
+                d.child(div().flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_1().children(chips))
+            })
+            .children(self.attach_note.clone().map(|n| div().text_xs().text_color(p.danger).when(rtl, |d| d.text_right()).child(n)))
             .child(Textarea::new(&self.composer).appearance(false).aria_label("Message"))
             .when(fresh && chat.mode == Mode::Project, |d| d.child(Input::new(&self.project_input)))
             .child(
                 div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1()
+                    .child(self.icon_button("attach", icons::attach(), if rtl { "إرفاق ملفات" } else { "Attach files" }, cx, |a, _, cx| a.attach_dialog(cx)))
                     .children(bar)
                     .child(div().flex_1().min_w_0().px_2().truncate().text_xs().text_color(p.muted).when(rtl, |d| d.text_right()).children(kind_hint))
                     .children(hint)

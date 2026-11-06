@@ -9,6 +9,7 @@ pub mod headless;
 pub mod learn_cli;
 pub mod mcp_cli;
 pub mod memory_cli;
+pub mod providers_cli;
 pub mod team_cli;
 pub mod schedule_cli;
 pub mod service_cli;

@@ -11,6 +11,8 @@ pub const DIFF_MARK: &str = "Changes to ";
 #[derive(Clone, Debug, PartialEq)]
 pub enum Block {
     User(String),
+    /// The files that went with the message above, by name ("attached file" when the name was not kept).
+    Files(Vec<String>),
     /// `worked` is the seconds of thinking and tool use that came before this answer began.
     Assistant { text: String, reasoning: String, worked: Option<u64> },
     Tool { id: String, name: String, arguments: String, result: Option<String> },
@@ -153,6 +155,14 @@ impl Chat {
         c
     }
 
+    /// `push_user` for a message that carries files: the bubble, then a row of chips.
+    pub fn push_user_with_files(&mut self, text: &str, names: Vec<String>) {
+        self.push_user(text);
+        if !names.is_empty() {
+            self.blocks.push(Block::Files(names));
+        }
+    }
+
     pub fn push_user(&mut self, text: &str) {
         if self.title == NEW_TITLE {
             self.title = one_line(text).chars().take(40).collect();
@@ -169,13 +179,27 @@ impl Chat {
     pub fn load_history(&mut self, messages: &[(String, String)]) {
         self.blocks = messages
             .iter()
-            .filter_map(|(role, text)| match role.as_str() {
-                "user" => Some(Block::User(text.clone())),
-                "assistant" => Some(Block::Assistant { text: text.clone(), reasoning: String::new(), worked: None }),
-                "summary" => Some(Block::Notice(format!("Summary of another path: {text}"))),
-                _ => None,
+            .flat_map(|(role, text)| match role.as_str() {
+                "user" => {
+                    // the stored text ends in a visible [[lh-attach:..]] marker; show chips instead
+                    let (plain, n) = lh_client::attach::strip_marker(text);
+                    let mut v = vec![Block::User(plain)];
+                    if n > 0 {
+                        v.push(Block::Files(vec!["attached file".to_string(); n]));
+                    }
+                    v
+                }
+                _ => Self::history_block(role, text).into_iter().collect(),
             })
             .collect();
+    }
+
+    fn history_block(role: &str, text: &String) -> Option<Block> {
+        match role {
+            "assistant" => Some(Block::Assistant { text: text.clone(), reasoning: String::new(), worked: None }),
+            "summary" => Some(Block::Notice(format!("Summary of another path: {text}"))),
+            _ => None,
+        }
     }
 
     fn assistant(&mut self) -> &mut Block {
@@ -649,5 +673,28 @@ mod undo_tests {
         assert_eq!(super::refine_summary(&json!({"proposals": [1, 2], "applied": []})), "2 suggestions wait for you in Settings, Learning.");
         assert_eq!(super::refine_summary(&json!({"proposals": [], "applied": []})), "Nothing new worth keeping from this chat.");
         assert_eq!(super::undo_summary(&v), "Put back a.txt, b.txt. Left alone: c.txt (the file was changed after the harness wrote it, so it was left alone).");
+    }
+}
+
+#[cfg(test)]
+mod attach_tests {
+    use super::*;
+
+    #[test]
+    fn a_resumed_chat_hides_the_attach_marker_and_shows_chips() {
+        let mut c = Chat::new(1, "m");
+        c.load_history(&[("user".into(), "look at these\n[[lh-attach:ab12,cd34]]".into()), ("assistant".into(), "ok".into())]);
+        assert!(matches!(&c.blocks[0], Block::User(t) if t == "look at these"));
+        assert!(matches!(&c.blocks[1], Block::Files(f) if f.len() == 2));
+        assert!(matches!(&c.blocks[2], Block::Assistant { .. }));
+    }
+
+    #[test]
+    fn a_sent_message_shows_its_file_names() {
+        let mut c = Chat::new(1, "m");
+        c.push_user_with_files("hi", vec!["a.png".into()]);
+        c.push_user_with_files("plain", vec![]);
+        assert_eq!(c.blocks.len(), 3);
+        assert!(matches!(&c.blocks[1], Block::Files(f) if f[0] == "a.png"));
     }
 }

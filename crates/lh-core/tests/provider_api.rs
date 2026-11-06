@@ -164,3 +164,32 @@ async fn ollama_is_recognised_and_its_models_listed_through_its_own_api() {
     assert_eq!((v["ok"].as_bool(), v["ollama"].as_str(), v["models"][0].as_str()), (Some(true), Some("0.5.1"), Some("llama3:8b")));
     assert_eq!(v["message"], "Reached Ollama 0.5.1. It has 1 model.");
 }
+
+#[tokio::test]
+async fn presets_are_listed_without_keys_and_a_preset_fills_the_address() {
+    let s = start();
+    let (code, v) = s.call("GET", "/v1/providers/presets", None).await;
+    assert_eq!(code, 200);
+    let list = v["presets"].as_array().unwrap();
+    assert!(list.len() >= 20);
+    let openai = list.iter().find(|p| p["id"] == "openai").unwrap();
+    assert_eq!(openai["url"], "https://api.openai.com/v1");
+    assert_eq!(openai["key_env"], "OPENAI_API_KEY");
+    assert_eq!(openai["compat"]["max_tokens_field"], "max_completion_tokens");
+    assert!(!v.to_string().contains("sk-"));
+    let (code, _) = s.call("PUT", "/v1/provider", Some(json!({"preset": "groq"}))).await;
+    assert_eq!(code, 200);
+    let (_, p) = s.call("GET", "/v1/provider", None).await;
+    assert_eq!(p["url"], "https://api.groq.com/openai/v1");
+    assert_eq!(p["name"], "Groq");
+    let (code, _) = s.call("PUT", "/v1/provider", Some(json!({"preset": "anthropic"}))).await;
+    assert_eq!(code, 200);
+    let (_, p) = s.call("GET", "/v1/provider", None).await;
+    assert_eq!(p["api"], "anthropic");
+    assert_eq!(p["url"], "https://api.anthropic.com");
+    s.call("PUT", "/v1/provider", Some(json!({"preset": "groq"}))).await;
+    let (_, p) = s.call("GET", "/v1/provider", None).await;
+    assert_eq!(p["api"], "openai");
+    let (code, _) = s.call("PUT", "/v1/provider", Some(json!({"preset": "nope"}))).await;
+    assert_eq!(code, 400);
+}

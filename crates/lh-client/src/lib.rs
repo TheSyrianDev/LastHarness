@@ -1,5 +1,6 @@
 //! The client every front end uses to talk to the core (`lhd`): plain HTTP and server-sent events on the local API.
 
+pub mod attach;
 pub mod qr;
 pub mod tree;
 
@@ -122,7 +123,16 @@ impl Client {
 
     /// Start a turn. Dropping the returned stream cancels it on the core.
     pub async fn turn(&self, session: &str, text: &str) -> Result<TurnStream> {
-        let rb = self.req(reqwest::Method::POST, &format!("/v1/sessions/{session}/turns")).json(&json!({"text": text}));
+        self.turn_with(session, text, &[]).await
+    }
+
+    /// `turn`, with files. They are read and encoded here; a refusal (too many, too big) comes back as a sentence.
+    pub async fn turn_with(&self, session: &str, text: &str, files: &[attach::Staged]) -> Result<TurnStream> {
+        let mut body = json!({"text": text});
+        if !files.is_empty() {
+            body["attachments"] = Value::Array(attach::payload(files)?);
+        }
+        let rb = self.req(reqwest::Method::POST, &format!("/v1/sessions/{session}/turns")).json(&body);
         Ok(TurnStream { resp: self.send(rb).await?, parser: SseParser::new(), queue: VecDeque::new() })
     }
 

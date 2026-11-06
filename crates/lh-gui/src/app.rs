@@ -103,6 +103,9 @@ pub struct App {
     pub models: ModelList,
     pub chats: Chats,
     pub composer: Entity<TextareaState>,
+    /// Files chosen for the next message, and why the last one was refused.
+    pub staged: lh_client::attach::Stage,
+    pub attach_note: Option<String>,
     pub themes: ThemeSet,
     pub active_theme: usize,
     /// What the desktop last said about dark or light, when it says.
@@ -449,6 +452,8 @@ impl App {
             models: ModelList::default(),
             chats,
             composer,
+            staged: Default::default(),
+            attach_note: None,
             themes,
             active_theme,
             system_dark,
@@ -944,6 +949,35 @@ impl App {
         cx.notify();
     }
 
+    /// Pick files with the system dialog and stage them.
+    pub fn attach_dialog(&mut self, cx: &mut Context<Self>) {
+        let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: true, prompt: Some("Attach".into()) });
+        cx.spawn(async move |this: WeakEntity<App>, cx: &mut AsyncApp| {
+            if let Ok(Ok(Some(paths))) = rx.await {
+                let _ = this.update(cx, |a, cx| a.stage_files(&paths, cx));
+            }
+        })
+        .detach();
+    }
+
+    /// Stage files; the first refusal is shown as a plain sentence above the message box.
+    pub fn stage_files(&mut self, paths: &[std::path::PathBuf], cx: &mut Context<Self>) {
+        self.attach_note = None;
+        for p in paths {
+            if let Err(e) = self.staged.add(p) {
+                self.attach_note = Some(e);
+                break;
+            }
+        }
+        cx.notify();
+    }
+
+    pub fn unstage(&mut self, i: usize, cx: &mut Context<Self>) {
+        self.staged.remove(i);
+        self.attach_note = None;
+        cx.notify();
+    }
+
     pub fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.composer.read(cx).value().to_string();
         let text = text.trim().to_string();
@@ -951,7 +985,7 @@ impl App {
         if c.busy {
             return self.stop(cx);
         }
-        if text.is_empty() || c.dormant || self.pending.is_some() {
+        if (text.is_empty() && self.staged.is_empty()) || c.dormant || self.pending.is_some() {
             return;
         }
         if c.model.is_empty() {
@@ -969,10 +1003,12 @@ impl App {
         let (key, session, model) = (c.key, c.session.clone(), self.models.id_for(&c.model));
         // the model the core last had for this session, as an id; unknown after a restart (then nothing is switched)
         let session_model = c.session.as_ref().and_then(|_| self.core_models.get(&key)).filter(|m| !m.is_empty()).map(|m| self.models.id_for(m));
+        let files = self.staged.take();
+        self.attach_note = None;
         if let Some(c) = self.chats.by_key(key) {
-            c.push_user(&text);
+            c.push_user_with_files(&text, files.iter().map(|f| f.name.clone()).collect());
         }
-        self.backend.send(Cmd::Send { chat: key, session, session_model, model, text, start });
+        self.backend.send(Cmd::Send { chat: key, session, session_model, model, text, files, start });
         self.scroll_to_end();
         self.persist();
         cx.notify();

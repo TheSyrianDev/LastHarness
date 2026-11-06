@@ -169,6 +169,7 @@ use Category::*;
 /// Every setting in the core's list, once.
 pub const INFO: &[Info] = &[
     i("provider.url", Models, "Model server address", "Where your models are served from, for example http://localhost:9292/v1.", Show::Text("Not set"), false),
+    i("provider.api", Models, "Model server protocol", "How the model server is spoken to: openai for most services and local engines, anthropic for the Anthropic Messages API. Choosing a provider preset sets it.", Show::Words(&[("openai", "Chat completions (most services)"), ("anthropic", "Anthropic Messages")]), false),
     i("provider.name", Models, "Name of the model service", "Told to the model so it knows what serves it. Leave it empty to use the name the server gives.", Show::Text("Use the server's own name"), false),
     i("provider.key", Models, "Key for the model service", "Points to the stored secret that holds your key. The key itself is never written in the settings file.", Show::Text("None"), false),
     i("media.image_model", Models, "Image model", "Choose the model for image generation. It is offered only when image generation is switched on under Tools.", Show::Text("Not set"), false),
@@ -184,6 +185,9 @@ pub const INFO: &[Info] = &[
     i("team.unavailable", Departments, "When a model is missing", "Stop and tell you, or try the backup models listed for that kind of job.", Show::Words(&[("stop", "Stop and tell me"), ("fallback", "Try a backup model")]), false),
     i("web.listen", Web, "Address for the browser and phone", "Lets you use LastHarness in a browser over HTTPS, for example at 127.0.0.1:7843. Every device must be paired first. Leave it empty to keep this off.", Show::Text("Off"), true),
     i("web.tailscale", Web, "Reach it from your phone over Tailscale", "Opens the browser page on this computer's Tailscale address only, so a phone on your tailnet can use it. Sign the phone in under Phone, after a restart.", Show::OnOff, true),
+    i("tools.list_models", Tools, "Let the model see your providers and models", "The model can list the providers you registered and the models each offers. It cannot see keys.", Show::OnOff, false),
+    i("tools.select_model", Tools, "Let the model switch models", "The model can switch the chat to another model from a provider you registered, and ask a local provider to load one. Each switch is logged.", Show::OnOff, false),
+    i("tools.propose_provider", Tools, "Let the model suggest new providers", "The model can suggest a provider. Nothing is added until you approve it, and you type any key yourself.", Show::OnOff, false),
     i("tools.codemode", Tools, "Let the model write small scripts", "The model can run a short script that calls its other tools and keeps only what matters from long results. Every call inside is checked like any other. Off by default: it adds one tool to every request.", Show::OnOff, false),
     i("tools.code_lookup", Tools, "Give the model code intelligence", "Offers definitions, references, symbols and diagnostics when a supported language server is installed. Off by default.", Show::OnOff, false),
     i("tools.generate_image", Tools, "Let the model make images", "Offers image generation when an image model is configured. Off by default.", Show::OnOff, false),

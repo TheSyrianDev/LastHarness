@@ -25,6 +25,12 @@ pub trait Model: Send + Sync {
         async { Capabilities::default() }
     }
 
+    /// Which kinds of files (images, video, audio, PDF) the model takes. Default: none, so files are
+    /// turned into notes and the user is told.
+    fn media_support(&self, _model: &str) -> impl std::future::Future<Output = lh_provider::Support> + Send {
+        async { lh_provider::Support::default() }
+    }
+
     /// The core went idle: drop connections and caches. Default does nothing.
     fn release_idle(&self) {}
 
@@ -43,6 +49,10 @@ pub trait Model: Send + Sync {
 impl Model for Provider {
     async fn complete(&self, req: &ChatRequest, on_event: &mut (dyn FnMut(Event) + Send)) -> Result<Response, Error> {
         self.chat_stream(req, on_event).await
+    }
+
+    async fn media_support(&self, model: &str) -> lh_provider::Support {
+        Provider::media_support(self, model).await
     }
 
     async fn models(&self) -> Result<Vec<String>, Error> {

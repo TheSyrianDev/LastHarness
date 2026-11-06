@@ -56,7 +56,7 @@ pub struct SessionStart {
 pub enum Cmd {
     /// Ask for the model list and the stored chats.
     Refresh,
-    Send { chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String, start: SessionStart },
+    Send { chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String, files: Vec<lh_client::attach::Staged>, start: SessionStart },
     Stop { chat: u64, session: Option<String> },
     Answer { session: String, ask: String, yes: bool },
     Delete { chat: u64, id: Option<String>, stored: bool },
@@ -205,9 +205,9 @@ async fn run(cfg: Config, mut rx: mpsc::UnboundedReceiver<Cmd>, out: Out) {
                 let (c, o, cfg2) = (client.clone(), out.clone(), cfg.clone());
                 tokio::spawn(async move { refresh(&cfg2, c, o).await });
             }
-            Cmd::Send { chat, session, session_model, model, text, start } => {
+            Cmd::Send { chat, session, session_model, model, text, files, start } => {
                 let (c, o) = (client.clone(), out.clone());
-                let (task, handle) = futures_util::future::abortable(send(c, o.clone(), chat, session, session_model, model, text, start));
+                let (task, handle) = futures_util::future::abortable(send(c, o.clone(), chat, session, session_model, model, text, files, start));
                 turns.insert(chat, handle);
                 tokio::spawn(async move {
                     if task.await.is_err() {
@@ -401,7 +401,7 @@ async fn refresh(cfg: &Config, client: Arc<Client>, out: Out) {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn send(client: Arc<Client>, out: Out, chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String, start: SessionStart) {
+async fn send(client: Arc<Client>, out: Out, chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String, files: Vec<lh_client::attach::Staged>, start: SessionStart) {
     let fail = |message: String| {
         out.send(Ev::Failed { chat, message });
         out.send(Ev::StreamEnded { chat });
@@ -424,7 +424,7 @@ async fn send(client: Arc<Client>, out: Out, chat: u64, session: Option<String>,
             Err(e) => return fail(e),
         },
     };
-    let mut stream = match client.turn(&id, &text).await {
+    let mut stream = match client.turn_with(&id, &text, &files).await {
         Ok(s) => s,
         Err(e) => return fail(e),
     };

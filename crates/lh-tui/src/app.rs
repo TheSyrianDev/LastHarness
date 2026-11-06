@@ -69,11 +69,27 @@ impl Suggestion {
     }
 }
 
+/// Stored user text without the `[[lh-attach:..]]` marker; a note says how many files it carried.
+pub fn user_text(stored: &str) -> String {
+    let (t, n) = lh_client::attach::strip_marker(stored);
+    if n == 0 { t } else { format!("{t}\n[{} attached]", lh_client::attach::count_label(n)) }
+}
+
+fn expand(p: &str) -> std::path::PathBuf {
+    let p = p.trim().trim_matches(|c| c == '"' || c == '\'');
+    match (p.strip_prefix("~/"), std::env::var_os("HOME")) {
+        (Some(r), Some(h)) => std::path::Path::new(&h).join(r),
+        _ => p.into(),
+    }
+}
+
 /// Everything the screen shows. Pure data; the event loop feeds it and `ui::draw` shows it.
 pub struct App {
     pub model: String,
     pub entries: Vec<Entry>,
     pub input: String,
+    /// Files chosen with /attach, sent with the next message.
+    pub stage: lh_client::attach::Stage,
     pub question: Option<Question>,
     pub busy: bool,
     pub show_thinking: bool,
@@ -90,7 +106,7 @@ pub struct App {
 
 impl App {
     pub fn new(model: impl Into<String>) -> Self {
-        Self { model: model.into(), entries: vec![], input: String::new(), question: None, busy: false, show_thinking: false, scroll: 0, usage: None, review: vec![], incognito: false, tree: None, last_finish: None }
+        Self { model: model.into(), entries: vec![], input: String::new(), stage: Default::default(), question: None, busy: false, show_thinking: false, scroll: 0, usage: None, review: vec![], incognito: false, tree: None, last_finish: None }
     }
 
     /// Show the active branch the core sent after a move in the tree: what was said, and a summary if one was kept.
@@ -98,7 +114,7 @@ impl App {
         self.entries = history
             .iter()
             .map(|(role, text)| match role.as_str() {
-                "user" => Entry::User(text.clone()),
+                "user" => Entry::User(user_text(text)),
                 "assistant" => Entry::Assistant(text.clone()),
                 _ => Entry::Notice(format!("Summary of another path: {text}")),
             })
@@ -107,6 +123,50 @@ impl App {
         if let Some(i) = input {
             self.input = i;
         }
+    }
+
+    /// Handle `/attach <path>`, `/detach <n>` and `/attach` alone. Returns false when `line` is not one of them.
+    pub fn attach_command(&mut self, line: &str) -> bool {
+        let line = line.trim();
+        let note = if let Some(rest) = line.strip_prefix("/attach") {
+            let rest = rest.trim();
+            if rest.is_empty() {
+                self.stage_summary().unwrap_or_else(|| "No files attached. Use /attach <path>.".into())
+            } else {
+                match self.stage.add(&expand(rest)) {
+                    Ok(()) => self.stage_summary().unwrap_or_default(),
+                    Err(e) => return self.notice(e),
+                }
+            }
+        } else if let Some(rest) = line.strip_prefix("/detach") {
+            match rest.trim().parse::<usize>() {
+                Ok(n) if n >= 1 && n <= self.stage.files.len() => {
+                    self.stage.remove(n - 1);
+                    self.stage_summary().unwrap_or_else(|| "No files attached.".into())
+                }
+                _ => "Say which one: /detach <number>, as numbered above the input box.".into(),
+            }
+        } else {
+            return false;
+        };
+        self.notice(note)
+    }
+
+    fn notice(&mut self, t: String) -> bool {
+        self.entries.push(Entry::Notice(t));
+        true
+    }
+
+    fn stage_summary(&self) -> Option<String> {
+        if self.stage.is_empty() {
+            return None;
+        }
+        Some(format!("Attached: {} ({}, {}).", self.stage.files.iter().map(|f| f.name.as_str()).collect::<Vec<_>>().join(", "), lh_client::attach::count_label(self.stage.files.len()), lh_client::attach::size_label(self.stage.total())))
+    }
+
+    /// The chips line above the input box: `[1 notes.pdf 2.0 KB] [2 pic.png 1.1 MB]`.
+    pub fn chips(&self) -> String {
+        self.stage.files.iter().enumerate().map(|(i, f)| format!("[{} {} {}]", i + 1, f.name, lh_client::attach::size_label(f.size))).collect::<Vec<_>>().join(" ")
     }
 
     pub fn start_turn(&mut self, text: String) {
@@ -210,6 +270,29 @@ pub fn chart_text(json: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn attach_commands_and_marker() {
+        let d = std::env::temp_dir().join(format!("lh-tui-attach-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("a.txt");
+        std::fs::write(&f, "hi").unwrap();
+        let mut a = App::new("m");
+        assert!(!a.attach_command("hello"));
+        assert!(a.attach_command(&format!("/attach {}", f.display())));
+        assert_eq!(a.stage.files.len(), 1);
+        assert!(a.chips().starts_with("[1 a.txt 2 B]"));
+        assert!(a.attach_command("/attach /no/such/file"));
+        assert!(matches!(a.entries.last(), Some(Entry::Notice(t)) if t.contains("no file")));
+        assert!(a.attach_command("/detach 1"));
+        assert!(a.stage.is_empty());
+        assert_eq!(user_text("see\n[[lh-attach:ab12]]"), "see\n[1 file attached]");
+        a.show_branch(&[("user".into(), "x\n[[lh-attach:ab12,cd34]]".into())], None);
+        assert_eq!(a.entries, [Entry::User("x\n[2 files attached]".into())]);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
     use super::*;
 
     #[test]

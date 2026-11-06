@@ -41,25 +41,33 @@ pub struct Message {
     pub content: Option<String>,
     pub tool_calls: Vec<ToolCall>,
     pub tool_call_id: Option<String>,
+    /// Files sent with a user message, already adapted to what the model takes (see `prepare`).
+    pub attachments: Vec<crate::Attachment>,
 }
 
 impl Message {
     pub fn system(text: impl Into<String>) -> Self {
-        Self { role: Role::System, content: Some(text.into()), tool_calls: vec![], tool_call_id: None }
+        Self { role: Role::System, content: Some(text.into()), tool_calls: vec![], tool_call_id: None, attachments: vec![] }
     }
     pub fn user(text: impl Into<String>) -> Self {
-        Self { role: Role::User, content: Some(text.into()), tool_calls: vec![], tool_call_id: None }
+        Self { role: Role::User, content: Some(text.into()), tool_calls: vec![], tool_call_id: None, attachments: vec![] }
     }
     pub fn assistant(text: impl Into<String>, tool_calls: Vec<ToolCall>) -> Self {
         let t: String = text.into();
-        Self { role: Role::Assistant, content: if t.is_empty() { None } else { Some(t) }, tool_calls, tool_call_id: None }
+        Self { role: Role::Assistant, content: if t.is_empty() { None } else { Some(t) }, tool_calls, tool_call_id: None, attachments: vec![] }
     }
     pub fn tool_result(id: impl Into<String>, text: impl Into<String>) -> Self {
-        Self { role: Role::Tool, content: Some(text.into()), tool_calls: vec![], tool_call_id: Some(id.into()) }
+        Self { role: Role::Tool, content: Some(text.into()), tool_calls: vec![], tool_call_id: Some(id.into()), attachments: vec![] }
+    }
+
+    pub fn with_attachments(mut self, a: Vec<crate::Attachment>) -> Self {
+        self.attachments = a;
+        self
     }
 
     pub(crate) fn to_json(&self) -> Value {
-        let mut m = json!({ "role": self.role.as_str(), "content": self.content });
+        let content = if self.attachments.is_empty() { json!(self.content) } else { crate::attach::openai_content(self) };
+        let mut m = json!({ "role": self.role.as_str(), "content": content });
         if !self.tool_calls.is_empty() {
             m["tool_calls"] = self
                 .tool_calls

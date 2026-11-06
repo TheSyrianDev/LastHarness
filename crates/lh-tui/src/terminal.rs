@@ -80,10 +80,12 @@ pub async fn run() {
     let mut data_cmd: Option<(bool, Vec<String>)> = None;
     let mut devices_cmd: Option<Vec<String>> = None;
     let mut channels_cmd: Option<Vec<String>> = None;
+    let mut providers_cmd: Option<Vec<String>> = None;
     let mut service_cmd: Option<Vec<String>> = None;
     let mut schedule_cmd: Option<Vec<String>> = None;
     let (mut print, mut as_json, mut bypass): (Option<String>, bool, bool) = (None, false, false);
     let mut no_sandbox = false;
+    let mut attach_args: Vec<PathBuf> = vec![];
     while let Some(arg) = a.next() {
         let mut val = || a.next().unwrap_or_else(|| fail(format!("{arg} needs a value")));
         match arg.as_str() {
@@ -92,12 +94,13 @@ pub async fn run() {
             "--model" => model = Some(val()),
             "--ask-all" => ask_all = true,
             "--incognito" => incognito = true,
+            "--attach" => attach_args.push(PathBuf::from(val())),
             "-p" | "--print" => print = Some(val()),
             "--json" => as_json = true,
             "--bypass-permissions" => bypass = true,
             "--no-sandbox" => no_sandbox = true,
             "--help" | "-h" => {
-                println!("lh [--url URL] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]    chat with the core in the terminal\nlh -p \"question\" [--json] [--model NAME]    one turn: the answer on standard output (\"-\" reads the question from standard input; piped text is added to it)\n    Permission questions are answered no (exit code 3). --bypass-permissions answers them yes: the run may write files and run commands without asking. The sandbox stays on.\n    --no-sandbox runs this turn's commands without the sandbox (they can change any of your files and reach the network).\nOther commands: setup, settings, memory, learn, team, mcp, trust, devices, channels, schedule, export, import, service. Run `lh <command> help` for each.");
+                println!("lh [--url URL] [--token-file PATH] [--model NAME] [--ask-all] [--incognito] [--attach PATH]...    chat (in the chat, /attach <path> adds a file, /detach <n> removes one) with the core in the terminal\nlh -p \"question\" [--json] [--model NAME]    one turn: the answer on standard output (\"-\" reads the question from standard input; piped text is added to it)\n    Permission questions are answered no (exit code 3). --bypass-permissions answers them yes: the run may write files and run commands without asking. The sandbox stays on.\n    --no-sandbox runs this turn's commands without the sandbox (they can change any of your files and reach the network).\nOther commands: setup, settings, memory, learn, team, mcp, trust, devices, channels, schedule, export, import, service. Run `lh <command> help` for each.");
                 return;
             }
             "learn" => {
@@ -106,6 +109,12 @@ pub async fn run() {
             }
             "service" => {
                 service_cmd = Some(a.by_ref().collect());
+                break;
+            }
+            "providers" | "provider" | "proposals" | "approve" | "reject" => {
+                let mut v = vec![arg.clone()];
+                v.extend(a.by_ref());
+                providers_cmd = Some(v);
                 break;
             }
             "channels" => {
@@ -203,6 +212,17 @@ pub async fn run() {
     let client = Arc::new(Client::from_token_file(&url, &token_file).unwrap_or_else(|e| fail(e)));
     if let Some(cmd) = learn_cmd {
         match crate::learn_cli::run(&client, &cmd).await {
+            Ok(text) => println!("{text}"),
+            Err(e) => fail(e),
+        }
+        return;
+    }
+    if let Some(cmd) = providers_cmd {
+        if wants_help(&Some(cmd[1..].to_vec())) {
+            println!("{}", crate::providers_cli::HELP);
+            return;
+        }
+        match crate::providers_cli::run(&client, &cmd, &mut crate::providers_cli::Hidden).await {
             Ok(text) => println!("{text}"),
             Err(e) => fail(e),
         }
@@ -327,6 +347,9 @@ pub async fn run() {
     let mut term = Terminal::new(CrosstermBackend::new(io::stdout())).unwrap_or_else(|e| fail(e));
     let mut app = App::new(model);
     app.incognito = incognito;
+    for p in &attach_args {
+        app.attach_command(&format!("/attach {}", p.display()));
+    }
     let result = event_loop(&mut term, client, session, app).await;
     let _ = disable_raw_mode();
     let _ = crossterm::execute!(io::stdout(), LeaveAlternateScreen);
@@ -470,6 +493,10 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                         let (c, s) = (client.clone(), session.clone());
                         tokio::spawn(async move { let _ = c.call("POST", &format!("/v1/sessions/{s}/feedback"), Some(serde_json::json!({"kind": if up { "up" } else { "down" }, "note": note}))).await; });
                     }
+                    KeyCode::Enter if !app.busy && (app.input.trim().starts_with("/attach") || app.input.trim().starts_with("/detach")) => {
+                        let line = std::mem::take(&mut app.input);
+                        app.attach_command(&line);
+                    }
                     KeyCode::Enter if !app.busy && app.input.trim() == "/review" => {
                         app.input.clear();
                         let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
@@ -481,10 +508,11 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                     }
                     KeyCode::Enter if !app.busy && !app.input.trim().is_empty() => {
                         let text = std::mem::take(&mut app.input);
-                        app.start_turn(text.clone());
+                        let files = app.stage.take();
+                        app.start_turn(if files.is_empty() { text.clone() } else { format!("{text}\n[{} attached: {}]", lh_client::attach::count_label(files.len()), files.iter().map(|f| f.name.as_str()).collect::<Vec<_>>().join(", ")) });
                         let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
                         turn = Some(tokio::spawn(async move {
-                            match c.turn(&s, &text).await {
+                            match c.turn_with(&s, &text, &files).await {
                                 Err(e) => { let _ = tx.send(Msg::Event(ServerEvent::Error(e))); }
                                 Ok(mut stream) => loop {
                                     match stream.next().await {

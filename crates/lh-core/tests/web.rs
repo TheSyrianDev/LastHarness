@@ -195,6 +195,11 @@ async fn a_paired_browser_reaches_the_screens_it_needs_and_nothing_that_runs_pro
     let get = |p: &str| r.http.get(format!("{}{p}", r.https)).header("cookie", &cookie).send();
     assert_eq!(get("/v1/status").await.unwrap().status(), 200);
     assert_eq!(get("/v1/devices").await.unwrap().status(), 200);
+    // provider registry changes (and keys) stay on the machine
+    for (m, p) in [("POST", "/v1/providers"), ("DELETE", "/v1/providers/x"), ("POST", "/v1/providers/x/default"), ("POST", "/v1/providers/proposals/x/approve"), ("POST", "/v1/providers/proposals/x/reject")] {
+        let resp = r.http.request(m.parse().unwrap(), format!("{}{p}", r.https)).header("cookie", &cookie).header("origin", &origin).json(&json!({"url": "http://evil/v1", "key": "k"})).send().await.unwrap();
+        assert_eq!(resp.status(), 403, "{m} {p} stays on the machine");
+    }
     for p in ["/v1/mcp/servers", "/v1/trust?folder=/", "/v1/devices/pending", "/v1/team/plugins/preview"] {
         assert_eq!(get(p).await.unwrap().status(), 403, "{p} stays on the machine");
     }

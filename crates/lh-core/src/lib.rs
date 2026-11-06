@@ -25,6 +25,10 @@
 //! Every request needs `Authorization: Bearer <token>` and a loopback `Host` header.
 
 pub mod auth;
+pub mod registry;
+pub mod registry_api;
+mod model_tools;
+pub mod attachments;
 pub mod idle;
 pub mod channels;
 pub mod schedules_api;
@@ -142,6 +146,10 @@ pub struct Live {
     pub code_lookup: bool,
     /// `tools.generate_image`: offer image generation when an image model is configured.
     pub generate_image: bool,
+    /// `tools.list_models`, `tools.select_model`, `tools.propose_provider`: the model-and-provider tools.
+    pub list_models: bool,
+    pub select_model: bool,
+    pub propose_provider: bool,
     pub web: lh_tools::WebConfig,
     pub image_model: Option<String>,
 }
@@ -161,6 +169,8 @@ pub struct AppState<M> {
     perms: Arc<lh_tools::LivePerms>,
     /// Where API keys are kept: the system secret store unless a test sets another.
     pub secrets: std::sync::OnceLock<Arc<dyn lh_secrets::SecretStore>>,
+    /// The registered providers. Set once at start by `lhd`; tests may leave it unset (then only the one model is known).
+    pub registry: std::sync::OnceLock<Arc<registry::Registry>>,
     /// News for every open client that is not tied to one turn, such as a chat getting its title. See `/v1/events`.
     pub events: tokio::sync::broadcast::Sender<Value>,
     /// Pairs of note versions already shown to the contradiction check in this run.
@@ -278,6 +288,15 @@ impl<M: Model + 'static> AppState<M> {
             if touched("tools.generate_image") {
                 l.generate_image = cfg.get_bool("tools.generate_image");
             }
+            if touched("tools.list_models") {
+                l.list_models = cfg.get("tools.list_models") != "false";
+            }
+            if touched("tools.select_model") {
+                l.select_model = cfg.get("tools.select_model") != "false";
+            }
+            if touched("tools.propose_provider") {
+                l.propose_provider = cfg.get("tools.propose_provider") != "false";
+            }
             if touched("tools.sandbox") {
                 l.sandbox = cfg.get("tools.sandbox") != "false";
                 l.sandbox_net = lh_tools::SandboxNet::from_settings(&cfg.get("tools.sandbox_network"), &cfg.get("tools.sandbox_network_allow"), &cfg.get("tools.sandbox_network_model"));
@@ -315,7 +334,7 @@ impl<M: Model + 'static> AppState<M> {
     pub fn new(model: M, settings: Settings) -> Arc<Self> {
         let model = Arc::new(model);
         let idle = idle::Idle::new(settings.idle_after);
-        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, sandbox_net: Default::default(), no_sandbox: false, codemode: false, code_lookup: false, generate_image: false, web: settings.web.clone(), image_model: settings.image_model.clone() };
+        let live = Live { compact_at: settings.compact_at, recall: settings.memory.as_ref().map(|m| m.cfg.clone()).unwrap_or_default(), tree_summarize: "ask".into(), title_model: String::new(), check_model: String::new(), sandbox: true, sandbox_net: Default::default(), no_sandbox: false, codemode: false, code_lookup: false, generate_image: false, list_models: true, select_model: true, propose_provider: true, web: settings.web.clone(), image_model: settings.image_model.clone() };
         let perms = Arc::new(lh_tools::LivePerms::new(settings.bypass, settings.ask_all, settings.sudo_enabled));
         {
             let (model, store) = (model.clone(), settings.store.clone());
@@ -342,7 +361,7 @@ impl<M: Model + 'static> AppState<M> {
         }
         tokio::spawn(idle.clone().run());
         let first = settings.memory.as_ref().map_or(1, |m| m.memory.next_session_number());
-        let st = Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms, secrets: std::sync::OnceLock::new(), events: tokio::sync::broadcast::channel(64).0, checked_pairs: Default::default() });
+        let st = Arc::new(Self { model, settings, sessions: Mutex::new(HashMap::new()), next: AtomicU64::new(first), idle, kv: Default::default(), kv_endpoint: Default::default(), live: std::sync::RwLock::new(Arc::new(live)), perms, secrets: std::sync::OnceLock::new(), registry: std::sync::OnceLock::new(), events: tokio::sync::broadcast::channel(64).0, checked_pairs: Default::default() });
         // when idle, look for notes that disagree, if a local model is set for it
         let weak = Arc::downgrade(&st);
         st.idle.on_change(move |going_idle| {
@@ -378,7 +397,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/events", get(app_events::<M>))
         .route("/v1/sessions", post(create_session::<M>))
         .route("/v1/sessions/{id}", get(get_session::<M>).delete(delete_session::<M>))
-        .route("/v1/sessions/{id}/turns", post(start_turn::<M>))
+        .route("/v1/sessions/{id}/turns", post(start_turn::<M>).layer(axum::extract::DefaultBodyLimit::max(160 << 20)))
         .route("/v1/sessions/{id}/model", post(switch_model::<M>))
         .route("/v1/sessions/{id}/answers/{ask}", post(answer::<M>))
         .route("/v1/sessions/{id}/cancel", post(cancel::<M>))
@@ -391,6 +410,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(settings_api::routes::<M>())
         .merge(hooks_api::routes::<M>())
         .merge(provider_api::routes::<M>())
+        .merge(registry_api::routes::<M>())
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
         .merge(schedules_api::routes::<M>())
@@ -620,6 +640,9 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
     let slot = tools_on.then(|| {
         let slot = Arc::new(std::sync::OnceLock::new());
         tools = std::mem::take(&mut tools).with_extra(Arc::new(show_tool::ShowTool { session: slot.clone() }));
+        for kind in model_tools::Kind::enabled(&live) {
+            tools = std::mem::take(&mut tools).with_extra(Arc::new(model_tools::ModelTool { st: Arc::downgrade(st), session: slot.clone(), kind }));
+        }
         if st.settings.team.is_some() {
             tools = std::mem::take(&mut tools).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(st), session: slot.clone(), project: false })).with_extra(Arc::new(team_api::DeptTool { st: Arc::downgrade(st), session: slot.clone(), project: true }));
         }
@@ -769,6 +792,9 @@ async fn delete_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
 #[derive(Deserialize)]
 struct NewTurn {
     text: String,
+    /// Files sent with the message: `{name, mime, data}` with the data in base64.
+    #[serde(default)]
+    attachments: Vec<attachments::NewAttachment>,
 }
 
 /// Ends the turn when the client goes away: stops the work and turns open questions into "no".
@@ -889,6 +915,31 @@ async fn start_turn<M: Model + 'static>(
     Json(b): Json<NewTurn>,
 ) -> Result<SseResponse<impl Stream<Item = Result<Sse, Infallible>>>, ApiError> {
     let s = st.session(&id)?;
+    // files are checked and adapted to the model before the turn starts, so a refusal is a plain error
+    let (files, file_notices, originals) = if b.attachments.is_empty() {
+        (vec![], vec![], vec![])
+    } else {
+        let bad = |code, m: String| ApiError(code, m);
+        let decoded = attachments::decode(&b.attachments).map_err(|m| bad(StatusCode::BAD_REQUEST, m))?;
+        let limits = lh_provider::Limits::default();
+        limits.check(&decoded).map_err(|e| bad(StatusCode::PAYLOAD_TOO_LARGE, e.to_string()))?;
+        let model_id = s.req.lock().await.model.clone();
+        let support = st.model.media_support(&model_id).await;
+        attachments::save(&st.settings.store, &decoded);
+        let prepared = tokio::task::spawn_blocking(move || lh_provider::prepare(decoded.clone(), &support, &limits).map(|p| (p, decoded)))
+            .await
+            .map_err(|e| bad(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| bad(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()))?;
+        let (p, original) = prepared;
+        let est: u64 = p.attachments.iter().filter_map(lh_provider::estimate_tokens).sum();
+        let _ = st.settings.store.log("attachments", &id, "user", &json!({"files": attachments::describe(&original), "notices": p.notices, "estimated_tokens": est}));
+        let mut notices = p.notices;
+        if est > 0 {
+            notices.push(format!("The attached files add roughly {est} tokens to this message (video, audio and PDF are not counted)."));
+        }
+        let stored = original;
+        (p.attachments, notices, stored)
+    };
     if !s.try_start() {
         return Err(ApiError(StatusCode::CONFLICT, "a turn is already running in this session".into()));
     }
@@ -903,6 +954,11 @@ async fn start_turn<M: Model + 'static>(
             // Work on a copy; the session history only changes if the whole turn succeeds, so a
             // cancelled turn never leaves a tool call without its result.
             let mut work = s.req.lock().await.clone();
+            // a model chosen by the select_model tool in the last turn takes effect now
+            if let Some(m) = s.model_switch.lock().unwrap().take() {
+                work.model = m;
+                s.identity_stale.store(true, Ordering::SeqCst);
+            }
             let model_id = work.model.clone();
             // a chat opened again from storage gets its saved KV cache back first; a save from the last turn finishes first
             if let Some(kv) = st2.kv_for(&s) {
@@ -924,6 +980,9 @@ async fn start_turn<M: Model + 'static>(
                 build_system(&st2, &s, &mut work.messages, &model_id).await;
             }
             let mut user_text = b.text.clone();
+            for n in &file_notices {
+                let _ = tx.send(("notice".into(), json!({"type":"notice","message": n})));
+            }
             if let (Some(rt), Some(dest), false) = (&st2.settings.memory, &s.dest, s.incognito) {
                 // pages edited by hand since the last message count from this one on
                 let _ = rt.memory.scan_if_changed();
@@ -939,7 +998,7 @@ async fn start_turn<M: Model + 'static>(
                     }
                 }
             }
-            work.messages.push(Message::user(user_text));
+            work.messages.push(Message::user(user_text).with_attachments(files));
             let known = s.known_tokens.load(Ordering::SeqCst);
             let threshold = match compact_at {
                 Some(n) => n,
@@ -1001,7 +1060,7 @@ async fn start_turn<M: Model + 'static>(
                         let _ = lr.learn.scan_messages(&id, s.project.as_deref(), std::slice::from_ref(&b.text));
                     }
                     if let (Some(rt), Some(conv)) = (&st2.settings.memory, &s.conv) {
-                        let _ = rt.memory.append_message(conv, "user", &b.text);
+                        let _ = rt.memory.append_message(conv, "user", &attachments::stored_text(&b.text, &originals));
                         let first = rt.memory.set_title_if_empty(conv, &b.text).ok().flatten();
                         for note in notes.lock().unwrap().iter() {
                             let _ = rt.memory.append_message(conv, "tool", note);
