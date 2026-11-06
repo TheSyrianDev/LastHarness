@@ -16,7 +16,7 @@ Their job: talk to an assistant all day, hand bigger work to departments, and ke
 
 ## Product Purpose
 
-LastHarness is an AI harness, like Claude Code, Codex or Pi, that is department-led, local-first, endpoint-agnostic, and has a memory that lasts ("the last harness you'll need"). Success: a person uses it as their everyday assistant, trusts what it does on their behalf, and never has to open a terminal to set it up or run it.
+LastHarness is an AI harness, like Claude Code, Codex or Pi, that is team-first (departments and their workers do the work), local-first and endpoint-agnostic, with memory as a supporting feature ("the last harness you'll need"). Success: a person uses it as their everyday assistant, trusts what it does on their behalf, and never has to open a terminal to set it up or run it.
 
 ## Positioning
 

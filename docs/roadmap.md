@@ -1,6 +1,6 @@
 # LastHarness Roadmap
 
-A department-led, local-first, endpoint-agnostic AI harness for power users, with a memory that lasts. The decisions behind this plan are in `.grill/lastharness-reboot.md`. What the product is lives in `spec/lastharness.md`; this file says when each part is built. The old design is archived in `archive/lastharness-v1-spec.md` for reference only.
+A team-first (departments and their workers), local-first, endpoint-agnostic AI harness for power users, with memory as a supporting feature. The decisions behind this plan are in `.grill/lastharness-reboot.md`. What the product is lives in `spec/lastharness.md`; this file says when each part is built. The old design is archived in `archive/lastharness-v1-spec.md` for reference only.
 
 **Status:** draft. Nothing is built.
 **Stack:** Rust core with a local API. Front ends: terminal, browser, then native GUI.

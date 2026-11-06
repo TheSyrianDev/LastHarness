@@ -1,6 +1,6 @@
 # LastHarness (agent instructions)
 
-A department-led, local-first, endpoint-agnostic AI harness with a memory that lasts. Rust core `lhd` with a local HTTP API and SSE, thin front ends: terminal (`lh`) and the GPUI desktop app (`crates/lh-gui`).
+A team-first AI harness: departments and their workers do the work. Local-first and endpoint-agnostic, with memory as a supporting feature. Rust core `lhd` with a local HTTP API and SSE, thin front ends: terminal (`lh`) and the GPUI desktop app (`crates/lh-gui`).
 
 ## Read first, in this order
 
