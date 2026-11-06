@@ -144,7 +144,11 @@ impl OllamaAssembler {
 }
 
 fn message_json(m: &Message, all: &[Message]) -> Value {
-    let mut j = json!({ "role": m.role.as_str(), "content": m.content.clone().unwrap_or_default() });
+    let mut j = json!({ "role": m.role.as_str(), "content": crate::attach::flat_text(m) });
+    let images: Vec<Value> = m.attachments.iter().filter(|a| a.kind == crate::AttachKind::Image).map(|a| json!(crate::attach::b64(&a.data))).collect();
+    if !images.is_empty() {
+        j["images"] = json!(images);
+    }
     if !m.tool_calls.is_empty() {
         j["tool_calls"] = m
             .tool_calls
@@ -223,6 +227,7 @@ fn capabilities_from_show(v: &Value) -> Option<Capabilities> {
         context_tokens: info.and_then(|i| i.iter().find(|(k, _)| k.ends_with(".context_length")).and_then(|(_, v)| v.as_u64())),
         tools: has("tools"),
         vision: has("vision"),
+        audio: None,
         thinking: has("thinking"),
         reasoning_effort: None,
         parameters: info.and_then(|i| i.get("general.parameter_count")).and_then(Value::as_u64).filter(|n| *n > 0),

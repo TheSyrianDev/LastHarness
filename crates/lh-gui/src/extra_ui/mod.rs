@@ -6,6 +6,7 @@ mod activity;
 mod channels;
 mod data;
 mod hooks;
+mod providers;
 mod tools;
 mod web;
 
@@ -42,6 +43,8 @@ pub struct PgState {
     pub channel_kind: String,
     pub channel_assistant: bool,
     pub editing: Option<String>,
+    /// The preset chosen in the add-a-provider form; empty means a typed address.
+    pub prov_preset: String,
     pub import: Option<model::data::Preview>,
     pub replace: HashSet<String>,
     pub replace_style: bool,
@@ -77,6 +80,11 @@ impl App {
                 self.pg_fetch("trust", "/v1/trust");
             }
             Category::Channels => self.pg_fetch("channels", "/v1/channels"),
+            Category::Models => {
+                self.pg_fetch("providers", "/v1/providers");
+                self.pg_fetch("prov-presets", "/v1/providers/presets");
+                self.pg_fetch("prov-proposals", "/v1/providers/proposals");
+            }
             Category::Schedules => {
                 self.pg_fetch("schedules", "/v1/schedules");
                 self.pg_fetch("sch-files", model::activity::path("schedule_changed_files", 5));
@@ -142,6 +150,7 @@ impl App {
             "tools" => Category::Tools,
             "channels" => Category::Channels,
             "web" => Category::Web,
+            "providers" => Category::Models,
             "data" => Category::Data,
             "schedules" => Category::Schedules,
             _ => Category::Activity,
@@ -172,6 +181,11 @@ impl App {
             "ch-enable" => format!("{arg} is switched on."),
             "ch-disable" => format!("{arg} is switched off."),
             "ch-remove" => format!("Removed {arg}."),
+            "prov-add" => format!("Added {arg}."),
+            "prov-default" => format!("{arg} is now the default."),
+            "prov-remove" => format!("Removed {arg}."),
+            "prov-approve" => format!("Approved {arg}. It is registered now."),
+            "prov-reject" => format!("Rejected {arg}."),
             "dev-open" => format!("Pairing is open for {} minutes. On the other device, open this computer's address and press Pair. It shows a PIN: type it below.", v["open_for_minutes"]),
             "dev-accept" => format!("Paired {}. It can sign in now.", model::s(v, "name")),
             "phone-new" => "Made a new sign-in link. The old one no longer works; phones already signed in stay in.".to_string(),

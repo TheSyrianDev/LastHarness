@@ -53,6 +53,7 @@ const fn d(key: &'static str, kind: Kind, default: &'static str, live: bool, hel
 
 pub const SCHEMA: &[Def] = &[
     d("provider.url", Kind::Text, "", false, "Where the models are served, for example http://localhost:9292/v1. Needs a restart: the connection is made once at start"),
+    d("provider.api", Kind::Choice(&["openai", "anthropic"]), "openai", false, "How the model server is spoken to. openai: chat completions (most services, local engines). anthropic: the Anthropic Messages API. Choosing a provider preset sets it. Needs a restart: the connection is made once at start"),
     d("provider.name", Kind::Text, "", false, "Name of the service for the first line of the prompt. Leave empty to use what the server reports. Needs a restart: it is read once at start"),
     d("provider.key", Kind::Text, "", false, "Reference to the stored secret that holds the API key, like secret:NAME (the key itself is never written here). Needs a restart: the key is read once at start"),
     d("memory.enabled", Kind::Bool, "true", false, "Remember things between sessions. Needs a restart: the memory store is opened once at start"),
@@ -73,6 +74,9 @@ pub const SCHEMA: &[Def] = &[
     d("tools.sandbox_network", Kind::Choice(&["ask", "allowlist", "on", "auto"]), "ask", true, "Network access for commands in the sandbox. ask: you are asked for each run, except when every site the command names is on tools.sandbox_network_allow. allowlist: only when every site the command names is on tools.sandbox_network_allow. on: always. auto: tools.sandbox_network_model decides each run, and you are asked when it cannot. Applies to new chats"),
     d("tools.sandbox_network_allow", Kind::Text, "", true, "Sites sandboxed commands may reach without asking, in every mode, separated by commas, for example github.com, crates.io. A site covers its subdomains. Applies to new chats"),
     d("tools.sandbox_network_model", Kind::Text, "", true, "A small model that decides network access in auto mode. Empty: you are asked. Applies to new chats"),
+    d("tools.list_models", Kind::Bool, "true", true, "Let the model list the registered providers and their models. No approval is asked. Applies to new chats"),
+    d("tools.select_model", Kind::Bool, "true", true, "Let the model switch this chat to another model from a registered provider, and ask a local provider to load one. Every switch is written to the activity log. Applies to new chats"),
+    d("tools.propose_provider", Kind::Bool, "true", true, "Let the model suggest a new provider. Nothing is registered until you approve it, and you enter any key yourself. Applies to new chats"),
     d("tools.codemode", Kind::Bool, "false", true, "Offer the model a tool that runs a short JavaScript script calling the other tools, so long results are filtered before the model reads them. Each call the script makes is checked like any other. Off: one tool less in every request. Applies to new chats"),
     d("tools.code_lookup", Kind::Bool, "false", true, "Offer code_lookup when a supported language server is installed. Off by default. Applies to new chats"),
     d("tools.generate_image", Kind::Bool, "false", true, "Offer image generation when an image model is configured. Off by default. Applies to new chats"),

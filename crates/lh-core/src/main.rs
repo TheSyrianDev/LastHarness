@@ -217,7 +217,12 @@ async fn main() {
     auth::write_token(&path, &token).unwrap_or_else(|e| fail(format!("cannot write the token file {}: {e}", path.display())));
     let port = listener.local_addr().unwrap().port();
     let (provider_url, api_key_for_kv) = (provider.clone(), api_key.clone());
-    let state = AppState::new(Provider::new(provider, api_key), settings);
+    let base = if cfg.get("provider.api") == "anthropic" { Provider::anthropic(provider, api_key) } else { Provider::new(provider, api_key) };
+    // the registered providers; a --provider address that differs from the saved one runs alone (the registry stays out of the way)
+    let secrets_store: Arc<dyn lh_secrets::SecretStore> = Arc::new(OsStore::new("lastharness"));
+    let registry = Arc::new(if cfg.get_opt("provider.url").as_deref() == Some(provider_url.as_str()) { lh_core::registry::Registry::from_config(&config_path, secrets_store) } else { lh_core::registry::Registry::open(None, None, secrets_store) });
+    let state = AppState::new(lh_core::registry::Fleet::new(base, registry.clone()), settings);
+    let _ = state.registry.set(registry);
     state.set_kv_endpoint(&provider_url, api_key_for_kv);
     state.apply_settings(&cfg, &[]);
     if !no_sandbox && !cfg!(target_os = "linux") {

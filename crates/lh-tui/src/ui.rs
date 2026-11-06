@@ -116,7 +116,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     let from_top = max_scroll.saturating_sub(app.scroll.min(max_scroll));
     f.render_widget(para.scroll((from_top, 0)), rows[0]);
 
-    let title = if app.incognito { "you (incognito: nothing is remembered)" } else if app.busy { "you (working, Esc to cancel)" } else { "you (Enter to send, /review to look at what to remember, /tree for branches)" };
+    let chips = app.chips();
+    let title = if !chips.is_empty() { format!("you  {chips}  (/detach <n> removes)") } else { (if app.incognito { "you (incognito: nothing is remembered)" } else if app.busy { "you (working, Esc to cancel)" } else { "you (Enter to send, /attach <path> adds a file, /review, /tree)" }).to_string() };
     f.render_widget(Paragraph::new(app.input.as_str()).block(Block::bordered().title(title)), rows[1]);
 
     let usage = app.usage.map(|(p, c, k)| format!("  tokens: {p} in ({k} cached), {c} out")).unwrap_or_default();

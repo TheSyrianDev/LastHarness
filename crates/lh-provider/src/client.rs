@@ -20,7 +20,7 @@ impl Error {
     pub fn is_retryable(&self) -> bool {
         match self {
             Error::Network(e) => e.is_connect() || e.is_timeout() || e.is_request(),
-            Error::Http { status, .. } => matches!(*status, 408 | 409 | 425 | 429 | 500 | 502 | 503 | 504),
+            Error::Http { status, .. } => matches!(*status, 408 | 409 | 425 | 429 | 500 | 502 | 503 | 504 | 529),
             Error::Format(_) => false,
         }
     }
@@ -63,6 +63,8 @@ pub struct Provider {
     http: std::sync::Mutex<reqwest::Client>,
     /// Talk Ollama's native API (`/api/chat`, NDJSON) instead of the OpenAI-compatible one.
     pub(crate) ollama: bool,
+    /// Talk the Anthropic Messages API (`/v1/messages`, SSE) instead of the OpenAI-compatible one.
+    pub(crate) anthropic: bool,
 }
 
 impl Provider {
@@ -70,7 +72,7 @@ impl Provider {
     pub fn new(base_url: impl Into<String>, api_key: Option<String>) -> Self {
         let base_url = base_url.into().trim_end_matches('/').to_string();
         let compat = Compat::detect(&base_url);
-        Self { base_url, api_key, compat, retry: Retry::default(), probed: Default::default(), http: std::sync::Mutex::new(reqwest::Client::new()), ollama: false }
+        Self { base_url, api_key, compat, retry: Retry::default(), probed: Default::default(), http: std::sync::Mutex::new(reqwest::Client::new()), ollama: false, anthropic: false }
     }
 
     pub fn with_compat(mut self, compat: Compat) -> Self {
@@ -96,6 +98,9 @@ impl Provider {
         if self.ollama {
             return self.ollama_models().await;
         }
+        if self.anthropic {
+            return self.anthropic_models().await;
+        }
         let v: Value = self.get("/models").await?;
         Ok(v["data"].as_array().map(|a| a.iter().filter_map(|m| m["id"].as_str().map(str::to_string)).collect()).unwrap_or_default())
     }
@@ -104,6 +109,9 @@ impl Provider {
     pub async fn model_details(&self) -> Result<Vec<Value>, Error> {
         if self.ollama {
             return Ok(self.ollama_models().await?.into_iter().map(|id| serde_json::json!({"id": id})).collect());
+        }
+        if self.anthropic {
+            return Ok(self.anthropic_models().await?.into_iter().map(|id| serde_json::json!({"id": id})).collect());
         }
         let v: Value = self.get("/models").await?;
         Ok(v["data"].as_array().map(|a| a.iter().filter_map(details_of).collect()).unwrap_or_default())
@@ -117,6 +125,9 @@ impl Provider {
         }
         if self.ollama {
             return self.ollama_capabilities(model).await;
+        }
+        if self.anthropic {
+            return crate::Capabilities::default(); // no probe endpoint; avoids sending the key to /props
         }
         let root = self.base_url.strip_suffix("/v1").unwrap_or(&self.base_url).to_string();
         let mut found = crate::Capabilities::default();
@@ -146,9 +157,19 @@ impl Provider {
         found
     }
 
+    /// Which kinds of files this model takes, from what the server reports or a conservative table.
+    pub async fn media_support(&self, model: &str) -> crate::Support {
+        let caps = self.capabilities(model).await;
+        let api = if self.anthropic { crate::ApiKind::Anthropic } else if self.ollama { crate::ApiKind::Ollama } else { crate::ApiKind::OpenAiCompatible };
+        crate::Support::detect(api, &self.base_url, model, &caps)
+    }
+
     /// The name of the service behind the endpoint, if it says (llama-swap reports itself as the owner
     /// of its models). `None` when it does not; nothing is guessed from the address.
     pub async fn service_name(&self) -> Option<String> {
+        if self.anthropic {
+            return None;
+        }
         let v = self.get("/models").await.ok()?;
         let owner = v["data"][0]["owned_by"].as_str()?.trim();
         // generic owners say nothing about the service
@@ -159,6 +180,9 @@ impl Provider {
     pub async fn chat(&self, req: &ChatRequest) -> Result<Response, Error> {
         if self.ollama {
             return self.ollama_chat(req).await;
+        }
+        if self.anthropic {
+            return self.anthropic_chat(req).await;
         }
         let v = self.post("/chat/completions", &self.body(req, false)).await?.json::<Value>().await?;
         if v["choices"][0].is_null() {
@@ -172,6 +196,9 @@ impl Provider {
     pub async fn chat_stream(&self, req: &ChatRequest, mut on_event: impl FnMut(Event)) -> Result<Response, Error> {
         if self.ollama {
             return self.ollama_chat_stream(req, on_event).await;
+        }
+        if self.anthropic {
+            return self.anthropic_chat_stream(req, on_event).await;
         }
         let resp = self.post("/chat/completions", &self.body(req, true)).await?;
         let mut bytes = resp.bytes_stream();
@@ -251,9 +278,11 @@ impl Provider {
     }
 
     pub(crate) fn auth(&self, rb: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match &self.api_key {
-            Some(k) => rb.bearer_auth(k),
-            None => rb,
+        match (&self.api_key, self.anthropic) {
+            (Some(k), true) => rb.header("x-api-key", k).header("anthropic-version", crate::anthropic::VERSION),
+            (None, true) => rb.header("anthropic-version", crate::anthropic::VERSION),
+            (Some(k), false) => rb.bearer_auth(k),
+            (None, false) => rb,
         }
     }
 

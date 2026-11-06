@@ -6,6 +6,7 @@ pub mod activity;
 pub mod channels;
 pub mod data;
 pub mod hooks;
+pub mod providers;
 pub mod schedules;
 pub mod service;
 pub mod tools;

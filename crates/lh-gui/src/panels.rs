@@ -966,6 +966,9 @@ impl App {
         if !searching && page == Category::Web {
             col = col.child(self.pg_devices(window, cx));
         }
+        if !searching && page == Category::Models && self.connected {
+            col = col.child(self.pg_providers(window, cx));
+        }
         if searching && !show_appearance && shown.is_empty() {
             col = col.child(self.note("No setting matches. Try fewer or different words."));
         }

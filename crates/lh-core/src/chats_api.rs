@@ -140,7 +140,20 @@ async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
             return Err(ApiError(StatusCode::CONFLICT, format!("{hits} message(s) in this chat repeat a sensitive note, so it cannot be sent to a cloud model. Continue it with a local model instead.")));
         }
     }
-    let messages: Vec<Message> = crate::tree_api::history_to_messages(&history);
+    let mut messages: Vec<Message> = crate::tree_api::history_to_messages(&history);
+    if let Some(dir) = st.settings.store.dir() {
+        // files sent earlier come back from disk and are adapted to the model chosen now
+        let support = st.model.media_support(&model).await;
+        for m in messages.iter_mut().filter(|m| m.role == lh_provider::Role::User) {
+            let (text, ids) = crate::attachments::split_marker(m.content.as_deref().unwrap_or(""));
+            if ids.is_empty() {
+                continue;
+            }
+            let files = crate::attachments::load(dir, &ids);
+            let prepared = lh_provider::prepare(files, &support, &lh_provider::Limits::default());
+            *m = Message::user(text).with_attachments(prepared.map(|p| p.attachments).unwrap_or_default());
+        }
+    }
     if let Some(s) = live {
         // A loaded session moves to the new model: the first line of its prompt changes and the server reads it all again.
         let mut req = s.req.lock().await;

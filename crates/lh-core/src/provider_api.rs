@@ -22,6 +22,28 @@ const KEY_NAME: &str = "provider-key";
 
 pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
     Router::new().route("/v1/provider", get(show::<M>).put(save::<M>)).route("/v1/provider/test", post(test::<M>))
+        .route("/v1/providers/presets", get(presets))
+}
+
+/// The known providers, for the picker. Holds no keys; `key_env` is only the usual variable name.
+async fn presets() -> Json<Value> {
+    let list: Vec<Value> = lh_provider::PRESETS
+        .iter()
+        .map(|p| {
+            let c = p.compat();
+            json!({
+                "id": p.id, "name": p.name, "url": p.base_url, "api": p.api.as_str(), "key_env": p.key_env,
+                "key_required": p.key_required, "local": p.local, "supported": p.supported, "help_url": p.help_url, "note": p.note,
+                "compat": {"max_tokens_field": c.max_tokens_field, "extended_sampling": c.extended_sampling, "stream_usage": c.stream_usage},
+            })
+        })
+        .collect();
+    Json(json!({"presets": list}))
+}
+
+/// What "apply preset" saves: the address and the name. The key is entered separately and stored as usual.
+pub fn preset_settings(id: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    lh_provider::find_preset(id).filter(|p| p.supported).map(|p| (p.base_url, p.name, if p.api == lh_provider::ApiKind::Anthropic { "anthropic" } else { "openai" }))
 }
 
 fn load<M>(st: &AppState<M>) -> Result<ConfigFile, ApiError> {
@@ -29,7 +51,7 @@ fn load<M>(st: &AppState<M>) -> Result<ConfigFile, ApiError> {
     ConfigFile::load(path).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
-fn secrets<M>(st: &AppState<M>) -> Arc<dyn SecretStore> {
+pub(crate) fn secrets<M>(st: &AppState<M>) -> Arc<dyn SecretStore> {
     st.secrets.get_or_init(|| Arc::new(lh_secrets::OsStore::new("lastharness"))).clone()
 }
 
@@ -68,6 +90,7 @@ async fn show<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<
     Ok(Json(json!({
         "url": url,
         "name": name,
+        "api": cfg.get("provider.api"),
         "from_start": started_with.is_some(),
         "key_saved": !key.is_empty(),
         "local": !url.is_empty() && lh_provider::is_local_url(&url),
@@ -81,6 +104,8 @@ struct TestBody {
     url: String,
     /// A key typed but not saved yet. Without it the saved key is used.
     key: Option<String>,
+    /// "openai" or "anthropic". Without it the saved setting is used.
+    api: Option<String>,
 }
 
 /// Try an address (and key): list its models, or say in plain words what went wrong. Nothing is saved.
@@ -95,8 +120,9 @@ async fn test<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Optio
     };
     let url = b.url.trim().to_string();
     // Ollama lists its models at its own address, so look for it first
-    let ollama = Provider::detect_ollama(&url, key.clone()).await;
-    let provider = if ollama.is_some() { Provider::ollama(&url, key) } else { Provider::new(&url, key) };
+    let ollama = if b.api.as_deref() == Some("anthropic") { None } else { Provider::detect_ollama(&url, key.clone()).await };
+    let api = b.api.or_else(|| load(&st).ok().map(|c| c.get("provider.api"))).unwrap_or_default();
+    let provider = if api == "anthropic" { Provider::anthropic(&url, key) } else if ollama.is_some() { Provider::ollama(&url, key) } else { Provider::new(&url, key) };
     Ok(Json(match provider.models().await {
         Ok(models) => {
             let plural = |n: usize| if n == 1 { "" } else { "s" };
@@ -120,8 +146,12 @@ fn saved_key<M>(st: &AppState<M>) -> Option<String> {
 
 #[derive(Deserialize)]
 struct SaveBody {
+    /// A preset id from `/v1/providers/presets`; fills `url` and `name` unless they are given too.
+    preset: Option<String>,
     url: Option<String>,
     name: Option<String>,
+    /// "openai" or "anthropic"; a preset sets it.
+    api: Option<String>,
     /// A new key to keep. An empty text removes the saved key. Left out, the key stays as it is.
     key: Option<String>,
 }
@@ -130,11 +160,21 @@ async fn save<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Optio
     no_device(via)?;
     let mut cfg = load(&st)?;
     let bad = |m: String| ApiError(StatusCode::BAD_REQUEST, m);
+    let mut b = b;
+    if let Some(id) = b.preset.take() {
+        let (url, name, api) = preset_settings(&id).ok_or_else(|| bad(format!("No supported provider preset called {id}.")))?;
+        b.url.get_or_insert_with(|| url.to_string());
+        b.name.get_or_insert_with(|| name.to_string());
+        b.api.get_or_insert_with(|| api.to_string());
+    }
     if let Some(u) = &b.url {
         if let Some(m) = check_url(u) {
             return Err(bad(m));
         }
         cfg.set("provider.url", u.trim()).map_err(|e| bad(e.to_string()))?;
+    }
+    if let Some(a) = &b.api {
+        cfg.set("provider.api", a).map_err(|e| bad(e.to_string()))?;
     }
     if let Some(n) = &b.name {
         cfg.set("provider.name", n.trim()).map_err(|e| bad(e.to_string()))?;
@@ -151,7 +191,9 @@ async fn save<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Optio
         }
     }
     cfg.save().map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let _ = st.settings.store.log("setting_changed", "provider", "user", &json!({"url": b.url, "name": b.name, "key": b.key.as_ref().map(|k| if k.trim().is_empty() { "removed" } else { "saved" })}));
+    // the old single provider is the registry's first entry, `main`: keep them in step
+    crate::registry_api::registry(&st).sync_main(&cfg.get("provider.url"), &cfg.get("provider.api"), &cfg.get("provider.name"), cfg.get_opt("provider.key"));
+    let _ = st.settings.store.log("setting_changed", "provider", "user", &json!({"url": b.url, "name": b.name, "api": b.api, "key": b.key.as_ref().map(|k| if k.trim().is_empty() { "removed" } else { "saved" })}));
     Ok(Json(json!({"saved": true, "restart_needed": true})))
 }
 

@@ -5,10 +5,10 @@ use serde_json::Value;
 use crate::{repair_json, Compat, Event, FinishReason, Response, ToolCall, Usage};
 
 #[derive(Default)]
-struct Partial {
-    id: String,
-    name: String,
-    args: String,
+pub(crate) struct Partial {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) args: String,
 }
 
 /// Turns streamed chunks (the JSON after `data:`) into events and, at the end, one `Response`.
@@ -88,7 +88,7 @@ impl Assembler {
     }
 }
 
-fn finish_call(idx: usize, p: Partial) -> ToolCall {
+pub(crate) fn finish_call(idx: usize, p: Partial) -> ToolCall {
     let id = if p.id.is_empty() { format!("call_{idx}") } else { p.id };
     let raw = if p.args.trim().is_empty() { "{}".to_string() } else { p.args };
     if serde_json::from_str::<Value>(&raw).is_ok() {

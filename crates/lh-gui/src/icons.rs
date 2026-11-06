@@ -29,7 +29,7 @@ impl Icon {
 /// The names a theme can give its own SVG for, one per icon the app draws.
 pub const NAMES: &[&str] = &[
     // the sidebar and the bars
-    "new-chat", "search", "send", "stop", "sidebar-collapse", "sidebar-expand", "lock", "panel", "close",
+    "new-chat", "search", "send", "attach", "stop", "sidebar-collapse", "sidebar-expand", "lock", "panel", "close",
     "widen", "popout", "chevron-right", "chevron-left", "chevron-down",
     // the rail and the pages of Settings
     "chats", "departments", "memory", "settings", "appearance", "models", "learning", "permissions", "spending", "web",

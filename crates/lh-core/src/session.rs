@@ -27,6 +27,8 @@ pub struct Session {
     pub parts: SystemParts,
     /// True until the system message has been built for the current model.
     pub identity_stale: AtomicBool,
+    /// A model picked by the `select_model` tool; the next turn starts with it.
+    pub model_switch: Mutex<Option<String>>,
     /// The permission mode and sudo the system prompt last described; a change rebuilds the prompt.
     pub shown_perms: Mutex<Option<(lh_tools::Mode, bool)>>,
     /// The newest activity number when the last turn started: what "undo the last turn" goes back to.
@@ -68,7 +70,7 @@ impl Session {
     }
 
     pub fn new(req: ChatRequest, perms: Permissions, tools: ToolSet, parts: SystemParts) -> Self {
-        Self { parts, identity_stale: AtomicBool::new(true), shown_perms: Mutex::new(None), turn_start: Default::default(), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None), kv_gate: Arc::new(tokio::sync::Mutex::new(())), kv_restore: AtomicBool::new(false) }
+        Self { parts, identity_stale: AtomicBool::new(true), model_switch: Mutex::new(None), shown_perms: Mutex::new(None), turn_start: Default::default(), req: tokio::sync::Mutex::new(req), perms, tools, busy: AtomicBool::new(false), known_tokens: AtomicU64::new(0), incognito: false, dest: None, conv: None, project: None, tool_calls: AtomicUsize::new(0), skills_used: Default::default(), injected: Default::default(), pending: Mutex::new(HashMap::new()), next_ask: AtomicU64::new(1), turn_events: Mutex::new(None), kv_gate: Arc::new(tokio::sync::Mutex::new(())), kv_restore: AtomicBool::new(false) }
     }
 
     pub fn try_start(&self) -> bool {
