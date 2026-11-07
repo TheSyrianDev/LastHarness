@@ -30,7 +30,7 @@ LastHarness is an AI harness, like Claude Code, Codex or Pi, that is team-first 
 - Long sessions with streamed answers, tool steps, permission questions, and department runs that keep going while the user does other things (away mode logs every decision and summarises on return).
 - Devices pair like Sunshine/Moonlight (PIN, then keys); the browser UI is reached over HTTPS from the same machine, the local network or the user's VPN.
 - Messaging channels (Telegram, Matrix, Signal, Slack) are opt-in and low trust.
-- Free, open source (Apache-2.0), no account.
+- Free, open source (PolyForm Noncommercial 1.0.0), no account.
 
 ## Capabilities and Constraints
 

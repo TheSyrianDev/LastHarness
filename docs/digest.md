@@ -4,7 +4,7 @@ Details: `spec/lastharness.md` (what it is), `roadmap.md` (when), `../.grill/las
 
 ## What it is
 
-An AI harness, like Claude Code, Codex or Pi, but **team-first** (departments and their workers do the work), **local-first** and **endpoint-agnostic**, with memory as a supporting feature. It is for technical users: Linux users, Office power users, people on ChatGPT, DeepSeek or LM Studio. The name stays LastHarness ("the last harness you'll need"). It is free, open source (Apache-2.0) and works with no account.
+An AI harness, like Claude Code, Codex or Pi, but **team-first** (departments and their workers do the work), **local-first** and **endpoint-agnostic**, with memory as a supporting feature. It is for technical users: Linux users, Office power users, people on ChatGPT, DeepSeek or LM Studio. The name stays LastHarness ("the last harness you'll need"). It is free, open source (PolyForm Noncommercial 1.0.0) and works with no account.
 
 ## How it works
 

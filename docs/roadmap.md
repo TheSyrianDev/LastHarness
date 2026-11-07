@@ -200,7 +200,7 @@ Approved by the user before mobile (decision log, "harness milestone"). Built wh
 - [ ] Signed updates, on by default and switchable off in settings. No usage analytics.
 - [ ] Documentation and examples.
 - [ ] Security review of key storage, tool permissions and the data-leaving rule.
-- [ ] Open source release: the harness, plugin format and apps under Apache-2.0, the relay server under AGPL-3.0 in a separate repository; publish the repositories.
+- [ ] Open source release: the harness, plugin format and apps under PolyForm Noncommercial 1.0.0, the relay server under AGPL-3.0 in a separate repository; publish the repositories.
 
 ---
 
