@@ -52,6 +52,13 @@ pub struct PanelData {
     pub setting_errors: HashMap<String, String>,
     pub departments_error: Option<String>,
     pub goal_note: Option<String>,
+    /// The About me profile text; None until it is read.
+    pub about: Option<String>,
+    pub about_busy: bool,
+    /// A message for the Memory section's own actions (export, import, profile).
+    pub mem_msg: Option<String>,
+    /// The counts of an import checked but not yet applied.
+    pub import_preview: Option<Value>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -143,6 +150,12 @@ pub struct App {
     pub goal: Entity<TextareaState>,
     /// The folder for a chat in project mode.
     pub project_input: Entity<InputState>,
+    /// The Memory section's note editor, the About me editor and the import and export path.
+    pub mem_edit: Option<crate::memory_ui::MemEdit>,
+    pub about_edit: Option<Entity<TextareaState>>,
+    /// The memory whose delete was asked for once; a second click deletes it.
+    pub mem_delete_armed: Option<String>,
+    pub mem_path: Entity<InputState>,
     pub dept_pick: Option<String>,
     /// The model name each session was last told to use (to know when a send must switch it).
     pub core_models: HashMap<u64, String>,
@@ -482,6 +495,10 @@ impl App {
             panels: PanelData::default(),
             goal,
             project_input,
+            mem_edit: None,
+            about_edit: None,
+            mem_delete_armed: None,
+            mem_path: cx.new(|cx| InputState::new(window, cx).placeholder("/full/path/to/memory.md")),
             dept_pick: None,
             core_models: HashMap::new(),
             content: vec![],
@@ -1243,12 +1260,15 @@ impl App {
 
     pub fn load_panels(&mut self) {
         self.pg_reload();
-        for (tag, path) in [("departments", "/v1/team/departments"), ("memory", "/v1/memory/pages"), ("proposals", "/v1/memory/proposals"), ("settings", "/v1/settings"), ("runs", "/v1/team/runs")] {
+        for (tag, path) in [("departments", "/v1/team/departments"), ("memory", "/v1/memory/pages"), ("proposals", "/v1/memory/proposals"), ("about", "/v1/memory/about"), ("settings", "/v1/settings"), ("runs", "/v1/team/runs")] {
             self.backend.send(Cmd::Call { tag: tag.into(), method: "GET".into(), path: path.into(), body: None });
         }
     }
 
     fn on_reply(&mut self, tag: &str, result: Result<Value, String>) {
+        if self.mem_reply(tag, &result) {
+            return;
+        }
         let p = &mut self.panels;
         match (tag, result) {
             ("departments", Ok(v)) => {

@@ -107,7 +107,7 @@ const CTX_GAP: f32 = 64.;
 /// The model slider's ball, the context slider's ball and the mode switch's drop, in pixels tall.
 const SLIDER_KNOB: f32 = 22.;
 const CTX_KNOB: f32 = 18.;
-const MODE_H: f32 = 42.;
+const MODE_H: f32 = 34.;
 
 /// Line icons on a 24 by 24 grid, drawn by the app in one stroke weight.
 pub(crate) mod icons {
@@ -121,8 +121,8 @@ pub(crate) mod icons {
     pub fn pencil() -> Icon { Icon::new("new-chat", vec![vec![(4., 20.), (4.5, 15.5), (15., 5.), (19., 9.), (8.5, 19.5), (4., 20.)], vec![(13., 7.), (17., 11.)]]) }
     pub fn search() -> Icon { Icon::new("search", vec![circle(10.5, 10.5, 6.), vec![(15., 15.), (20., 20.)]]) }
     pub fn send() -> Icon { Icon::new("send", vec![vec![(12., 19.), (12., 5.5)], vec![(6., 11.), (12., 5.), (18., 11.)]]) }
-    /// A paperclip: attach files.
-    pub fn attach() -> Icon { Icon::new("attach", vec![vec![(19., 11.), (11.5, 18.5), (8., 18.5), (5.5, 16.), (5.5, 12.5), (13., 5.), (15.5, 5.), (17.5, 7.), (17.5, 9.5), (10., 17.), (8.8, 17.), (8., 16.2), (8., 15.), (14., 9.)]]) }
+    /// A plus sign: attach files.
+    pub fn attach() -> Icon { Icon::new("attach", vec![vec![(12., 5.), (12., 19.)], vec![(5., 12.), (19., 12.)]]) }
     pub fn stop() -> Icon { Icon::new("stop", vec![vec![(7., 7.), (17., 7.), (17., 17.), (7., 17.), (7., 7.)]]) }
     /// A window with its left pane marked: folds the sidebar away. Mirrored in right-to-left.
     pub fn sidebar_collapse(rtl: bool) -> Icon {
