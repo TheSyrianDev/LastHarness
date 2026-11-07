@@ -91,6 +91,36 @@ static PHONE: LazyLock<Regex> = LazyLock::new(|| re(r"(?:\+|\b00)?\d[\d ()-]{7,}
 static LONG_TOKEN: LazyLock<Regex> = LazyLock::new(|| re(r"\b[A-Za-z0-9+/_=-]{32,}\b"));
 static ADDRESS: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b(?:home\s+address|my\s+address|lives?\s+at)\b|عنوان(?:ي|ه)?\s+(?:المنزل|البيت)?"));
 
+/// Private paths: the user's home folder and anything under it.
+static HOME_PATH: LazyLock<Regex> = LazyLock::new(|| re(r#"/(?:home|Users)/[A-Za-z0-9._-]+(?:/[^\s`'",;)]*)?"#));
+
+/// What the screen did to a text before it is saved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Screened {
+    pub text: String,
+    /// True when something was replaced. Tokens and keys become `[redacted]`; home folder paths become `[private path]`.
+    pub redacted: bool,
+}
+
+/// Replace secrets (keys, tokens, long random strings) and private home paths before a note is saved.
+/// Redacting keeps the rest of the note; `detect` still decides how private what is left is.
+pub fn redact(text: &str) -> Screened {
+    let mut out = text.to_string();
+    let mut redacted = false;
+    // paths first: a long path would otherwise be taken as one long token
+    if HOME_PATH.is_match(&out) {
+        out = HOME_PATH.replace_all(&out, "[private path]").into_owned();
+        redacted = true;
+    }
+    for re in [&*KEY_SHAPES, &*LONG_TOKEN] {
+        if re.is_match(&out) {
+            out = re.replace_all(&out, "[redacted]").into_owned();
+            redacted = true;
+        }
+    }
+    Screened { text: out, redacted }
+}
+
 fn luhn(digits: &str) -> bool {
     let d: Vec<u32> = digits.chars().filter_map(|c| c.to_digit(10)).collect();
     if d.len() < 13 {

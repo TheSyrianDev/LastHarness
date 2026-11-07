@@ -20,5 +20,5 @@ pub use maintenance::{contradiction_prompt, parse_contradiction, similarity, Fin
 pub use proposals::{parse_review, Kind, NewProposal, Parsed, Proposal, ProposalEdit, REVIEW_PROMPT};
 pub use context::{excerpt, visible, Destination, Note, PageRef, RecallConfig, Recalled};
 pub use page::*;
-pub use privacy::{classify, detect, leaks, parse_judgement, Classification, Judge, Judgement, NoJudge, Trust, JUDGE_PROMPT};
+pub use privacy::{classify, detect, leaks, redact, Screened, parse_judgement, Classification, Judge, Judgement, NoJudge, Trust, JUDGE_PROMPT};
 pub use repo::{Error, HistoryRow, Hit, ImportReport, Memory, Result, ScanReport, State};

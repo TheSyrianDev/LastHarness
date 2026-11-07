@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::maintenance::{similarity, STALE_DAYS};
 use crate::{Layer, Memory, Page, Privacy, Result, State, Trust};
 
 #[derive(Clone, Debug)]
@@ -18,11 +19,13 @@ pub struct RecallConfig {
     pub about_chars: usize,
     pub semantic_weight: f64,
     pub keyword_weight: f64,
+    /// A note not changed for this many days is flagged as possibly stale at recall.
+    pub stale_days: i64,
 }
 
 impl Default for RecallConfig {
     fn default() -> Self {
-        Self { max_items: 6, excerpt_chars: 600, budget_chars: 3000, about_chars: 1200, semantic_weight: 1.0, keyword_weight: 0.35 }
+        Self { max_items: 6, excerpt_chars: 600, budget_chars: 3000, about_chars: 1200, semantic_weight: 1.0, keyword_weight: 0.35, stale_days: STALE_DAYS }
     }
 }
 
@@ -32,6 +35,8 @@ pub struct Destination {
     pub trust: Trust,
     /// The project folder of the session, so project pages of other projects stay out.
     pub project: Option<String>,
+    /// The department of the worker reading memory; `None` for the main chat.
+    pub department: Option<String>,
 }
 
 /// May this page be put into a request to `dest`?
@@ -39,8 +44,12 @@ pub fn visible(p: &Page, dest: &Destination) -> bool {
     p.archived_at.is_none() && p.privacy.allowed_at(dest.trust) && applies(p, dest)
 }
 
+/// A page applies when it is in this project (or any project), and its department lets it through:
+/// the user's own pages (no department), pages shared by their owner, or pages of this destination's department.
 fn applies(p: &Page, dest: &Destination) -> bool {
-    p.project.is_none() || p.project == dest.project
+    let project_ok = p.project.is_none() || p.project == dest.project;
+    let department_ok = p.department.is_none() || p.shared || p.department == dest.department;
+    project_ok && department_ok
 }
 
 /// Which version of which page went into a request, for the "what was sent" record.
@@ -58,6 +67,12 @@ pub struct Note {
     pub text: String,
     /// When the page last changed (seconds since 1970), so the model can tell which of two notes is newer.
     pub updated: i64,
+    /// Last changed more than `RecallConfig::stale_days` ago.
+    pub stale: bool,
+    /// Titles of other visible notes from another owner that cover the same topic and say something different.
+    pub conflicts: Vec<String>,
+    /// The owner of the note: a department name, or "personal" for the user's own memory.
+    pub owner: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -79,7 +94,14 @@ impl Recalled {
         }
         let mut s = String::from("[Notes from the user's memory that may help with this message. Use them only if they are relevant. If two disagree, the newer one holds.]\n");
         for n in &self.notes {
-            s.push_str(&format!("- ({}, {}) {}: {}\n", n.layer.as_str(), day(n.updated), n.title, n.text.replace('\n', " ")));
+            let mut flags = String::new();
+            if n.stale {
+                flags.push_str(&format!(" [may be stale: last changed {}]", day(n.updated)));
+            }
+            for c in &n.conflicts {
+                flags.push_str(&format!(" [may conflict with \"{c}\", a note from another owner: check which is current]"));
+            }
+            s.push_str(&format!("- ({}, {}, from {}) {}: {}{flags}\n", n.layer.as_str(), day(n.updated), n.owner, n.title, n.text.replace('\n', " ")));
         }
         s
     }
@@ -114,6 +136,33 @@ fn first_sentence(body: &str, max: usize) -> String {
     let flat = body.split_whitespace().collect::<Vec<_>>().join(" ");
     let end = flat.find(['.', '!', '?', '؟']).map_or(flat.len(), |i| i + 1);
     excerpt(&flat[..end], max)
+}
+
+/// Two visible notes from different owners that cover the same topic (word overlap at least
+/// `CONFLICT_AT`) but are not identical may disagree. Both are flagged; the model decides which holds.
+const CONFLICT_AT: f64 = 0.5;
+
+fn flag_conflicts(notes: &mut [Note]) {
+    let sets: Vec<HashSet<String>> = notes.iter().map(|n| word_set_of(&n.title, &n.text)).collect();
+    let titles: Vec<String> = notes.iter().map(|n| n.title.clone()).collect();
+    for i in 0..notes.len() {
+        for j in 0..notes.len() {
+            if i == j || notes[i].owner == notes[j].owner || notes[i].text == notes[j].text {
+                continue;
+            }
+            if similarity(&sets[i], &sets[j]) >= CONFLICT_AT {
+                notes[i].conflicts.push(titles[j].clone());
+            }
+        }
+    }
+}
+
+fn word_set_of(title: &str, text: &str) -> HashSet<String> {
+    crate::text::tokens(&format!("{title} {text}")).into_iter().collect()
+}
+
+fn now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
 impl Memory {
@@ -182,9 +231,19 @@ impl Memory {
                 continue;
             }
             used += text.chars().count();
-            out.notes.push(Note { page: PageRef { id: p.id.clone(), version: p.version }, layer: p.layer, title: p.title.clone(), text, updated: p.updated });
+            out.notes.push(Note {
+                page: PageRef { id: p.id.clone(), version: p.version },
+                layer: p.layer,
+                title: p.title.clone(),
+                text,
+                updated: p.updated,
+                stale: now() - p.updated > cfg.stale_days * 86_400,
+                conflicts: vec![],
+                owner: p.department.clone().unwrap_or_else(|| "personal".into()),
+            });
         }
         out.withheld = withheld;
+        flag_conflicts(&mut out.notes);
         Ok(out)
     }
 }

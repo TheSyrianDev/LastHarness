@@ -304,6 +304,11 @@ const MIGRATIONS: &[&str] = &[r#"
       last_result text not null default '',
       created integer not null
     );
+"#, r#"
+    -- Which department owns a memory page (null = the user's own memory, seen by every department),
+    -- and whether its owner shares it with the other departments.
+    alter table pages add column department text;
+    alter table pages add column shared integer not null default 0;
 "#];
 
 pub struct Store {

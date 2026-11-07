@@ -63,6 +63,10 @@ pub struct Page {
     pub pinned: bool,
     /// The project folder this page belongs to; `None` means it applies everywhere.
     pub project: Option<String>,
+    /// The department that owns this page; `None` = the user's own memory, seen by every department.
+    pub department: Option<String>,
+    /// Opt-in: an owned page with `shared` set is also seen by the other departments.
+    pub shared: bool,
     pub source: String,
     pub version: i64,
     pub archived_at: Option<i64>,
@@ -85,6 +89,12 @@ impl Page {
         if let Some(p) = &self.project {
             h.push(("project", p.clone()));
         }
+        if let Some(d) = &self.department {
+            h.push(("department", d.clone()));
+        }
+        if self.shared {
+            h.push(("shared", "true".into()));
+        }
         if !self.privacy_reason.is_empty() {
             h.push(("privacy_reason", self.privacy_reason.clone()));
         }
@@ -103,12 +113,14 @@ pub struct NewPage {
     pub privacy_reason: String,
     pub pinned: bool,
     pub project: Option<String>,
+    pub department: Option<String>,
+    pub shared: bool,
     pub source: String,
 }
 
 impl NewPage {
     pub fn new(layer: Layer, title: impl Into<String>, body: impl Into<String>) -> Self {
-        Self { layer, title: title.into(), body: body.into(), gist: String::new(), privacy: Privacy::Normal, privacy_reason: String::new(), pinned: false, project: None, source: "user".into() }
+        Self { layer, title: title.into(), body: body.into(), gist: String::new(), privacy: Privacy::Normal, privacy_reason: String::new(), pinned: false, project: None, department: None, shared: false, source: "user".into() }
     }
 }
 

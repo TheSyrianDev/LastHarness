@@ -32,7 +32,7 @@ pub struct Finding {
 pub const STALE_DAYS: i64 = 365;
 const DUPLICATE_AT: f64 = 0.8;
 
-fn word_set(p: &Page) -> HashSet<String> {
+pub(crate) fn word_set(p: &Page) -> HashSet<String> {
     text::tokens(&format!("{} {}", p.title, p.body)).into_iter().collect()
 }
 

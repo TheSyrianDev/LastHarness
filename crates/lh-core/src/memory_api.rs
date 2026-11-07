@@ -30,7 +30,7 @@ pub struct MemoryRuntime {
 
 impl MemoryRuntime {
     pub fn destination(&self, project: Option<String>) -> Destination {
-        Destination { trust: self.trust, project }
+        Destination { trust: self.trust, project, department: None }
     }
 }
 

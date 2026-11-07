@@ -80,7 +80,7 @@ async fn recall_combines_both_searches_and_still_gates_by_trust() {
     add(&m, "Berlin", "Flight to Berlin in June.", Privacy::Normal);
     let e = Fake { trust: Trust::Local };
     m.index_pending(&e).await.unwrap();
-    let dest = Destination { trust: Trust::AnyCloud, project: None };
+    let dest = Destination { trust: Trust::AnyCloud, project: None, department: None };
     let sem = m.semantic_search(&e, "feeling sad and upset", 5).await.unwrap();
     assert!(sem.iter().any(|h| h.0 == med.id), "the semantic search itself can see it");
     let r = m.recall("feeling sad and upset", &dest, &RecallConfig::default(), &sem, &HashSet::new()).unwrap();
@@ -178,7 +178,7 @@ async fn real_embeddinggemma_beats_keywords_on_paraphrases_in_english_and_arabic
     eprintln!("embedded {} pages in {:.1} s including model start", 16 + FILLERS.len(), started.elapsed().as_secs_f64());
     assert!(e.is_running().await);
 
-    let dest = Destination { trust: Trust::Local, project: None };
+    let dest = Destination { trust: Trust::Local, project: None, department: None };
     let mut table = vec![];
     for (kw, sw) in [(1.0, 0.0), (0.35, 1.0), (0.0, 1.0)] {
         let cfg = RecallConfig { keyword_weight: kw, semantic_weight: sw, max_items: 5, ..Default::default() };

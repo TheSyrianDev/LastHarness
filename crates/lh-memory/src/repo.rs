@@ -60,7 +60,7 @@ pub struct ImportReport {
     pub already_present: usize,
 }
 
-const COLS: &str = "p.id, p.layer, p.slug, p.title, p.body, p.gist, p.privacy, p.privacy_reason, p.pinned, p.project, p.source, p.version, p.archived_at, p.created, p.updated";
+const COLS: &str = "p.id, p.layer, p.slug, p.title, p.body, p.gist, p.privacy, p.privacy_reason, p.pinned, p.project, p.source, p.version, p.archived_at, p.created, p.updated, p.department, p.shared";
 
 fn page_from(r: &Row) -> rusqlite::Result<Page> {
     let bad = |what: &str| rusqlite::Error::InvalidColumnType(0, what.into(), rusqlite::types::Type::Text);
@@ -80,6 +80,8 @@ fn page_from(r: &Row) -> rusqlite::Result<Page> {
         archived_at: r.get(12)?,
         created: r.get(13)?,
         updated: r.get(14)?,
+        department: r.get(15)?,
+        shared: r.get::<_, i64>(16)? != 0,
     })
 }
 
@@ -182,7 +184,7 @@ impl Memory {
             let mut q = c.prepare(&format!(
                 "select {COLS}, bm25(pages_fts) from pages_fts join pages p on p.rowid = pages_fts.rowid where pages_fts match ?1 and (?2 = 'any' or (?2 = 'live' and p.archived_at is null) or (?2 = 'archived' and p.archived_at is not null)) order by bm25(pages_fts) limit ?3"
             ))?;
-            let rows = q.query_map(params![fts, s, limit as i64], |r| Ok(Hit { page: page_from(r)?, score: -r.get::<_, f64>(15)? }))?;
+            let rows = q.query_map(params![fts, s, limit as i64], |r| Ok(Hit { page: page_from(r)?, score: -r.get::<_, f64>(17)? }))?;
             rows.collect()
         })?)
     }
@@ -204,8 +206,8 @@ impl Memory {
     fn insert(&self, p: &Page, hash: i64) -> Result<()> {
         self.store.with(|c| {
             c.execute(
-                "insert into pages(id, layer, slug, title, body, search_text, gist, privacy, privacy_reason, pinned, project, source, version, archived_at, file_hash, created, updated) values (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
-                params![p.id, p.layer.as_str(), p.slug, p.title, p.body, text::search_text(&p.title, &p.body), p.gist, p.privacy.as_str(), p.privacy_reason, p.pinned as i64, p.project, p.source, p.version, p.archived_at, hash, p.created, p.updated],
+                "insert into pages(id, layer, slug, title, body, search_text, gist, privacy, privacy_reason, pinned, project, source, version, archived_at, file_hash, created, updated, department, shared) values (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+                params![p.id, p.layer.as_str(), p.slug, p.title, p.body, text::search_text(&p.title, &p.body), p.gist, p.privacy.as_str(), p.privacy_reason, p.pinned as i64, p.project, p.source, p.version, p.archived_at, hash, p.created, p.updated, p.department, p.shared as i64],
             )
             .map(|_| ())
         })?;
@@ -217,8 +219,8 @@ impl Memory {
         *self.cache.lock().unwrap() = None;
         self.store.with(|c| {
             c.execute(
-                "update pages set slug=?2, title=?3, body=?4, search_text=?5, gist=?6, privacy=?7, privacy_reason=?8, pinned=?9, project=?10, source=?11, version=?12, archived_at=?13, file_hash=?14, updated=?15 where id=?1",
-                params![p.id, p.slug, p.title, p.body, text::search_text(&p.title, &p.body), p.gist, p.privacy.as_str(), p.privacy_reason, p.pinned as i64, p.project, p.source, p.version, p.archived_at, hash, p.updated],
+                "update pages set slug=?2, title=?3, body=?4, search_text=?5, gist=?6, privacy=?7, privacy_reason=?8, pinned=?9, project=?10, source=?11, version=?12, archived_at=?13, file_hash=?14, updated=?15, department=?16, shared=?17 where id=?1",
+                params![p.id, p.slug, p.title, p.body, text::search_text(&p.title, &p.body), p.gist, p.privacy.as_str(), p.privacy_reason, p.pinned as i64, p.project, p.source, p.version, p.archived_at, hash, p.updated, p.department, p.shared as i64],
             )
             .map(|_| ())
         })?;
@@ -273,6 +275,8 @@ impl Memory {
             privacy_reason: new.privacy_reason,
             pinned: new.pinned,
             project: new.project,
+            department: new.department,
+            shared: new.shared,
             source: new.source,
             version: 1,
             archived_at: None,
@@ -486,8 +490,10 @@ impl Memory {
                         }
                         p.pinned = parts.get("pinned").map_or(old.pinned, |v| v == "true");
                         p.project = parts.get("project").map(str::to_string).filter(|s| !s.is_empty()).or(old.project.clone());
+                        p.department = parts.get("department").map(str::to_string).filter(|s| !s.is_empty()).or(old.department.clone());
+                        p.shared = parts.get("shared").map_or(old.shared, |v| v == "true");
                         p.slug = stem;
-                        let changed = (&p.title, &p.body, &p.gist, p.privacy, p.pinned, &p.project) != (&old.title, &old.body, &old.gist, old.privacy, old.pinned, &old.project);
+                        let changed = (&p.title, &p.body, &p.gist, p.privacy, p.pinned, &p.project, &p.department, p.shared) != (&old.title, &old.body, &old.gist, old.privacy, old.pinned, &old.project, &old.department, old.shared);
                         if changed {
                             if p.body.trim().is_empty() {
                                 continue; // an emptied file is not a decision to forget; leave it for the user
@@ -520,6 +526,8 @@ impl Memory {
                         }
                         np.pinned = parts.get("pinned") == Some("true");
                         np.project = parts.get("project").map(str::to_string).filter(|s| !s.is_empty());
+                        np.department = parts.get("department").map(str::to_string).filter(|s| !s.is_empty());
+                        np.shared = parts.get("shared") == Some("true");
                         np.source = parts.get("source").unwrap_or("hand").to_string();
                         let id = parts.get("id").map(str::to_string);
                         let slug = if self.slug_free(layer, &stem) { stem.clone() } else { self.unique_slug(layer, &stem)? };

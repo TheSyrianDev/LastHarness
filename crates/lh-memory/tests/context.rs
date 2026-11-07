@@ -11,7 +11,7 @@ fn mem() -> (tempfile::TempDir, Memory) {
     (d, m)
 }
 fn dest(trust: Trust) -> Destination {
-    Destination { trust, project: None }
+    Destination { trust, project: None, department: None }
 }
 fn add(m: &Memory, layer: Layer, title: &str, body: &str, privacy: Privacy) -> Page {
     let mut n = NewPage::new(layer, title, body);
@@ -90,7 +90,7 @@ fn archived_other_project_and_repeated_pages_are_left_out_and_requests_stay_boun
     let mut mine = NewPage::new(Layer::Projects, "This project", "Cairo office layout.");
     mine.project = Some("/work/mine".into());
     let mine = m.create(mine, By::User).unwrap();
-    let d = Destination { trust: Trust::AnyCloud, project: Some("/work/mine".into()) };
+    let d = Destination { trust: Trust::AnyCloud, project: Some("/work/mine".into()), department: None };
     let r = m.recall("Cairo", &d, &RecallConfig::default(), &[], &HashSet::new()).unwrap();
     assert_eq!(r.notes.iter().map(|n| n.title.as_str()).collect::<Vec<_>>(), ["This project"]);
     // a page already in the conversation is not added again, but a new version is
