@@ -186,6 +186,8 @@ impl App {
             "prov-remove" => format!("Removed {arg}."),
             "prov-approve" => format!("Approved {arg}. It is registered now."),
             "prov-reject" => format!("Rejected {arg}."),
+            "prov-edit" => format!("Saved {arg}."),
+            "prov-test" | "prov-models" => model::s(v, "message"),
             "dev-open" => format!("Pairing is open for {} minutes. On the other device, open this computer's address and press Pair. It shows a PIN: type it below.", v["open_for_minutes"]),
             "dev-accept" => format!("Paired {}. It can sign in now.", model::s(v, "name")),
             "phone-new" => "Made a new sign-in link. The old one no longer works; phones already signed in stay in.".to_string(),

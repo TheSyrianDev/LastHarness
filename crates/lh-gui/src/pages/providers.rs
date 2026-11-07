@@ -13,6 +13,7 @@ pub struct Provider {
     pub default: bool,
     pub key_saved: bool,
     pub local: bool,
+    pub models: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -40,7 +41,7 @@ pub fn providers(v: &Value) -> Vec<Provider> {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|p| Provider { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), default: p["default"] == true, key_saved: p["key_saved"] == true, local: p["local"] == true })
+        .map(|p| Provider { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), default: p["default"] == true, key_saved: p["key_saved"] == true, local: p["local"] == true, models: p["models"].as_array().into_iter().flatten().filter_map(|m| m.as_str().map(str::to_string)).collect() })
         .collect()
 }
 
@@ -61,6 +62,34 @@ pub fn proposals(v: &Value) -> Vec<Proposal> {
 pub fn state_words(p: &Provider) -> String {
     let key = if p.local && !p.key_saved { "no key needed" } else if p.key_saved { "key saved" } else { "no key saved" };
     format!("{}  ·  {}", p.url, key)
+}
+
+/// The model count under a provider's name, or a hint to refresh.
+pub fn models_words(p: &Provider) -> String {
+    match p.models.len() {
+        0 => "No models listed yet. Use Refresh models.".to_string(),
+        1 => "1 model listed.".to_string(),
+        n => format!("{n} models listed."),
+    }
+}
+
+/// The body for editing: only the fields that were typed. An address is checked before it is sent.
+pub fn edit_body(name: &str, url: &str, key: &str) -> Result<Value, String> {
+    let (name, url, key) = (name.trim(), url.trim(), key.trim());
+    let mut b = serde_json::Map::new();
+    if !url.is_empty() {
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err("Type an address that starts with http:// or https://.".into());
+        }
+        b.insert("url".into(), json!(url));
+    }
+    if !name.is_empty() {
+        b.insert("name".into(), json!(name));
+    }
+    if !key.is_empty() {
+        b.insert("key".into(), json!(key));
+    }
+    Ok(Value::Object(b))
 }
 
 /// Does approving or adding this need a key? A known preset says; an unknown address might, so the box is offered.
@@ -126,6 +155,9 @@ mod tests {
         let l = providers(&json!({"providers": [{"id": "a", "name": "A", "url": "http://x", "default": true, "key_saved": true}, {"id": "b", "local": true}]}));
         assert!(l[0].default && l[0].key_saved && !l[1].default);
         assert_eq!(state_words(&l[0]), "http://x  ·  key saved");
+        assert_eq!(models_words(&l[0]), "No models listed yet. Use Refresh models.");
+        let m = providers(&json!({"providers": [{"id": "c", "models": ["a", "b"]}]}));
+        assert_eq!(models_words(&m[0]), "2 models listed.");
         assert!(state_words(&l[1]).contains("no key needed"));
         let q = proposals(&json!({"proposals": [{"id": "p", "name": "N", "url": "u", "preset": "openai", "reason": "r"}]}));
         assert_eq!((q[0].id.as_str(), q[0].reason.as_str()), ("p", "r"));
@@ -142,6 +174,10 @@ mod tests {
         assert!(add_body(Some("nope"), "", "", "", &p).is_err());
         assert_eq!(add_body(None, " http://h:1/v1 ", "", "", &p).unwrap(), json!({"url": "http://h:1/v1"}));
         assert!(add_body(None, "ftp://x", "", "", &p).is_err());
+        assert_eq!(edit_body(" New ", "", "").unwrap(), json!({"name": "New"}));
+        assert_eq!(edit_body("", "https://h/v1", " k ").unwrap(), json!({"url": "https://h/v1", "key": "k"}));
+        assert_eq!(edit_body("", "", "").unwrap(), json!({}));
+        assert!(edit_body("", "ftp://x", "").is_err());
         assert_eq!(approve_body("  "), json!({}));
         assert_eq!(approve_body("k"), json!({"key": "k"}));
     }

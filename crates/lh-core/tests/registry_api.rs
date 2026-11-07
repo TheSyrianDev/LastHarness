@@ -163,3 +163,75 @@ async fn the_model_lists_selects_and_proposes_but_only_the_user_registers() {
     assert_eq!(s.secrets.get("provider-openrouter").unwrap().as_deref(), Some("sk-user-typed"));
     assert_eq!(s.call("POST", "/v1/providers/proposals/p1/reject", None).await.0, 404);
 }
+
+/// A fake model server: `/v1/models` lists two models when the bearer key is `sk-good`, else 401.
+async fn fake_models() -> String {
+    use axum::http::{HeaderMap, StatusCode};
+    use axum::routing::get;
+    async fn models(h: HeaderMap) -> (StatusCode, axum::Json<Value>) {
+        if h.get("authorization").and_then(|v| v.to_str().ok()) == Some("Bearer sk-good") {
+            (StatusCode::OK, axum::Json(json!({"data": [{"id": "alpha"}, {"id": "beta"}]})))
+        } else {
+            (StatusCode::UNAUTHORIZED, axum::Json(json!({"error": {"message": "bad key"}})))
+        }
+    }
+    let app = axum::Router::new().route("/v1/models", get(models));
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = l.local_addr().unwrap().port();
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    format!("http://127.0.0.1:{port}/v1")
+}
+
+#[tokio::test]
+async fn cloud_preset_without_a_key_is_refused_by_the_api() {
+    let s = start(vec![], true);
+    let (c, b) = s.call("POST", "/v1/providers", Some(json!({"preset": "openrouter"}))).await;
+    assert_eq!(c, 400, "{b}");
+    assert!(b.to_string().contains("OpenRouter needs a key."), "{b}");
+    let (_, l) = s.call("GET", "/v1/providers", None).await;
+    assert_eq!(l["providers"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn an_entry_is_edited_without_showing_its_key() {
+    let s = start(vec![], true);
+    let (_, a) = s.call("POST", "/v1/providers", Some(json!({"url": "https://api.example.com/v1", "name": "Cloud", "key": "sk-first"}))).await;
+    assert_eq!(a["added"]["key_saved"], true);
+    let (c, e) = s.call("PATCH", "/v1/providers/cloud", Some(json!({"name": "Renamed"}))).await;
+    assert_eq!((c, e["provider"]["name"].clone()), (200, json!("Renamed")), "{e}");
+    assert_eq!(s.secrets.get("provider-cloud").unwrap().as_deref(), Some("sk-first"), "key kept when not sent");
+    let (c, _) = s.call("PATCH", "/v1/providers/cloud", Some(json!({"key": "sk-second"}))).await;
+    assert_eq!(c, 200);
+    assert_eq!(s.secrets.get("provider-cloud").unwrap().as_deref(), Some("sk-second"));
+    let (c, _) = s.call("PATCH", "/v1/providers/cloud", Some(json!({"url": "ftp://x"}))).await;
+    assert_eq!(c, 400);
+    let (c, _) = s.call("PATCH", "/v1/providers/missing", Some(json!({"name": "x"}))).await;
+    assert_eq!(c, 400);
+    let (c, e) = s.call("PATCH", "/v1/providers/cloud", Some(json!({"remove_key": true}))).await;
+    assert_eq!((c, e["provider"]["key_saved"].clone()), (200, json!(false)));
+    assert_eq!(s.secrets.get("provider-cloud").unwrap(), None);
+    let all = format!("{e}{}", std::fs::read_to_string(s.dir.path().join("providers.json")).unwrap());
+    assert!(!all.contains("sk-first") && !all.contains("sk-second"));
+}
+
+#[tokio::test]
+async fn entry_test_and_model_refresh_use_the_saved_key() {
+    let s = start(vec![], true);
+    let base = fake_models().await;
+    s.call("POST", "/v1/providers", Some(json!({"url": base, "name": "Box", "key": "sk-good"}))).await;
+    // test with no typed key: the saved key is used
+    let (c, t) = s.call("POST", "/v1/providers/box/test", Some(json!({}))).await;
+    assert_eq!((c, t["ok"].clone(), t["models"].as_array().map(Vec::len)), (200, json!(true), Some(2)), "{t}");
+    // refresh stores the list on the entry
+    let (c, m) = s.call("POST", "/v1/providers/box/models", None).await;
+    assert_eq!((c, m["ok"].clone(), m["models"].clone()), (200, json!(true), json!(["alpha", "beta"])), "{m}");
+    let (_, l) = s.call("GET", "/v1/providers", None).await;
+    assert_eq!(l["providers"][0]["models"], json!(["alpha", "beta"]));
+    // a typed wrong key overrides the saved one and fails in plain words
+    let (_, bad) = s.call("POST", "/v1/providers/box/test", Some(json!({"key": "sk-wrong"}))).await;
+    assert_eq!(bad["ok"], false, "{bad}");
+    assert!(!bad.to_string().contains("sk-good"));
+    // unknown entry
+    assert_eq!(s.call("POST", "/v1/providers/nope/test", None).await.0, 404);
+    assert_eq!(s.call("POST", "/v1/providers/nope/models", None).await.0, 404);
+}

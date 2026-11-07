@@ -3,7 +3,6 @@
 //! The pieces that decide things live in `lh_gui::pages_logic`, where they are tested.
 
 mod learning;
-mod models_keys;
 mod team;
 
 use std::collections::{HashMap, HashSet};
@@ -41,7 +40,6 @@ pub struct PageState {
     pub confirm: Option<String>,
     /// The first-run check has been made.
     pub first_run_done: bool,
-    pub models_keys: models_keys::State,
     pub learning: learning::State,
     pub team: team::State,
 }
@@ -70,7 +68,7 @@ impl App {
         self.sp.loaded.clear();
         self.sp.confirm = None;
         self.sp.list = None;
-        self.pg_get("provider");
+        self.pg_get("providers");
     }
 
     /// An answer for these pages came back.
@@ -84,9 +82,6 @@ impl App {
                     self.sp.data.insert(name.to_string(), v);
                 }
                 Err(e) => {
-                    if name == "provtest" {
-                        self.sp.models_keys.testing = false;
-                    }
                     self.sp.errors.insert(name.to_string(), e);
                 }
             },
@@ -113,16 +108,12 @@ impl App {
 
     /// Anything that follows a fresh answer: the first-run page, boxes that fill from it.
     fn after_get(&mut self, name: &str, v: &Value) {
-        if name == "provider" && !self.sp.first_run_done {
+        if name == "providers" && !self.sp.first_run_done {
             self.sp.first_run_done = true;
-            if lh_gui::pages_logic::models_keys::ProviderInfo::from_json(v).needs_first_run() {
+            if v["providers"].as_array().is_none_or(|a| a.is_empty()) {
                 self.settings_open = true;
                 self.settings_page = Category::Models;
             }
-        }
-        if name == "provtest" {
-            self.sp.models_keys.testing = false;
-            self.sp.models_keys.result = Some(lh_gui::pages_logic::models_keys::TestResult::from_json(v));
         }
         if name == "style" {
             if let Some(t) = v["style"]["text"].as_str() {
@@ -136,7 +127,6 @@ impl App {
         match section {
             "rules" => self.sp.clear.push("rule.new".into()),
             "skills" => self.sp.learning.preview = None,
-            "provider" => self.sp.clear.push("prov.key".into()),
             _ => {}
         }
     }
@@ -147,7 +137,7 @@ impl App {
         self.pg_apply_queues(window, cx);
         let id = page.id();
         let names: &[&str] = match page {
-            Category::Models => &["provider"],
+            Category::Models => &["providers"],
             Category::Learning => &["rules", "style", "skills", "proposals", "habits"],
             Category::Departments => &["roles", "types", "depts", "tsettings", "away"],
             _ => return None,
@@ -191,7 +181,6 @@ impl App {
                         .child(titles)
                         .child(div().flex().child(save))
                         .child(div().flex().child(rank)))
-                    .child(self.models_keys_block(window, cx))
                     .into_any_element()
             }
             Category::Learning => self.learning_block(window, cx),
@@ -352,7 +341,7 @@ impl App {
 /// The address behind a name.
 fn pg_path(name: &str) -> Option<String> {
     Some(match name {
-        "provider" => "/v1/provider".into(),
+        "providers" => "/v1/providers".into(),
         "rules" => "/v1/learn/rules?all=true".into(),
         "style" => "/v1/learn/style".into(),
         "skills" => "/v1/learn/skills".into(),
@@ -383,7 +372,7 @@ mod tests {
 
     #[test]
     fn every_name_has_an_address() {
-        for n in ["provider", "rules", "style", "skills", "proposals", "habits", "roles", "types", "depts", "tsettings", "away"] {
+        for n in ["providers", "rules", "style", "skills", "proposals", "habits", "roles", "types", "depts", "tsettings", "away"] {
             assert!(pg_path(n).unwrap().starts_with("/v1/"), "{n}");
         }
         assert_eq!(pg_path("rule:r3").unwrap(), "/v1/learn/rules/r3");

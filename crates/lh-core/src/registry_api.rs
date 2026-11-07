@@ -12,7 +12,7 @@ use lh_tools::Model;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::registry::{NewProvider, Registry};
+use crate::registry::{KeyChange, NewProvider, Registry, Update};
 use crate::{ApiError, AppState};
 
 pub fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
@@ -21,8 +21,10 @@ pub fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/providers/proposals", get(proposals::<M>))
         .route("/v1/providers/proposals/{id}/approve", post(approve::<M>))
         .route("/v1/providers/proposals/{id}/reject", post(reject::<M>))
-        .route("/v1/providers/{id}", delete(remove::<M>))
+        .route("/v1/providers/{id}", delete(remove::<M>).patch(edit::<M>))
         .route("/v1/providers/{id}/default", post(make_default::<M>))
+        .route("/v1/providers/{id}/test", post(test_entry::<M>))
+        .route("/v1/providers/{id}/models", post(refresh_models::<M>))
 }
 
 /// The registry of this core, opened on first use: from the settings file when there is one.
@@ -113,4 +115,63 @@ async fn reject<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Opt
     }
     let _ = st.settings.store.log("provider_proposal_rejected", "providers", "user", &json!({"id": id}));
     Ok(Json(json!({"rejected": id})))
+}
+
+#[derive(Deserialize)]
+struct EditBody {
+    name: Option<String>,
+    url: Option<String>,
+    api: Option<String>,
+    trust: Option<String>,
+    /// Absent: keep the saved key. A typed key replaces it. `remove_key: true` deletes it.
+    key: Option<String>,
+    #[serde(default)]
+    remove_key: bool,
+}
+
+async fn edit<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>, Json(b): Json<EditBody>) -> Result<Json<Value>, ApiError> {
+    no_device(via)?;
+    let key = match (b.remove_key, b.key.filter(|k| !k.trim().is_empty())) {
+        (true, _) => KeyChange::Remove,
+        (false, Some(k)) => KeyChange::Replace(k),
+        (false, None) => KeyChange::Keep,
+    };
+    let key_word = match key {
+        KeyChange::Keep => None,
+        KeyChange::Replace(_) => Some("saved"),
+        KeyChange::Remove => Some("removed"),
+    };
+    let r = registry(&st);
+    let e = r.update(&id, &Update { name: b.name, url: b.url, api: b.api, trust: b.trust, key: Some(key) }).map_err(bad)?;
+    let _ = st.settings.store.log("provider_edited", "providers", "user", &json!({"id": e.id, "url": e.url, "api": e.api, "trust": e.trust, "key": key_word}));
+    Ok(Json(json!({"provider": e.public(r.default_id() == e.id)})))
+}
+
+#[derive(Deserialize, Default)]
+struct TestEntryBody {
+    /// A key typed but not saved yet. Without it the entry's saved key is used.
+    key: Option<String>,
+}
+
+async fn test_entry<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>, body: Option<Json<TestEntryBody>>) -> Result<Json<Value>, ApiError> {
+    no_device(via)?;
+    let r = registry(&st);
+    let e = r.get(&id).ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "No such provider.".into()))?;
+    let key = body.and_then(|b| b.0.key).map(|k| k.trim().to_string()).filter(|k| !k.is_empty()).or_else(|| r.key_for(&id));
+    Ok(Json(crate::provider_api::probe(&e.url, key, &e.api).await))
+}
+
+async fn refresh_models<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+    no_device(via)?;
+    let r = registry(&st);
+    let e = r.get(&id).ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "No such provider.".into()))?;
+    let c = r.client(&id).ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "No such provider.".into()))?;
+    let models = match tokio::time::timeout(std::time::Duration::from_secs(5), c.models()).await {
+        Ok(Ok(m)) => m,
+        Ok(Err(err)) => return Ok(Json(json!({"ok": false, "message": err.explain(), "models": e.models}))),
+        Err(_) => return Ok(Json(json!({"ok": false, "message": "The server did not answer in time.", "models": e.models}))),
+    };
+    r.set_models(&id, models.clone());
+    let _ = st.settings.store.log("provider_models", "providers", "user", &json!({"id": id, "count": models.len()}));
+    Ok(Json(json!({"ok": true, "message": format!("{} model{}.", models.len(), if models.len() == 1 { "" } else { "s" }), "models": models})))
 }

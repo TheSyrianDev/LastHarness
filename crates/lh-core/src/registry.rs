@@ -70,6 +70,25 @@ pub struct Registry {
     clients: Mutex<HashMap<String, Arc<Provider>>>,
 }
 
+/// What to do with the saved key when an entry is edited.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum KeyChange {
+    #[default]
+    Keep,
+    Replace(String),
+    Remove,
+}
+
+/// The fields an edit may change. `None` keeps the current value.
+#[derive(Default)]
+pub struct Update {
+    pub name: Option<String>,
+    pub url: Option<String>,
+    pub api: Option<String>,
+    pub trust: Option<String>,
+    pub key: Option<KeyChange>,
+}
+
 /// What adding a provider needs. A preset fills what is missing.
 #[derive(Default, Deserialize)]
 pub struct NewProvider {
@@ -201,10 +220,16 @@ impl Registry {
     /// Register a provider. `key` goes to the secret store; the entry keeps a reference.
     pub fn add(&self, n: &NewProvider, key: Option<&str>) -> Result<Entry, String> {
         let (name, url, preset, api, trust) = resolve_new(n)?;
+        let key = key.map(str::trim).filter(|k| !k.is_empty());
+        if let Some(p) = n.preset.as_deref().and_then(lh_provider::find_preset) {
+            if p.key_required && key.is_none() {
+                return Err(format!("{} needs a key.", p.name));
+            }
+        }
         let e = {
             let mut d = self.data.lock().unwrap();
             let id = Self::unique_id(&d, &name);
-            let key_ref = match key.map(str::trim).filter(|k| !k.is_empty()) {
+            let key_ref = match key {
                 Some(k) => {
                     let secret = format!("provider-{id}");
                     self.secrets.set(&secret, k).map_err(|e| e.to_string())?;
@@ -219,6 +244,71 @@ impl Registry {
             d.entries.push(e.clone());
             e
         };
+        self.save();
+        Ok(e)
+    }
+
+    /// The saved key of an entry, read from the secret store. Never sent to the GUI.
+    pub fn key_for(&self, id: &str) -> Option<String> {
+        self.get(id).and_then(|e| self.key_of(&e))
+    }
+
+    /// Change an entry. Changing the address or kind clears its model list. A cloud preset cannot lose its key.
+    pub fn update(&self, id: &str, u: &Update) -> Result<Entry, String> {
+        let e = {
+            let mut d = self.data.lock().unwrap();
+            let i = d.entries.iter().position(|e| e.id == id).ok_or("No such provider.")?;
+            let cur = d.entries[i].clone();
+            let url = match &u.url {
+                Some(v) => {
+                    if let Some(m) = crate::provider_api::check_url(v) {
+                        return Err(m);
+                    }
+                    v.trim().to_string()
+                }
+                None => cur.url.clone(),
+            };
+            let api = u.api.clone().unwrap_or_else(|| cur.api.clone());
+            if !["openai", "anthropic", "ollama"].contains(&api.as_str()) {
+                return Err(format!("api must be openai, anthropic or ollama, not {api}"));
+            }
+            let trust = u.trust.clone().unwrap_or_else(|| cur.trust.clone());
+            if !["local", "own", "any"].contains(&trust.as_str()) {
+                return Err("trust must be local, own or any".into());
+            }
+            let name = match &u.name {
+                Some(v) if !v.trim().is_empty() => v.trim().to_string(),
+                _ => cur.name.clone(),
+            };
+            let needs_key = cur.preset.as_deref().and_then(lh_provider::find_preset).map(|p| p.key_required).unwrap_or(false);
+            let secret = cur.key_ref.as_deref().and_then(|r| r.strip_prefix("secret:")).map(str::to_string).unwrap_or_else(|| format!("provider-{id}"));
+            let mut key_ref = cur.key_ref.clone();
+            match u.key.clone().unwrap_or(KeyChange::Keep) {
+                KeyChange::Keep => {}
+                KeyChange::Replace(k) => {
+                    let k = k.trim().to_string();
+                    if k.is_empty() {
+                        return Err("Type a key, or keep the saved one.".into());
+                    }
+                    self.secrets.set(&secret, &k).map_err(|e| e.to_string())?;
+                    key_ref = Some(format!("secret:{secret}"));
+                }
+                KeyChange::Remove => {
+                    if needs_key {
+                        return Err(format!("{} needs a key.", cur.name));
+                    }
+                    if secret.starts_with("provider-") && secret != "provider-key" {
+                        let _ = self.secrets.delete(&secret);
+                    }
+                    key_ref = None;
+                }
+            }
+            let moved = url != cur.url || api != cur.api;
+            let e = Entry { id: cur.id.clone(), name, preset: cur.preset.clone(), url, api, key_ref, trust, models: if moved { vec![] } else { cur.models.clone() } };
+            d.entries[i] = e.clone();
+            e
+        };
+        self.clients.lock().unwrap().remove(id);
         self.save();
         Ok(e)
     }
@@ -431,6 +521,52 @@ mod tests {
         assert_eq!(r.list().len(), 2);
         assert!(r.proposals().is_empty() && e.key_ref.is_some());
         assert!(r.propose(&NewProvider { url: Some("http://localhost:1/v1".into()), ..Default::default() }, "").is_err());
+    }
+
+    #[test]
+    fn cloud_preset_without_key_is_refused_and_local_is_not() {
+        let (r, _) = reg();
+        let e = r.add(&NewProvider { preset: Some("openrouter".into()), ..Default::default() }, None).unwrap_err();
+        assert_eq!(e, "OpenRouter needs a key.");
+        assert!(r.add(&NewProvider { preset: Some("openrouter".into()), ..Default::default() }, Some("   ")).is_err());
+        assert!(r.is_empty());
+        let l = r.add(&NewProvider { preset: Some("llama-swap".into()), ..Default::default() }, None).unwrap();
+        assert_eq!(l.key_ref, None);
+        assert!(r.add(&NewProvider { preset: Some("openrouter".into()), ..Default::default() }, Some("sk-1")).is_ok());
+    }
+
+    #[test]
+    fn update_replaces_and_removes_the_key_and_clears_models_on_move() {
+        let (r, s) = reg();
+        r.add(&NewProvider { url: Some("https://api.example.com/v1".into()), name: Some("Cloud".into()), ..Default::default() }, Some("sk-one")).unwrap();
+        r.set_models("cloud", vec!["a".into()]);
+        // rename only: key and models kept
+        let e = r.update("cloud", &Update { name: Some("Cloud 2".into()), ..Default::default() }).unwrap();
+        assert_eq!((e.name.as_str(), e.models.len(), r.key_for("cloud").as_deref()), ("Cloud 2", 1, Some("sk-one")));
+        // replace key
+        r.update("cloud", &Update { key: Some(KeyChange::Replace(" sk-two ".into())), ..Default::default() }).unwrap();
+        assert_eq!(s.get("provider-cloud").unwrap().as_deref(), Some("sk-two"));
+        // move address: models cleared
+        let e = r.update("cloud", &Update { url: Some("https://other.example.com/v1".into()), ..Default::default() }).unwrap();
+        assert!(e.models.is_empty());
+        // remove key
+        let e = r.update("cloud", &Update { key: Some(KeyChange::Remove), ..Default::default() }).unwrap();
+        assert_eq!((e.key_ref, s.get("provider-cloud").unwrap()), (None, None));
+        // bad values refused, nothing changed
+        assert!(r.update("cloud", &Update { url: Some("ftp://x".into()), ..Default::default() }).is_err());
+        assert!(r.update("cloud", &Update { api: Some("nope".into()), ..Default::default() }).is_err());
+        assert!(r.update("missing", &Update::default()).is_err());
+        assert_eq!(r.get("cloud").unwrap().url, "https://other.example.com/v1");
+    }
+
+    #[test]
+    fn cloud_preset_cannot_lose_its_key_and_per_entry_key_is_read() {
+        let (r, s) = reg();
+        r.add(&NewProvider { preset: Some("openrouter".into()), ..Default::default() }, Some("sk-or")).unwrap();
+        assert!(r.update("openrouter", &Update { key: Some(KeyChange::Remove), ..Default::default() }).is_err());
+        assert_eq!(r.key_for("openrouter").as_deref(), Some("sk-or"));
+        assert_eq!(r.key_for("missing"), None);
+        assert_eq!(s.get("provider-openrouter").unwrap().as_deref(), Some("sk-or"));
     }
 
     #[test]

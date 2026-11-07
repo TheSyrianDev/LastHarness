@@ -118,12 +118,21 @@ async fn test<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Optio
         Some(k) => Some(k.trim().to_string()),
         None => saved_key(&st),
     };
-    let url = b.url.trim().to_string();
-    // Ollama lists its models at its own address, so look for it first
-    let ollama = if b.api.as_deref() == Some("anthropic") { None } else { Provider::detect_ollama(&url, key.clone()).await };
     let api = b.api.or_else(|| load(&st).ok().map(|c| c.get("provider.api"))).unwrap_or_default();
+    Ok(Json(probe(&b.url, key, &api).await))
+}
+
+/// Ask an address for its models and say in plain words what happened. Shared by the legacy test and the
+/// per-entry test. Nothing is saved.
+pub(crate) async fn probe(url: &str, key: Option<String>, api: &str) -> Value {
+    if let Some(m) = check_url(url) {
+        return json!({"ok": false, "message": m, "models": [], "ollama": null});
+    }
+    let url = url.trim().to_string();
+    // Ollama lists its models at its own address, so look for it first
+    let ollama = if api == "anthropic" { None } else { Provider::detect_ollama(&url, key.clone()).await };
     let provider = if api == "anthropic" { Provider::anthropic(&url, key) } else if ollama.is_some() { Provider::ollama(&url, key) } else { Provider::new(&url, key) };
-    Ok(Json(match provider.models().await {
+    match provider.models().await {
         Ok(models) => {
             let plural = |n: usize| if n == 1 { "" } else { "s" };
             let message = match (models.len(), &ollama) {
@@ -134,7 +143,7 @@ async fn test<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Optio
             json!({"ok": true, "message": message, "models": models, "ollama": ollama})
         }
         Err(e) => json!({"ok": false, "message": e.explain(), "models": [], "ollama": ollama}),
-    }))
+    }
 }
 
 /// The saved key, if there is one and the secret store gives it up.

@@ -5,6 +5,7 @@
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::input::{Input, InputState};
+use serde_json::json;
 
 use super::model::providers as m;
 use crate::app::App;
@@ -46,7 +47,7 @@ impl App {
             col = col.child(self.pg_note_line("No providers registered yet."));
         }
         for p in list {
-            col = col.child(self.provider_card(p, cx));
+            col = col.child(self.provider_card(p, window, cx));
         }
         for q in proposals {
             col = col.child(self.registry_proposal_card(q, &presets, window, cx));
@@ -55,7 +56,7 @@ impl App {
         col.child(div().flex().child(self.pg_refresh(Category::Models, cx))).into_any_element()
     }
 
-    fn provider_card(&mut self, p: m::Provider, cx: &mut Context<Self>) -> AnyElement {
+    fn provider_card(&mut self, p: m::Provider, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let id = p.id.clone();
         let pal = self.pal.clone();
         let mut head = div().flex().flex_wrap().items_center().gap_2().child(div().flex_1().child(if p.name.is_empty() { p.id.clone() } else { p.name.clone() }));
@@ -68,8 +69,56 @@ impl App {
             buttons = buttons.child(self.button(format!("pg-prov-def-{id}"), "Make default", Kind::Normal, cx, move |a, _, cx| a.pg_act("providers", &format!("prov-default:{n}"), "POST", format!("/v1/providers/{n}/default"), None, cx)));
         }
         let n = id.clone();
+        buttons = buttons.child(self.button(format!("pg-prov-test-{id}"), "Test", Kind::Normal, cx, move |a, _, cx| a.pg_act("providers", &format!("prov-test:{n}"), "POST", format!("/v1/providers/{n}/test"), Some(json!({})), cx)));
+        let n = id.clone();
+        buttons = buttons.child(self.button(format!("pg-prov-models-{id}"), "Refresh models", Kind::Normal, cx, move |a, _, cx| a.pg_act("providers", &format!("prov-models:{n}"), "POST", format!("/v1/providers/{n}/models"), None, cx)));
+        let n = id.clone();
+        let edit_open = self.pg.open.contains(&format!("prov-edit:{id}"));
+        buttons = buttons.child(self.button(format!("pg-prov-edit-{id}"), if edit_open { "Close" } else { "Edit" }, Kind::Normal, cx, move |a, _, cx| {
+            let k = format!("prov-edit:{n}");
+            if !a.pg.open.remove(&k) {
+                a.pg.open.insert(k);
+            }
+            cx.notify();
+        }));
+        let n = id.clone();
         buttons = buttons.child(self.pg_confirm_button(&format!("prov-rm-{id}"), "Remove", "Yes, remove it", cx, move |a, _, cx| a.pg_act("providers", &format!("prov-remove:{n}"), "DELETE", format!("/v1/providers/{n}"), None, cx)));
-        self.xp_card(vec![head.into_any_element(), self.pg_muted(m::state_words(&p)), buttons.into_any_element()]).id(SharedString::from(format!("pg-prov-{id}"))).role(Role::Group).aria_label(format!("Provider {id}")).into_any_element()
+        let mut rows = vec![head.into_any_element(), self.pg_muted(m::state_words(&p)), self.pg_muted(m::models_words(&p)), buttons.into_any_element()];
+        if edit_open {
+            rows.push(self.provider_edit(&p, window, cx));
+        }
+        self.xp_card(rows).id(SharedString::from(format!("pg-prov-{id}"))).role(Role::Group).aria_label(format!("Provider {id}")).into_any_element()
+    }
+
+    /// The Advanced area of a saved provider: name, address, and a new key. Empty boxes keep what is saved.
+    fn provider_edit(&mut self, p: &m::Provider, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let id = p.id.clone();
+        let (nk, uk, kk) = (format!("prov.edit.name.{id}"), format!("prov.edit.url.{id}"), format!("prov.edit.key.{id}"));
+        let name_box = self.xp_field(&nk, "Name", &p.name, window, cx);
+        let url_box = self.xp_field(&uk, "Address (leave empty to keep it)", &p.url, window, cx);
+        let key_label = if p.key_saved { "New key (leave empty to keep the saved one)" } else { "Key (leave empty if none is needed)" };
+        let key_box = self.xp_secret(&kk, key_label, window, cx);
+        let save_id = id.clone();
+        let save = self.button(format!("pg-prov-save-{id}"), "Save changes", Kind::Primary, cx, move |a, _, cx| {
+            let (name, url, key) = (a.pg_text(&format!("prov.edit.name.{save_id}"), cx), a.pg_text(&format!("prov.edit.url.{save_id}"), cx), a.pg_text(&format!("prov.edit.key.{save_id}"), cx));
+            match m::edit_body(&name, &url, &key) {
+                Ok(body) => {
+                    a.pg_clear(&[format!("prov.edit.key.{save_id}").as_str()]);
+                    a.pg.open.remove(&format!("prov-edit:{save_id}"));
+                    a.pg_act("providers", &format!("prov-edit:{save_id}"), "PATCH", format!("/v1/providers/{save_id}"), Some(body), cx);
+                }
+                Err(e) => {
+                    a.pg_note_set("providers", true, e);
+                    cx.notify();
+                }
+            }
+        });
+        let mut col = div().flex().flex_col().gap_2().child(name_box).child(url_box).child(key_box);
+        if p.key_saved {
+            let rm = id.clone();
+            col = col.child(self.pg_confirm_button(&format!("prov-key-rm-{id}"), "Remove the saved key", "Yes, remove the key", cx, move |a, _, cx| a.pg_act("providers", &format!("prov-edit:{rm}"), "PATCH", format!("/v1/providers/{rm}"), Some(json!({"remove_key": true})), cx)));
+        }
+        col.child(div().flex().child(save)).into_any_element()
     }
 
     fn registry_proposal_card(&mut self, q: m::Proposal, presets: &[m::Preset], window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
