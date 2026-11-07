@@ -39,6 +39,7 @@ pub mod kv_cache;
 mod learn_api;
 mod mcp_api;
 mod memory_api;
+mod memory_notes;
 pub mod provider_api;
 mod session;
 pub mod web;

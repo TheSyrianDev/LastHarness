@@ -17,6 +17,7 @@ use lh_tools::{Meter, MeterVerdict, Model};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::memory_notes::{self, Note};
 use crate::{ApiError, AppState};
 
 /// Memory as the core uses it.
@@ -44,6 +45,11 @@ pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/memory/pages/{id}/pin", post(pin_page::<M>))
         .route("/v1/memory/pages/{id}/privacy", post(privacy_page::<M>))
         .route("/v1/memory/search", get(search::<M>))
+        .route("/v1/memory/tidy", post(tidy::<M>))
+        .route("/v1/memory/about", get(about_get::<M>).put(about_save::<M>))
+        .route("/v1/memory/about/generate", post(about_generate::<M>))
+        .route("/v1/memory/notes/export", post(notes_export::<M>))
+        .route("/v1/memory/notes/import", post(notes_import::<M>))
         .route("/v1/memory/scan", post(scan::<M>))
         .route("/v1/memory/export", post(export::<M>))
         .route("/v1/memory/import", post(import::<M>))
@@ -152,6 +158,155 @@ async fn edit_page<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(
         let _ = m.index_pending(&*e).await;
     });
     Ok(Json(page_json(&p)))
+}
+
+/// One model call for a memory note. The spend meter is checked first; the reply text comes back as is.
+async fn ask<M: Model + 'static>(st: &AppState<M>, model: &str, prompt: String, max_tokens: u32) -> Result<String, ApiError> {
+    let req = ChatRequest { model: model.to_string(), messages: vec![Message::user(prompt)], max_tokens: Some(max_tokens), ..Default::default() };
+    let meter = st.settings.spend.for_session("memory-notes");
+    match meter.before(&req).await {
+        MeterVerdict::Allow => {}
+        MeterVerdict::Ask(w) | MeterVerdict::Refuse(w) => return Err(ApiError(StatusCode::PAYMENT_REQUIRED, format!("not run: {w}"))),
+    }
+    let resp = st.model.complete(&req, &mut |_| {}).await.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, e.explain()))?;
+    meter.after(&req, resp.usage).await;
+    Ok(resp.text)
+}
+
+#[derive(Deserialize)]
+struct TidyBody {
+    text: String,
+    model: Option<String>,
+}
+
+/// Rewrites a draft note. Nothing is saved: the caller keeps the draft until the user accepts the rewrite.
+async fn tidy<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<TidyBody>) -> Result<Json<Value>, ApiError> {
+    rt(&st)?;
+    if b.text.trim().is_empty() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "the note is empty".into()));
+    }
+    let model = b.model.filter(|m| !m.is_empty()).ok_or(ApiError(StatusCode::BAD_REQUEST, "give a model to tidy with".into()))?;
+    let reply = ask(&st, &model, memory_notes::tidy_request(b.text.trim()), 2000).await?;
+    let (title, text) = memory_notes::parse_tidy(&reply).ok_or(ApiError(StatusCode::BAD_GATEWAY, "the model did not return a note".into()))?;
+    let s = memory_notes::screen(&title, &text);
+    Ok(Json(json!({"title": s.title, "text": s.text, "redacted": s.redacted})))
+}
+
+/// The "about me" profile is one file beside the layer folders. It is written by the model on request and
+/// edited by hand; the app shows it as read-only until the user edits it.
+fn about_path<M>(st: &AppState<M>) -> Result<PathBuf, ApiError> {
+    Ok(rt(st)?.memory.root().join("about.md"))
+}
+
+async fn about_get<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
+    let path = about_path(&st)?;
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    Ok(Json(json!({"text": text.trim(), "stored": path.exists()})))
+}
+
+#[derive(Deserialize)]
+struct AboutSave {
+    text: String,
+}
+
+async fn about_save<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<AboutSave>) -> Result<Json<Value>, ApiError> {
+    let path = about_path(&st)?;
+    let text = b.text.trim().to_string();
+    std::fs::write(&path, format!("{text}\n")).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({"text": text, "stored": true})))
+}
+
+#[derive(Deserialize)]
+struct AboutGen {
+    model: Option<String>,
+}
+
+async fn about_generate<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<AboutGen>) -> Result<Json<Value>, ApiError> {
+    let r = rt(&st)?;
+    let model = b.model.filter(|m| !m.is_empty()).ok_or(ApiError(StatusCode::BAD_REQUEST, "give a model to write the profile with".into()))?;
+    let pages = r.memory.list(None, lh_memory::State::Live).map_err(err)?;
+    let sources = memory_notes::about_sources(&pages, r.trust == Trust::Local);
+    if sources.is_empty() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "there are no notes of your own to write a profile from yet".into()));
+    }
+    let reply = ask(&st, &model, memory_notes::about_prompt(&sources), 1500).await?;
+    let text = reply.trim().to_string();
+    if text.is_empty() {
+        return Err(ApiError(StatusCode::BAD_GATEWAY, "the model returned no profile".into()));
+    }
+    std::fs::write(about_path(&st)?, format!("{text}\n")).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({"text": text, "stored": true, "notes_used": sources.len()})))
+}
+
+#[derive(Deserialize)]
+struct NotesExportBody {
+    path: PathBuf,
+    /// "md" or "json". Empty: from the file extension, Markdown by default.
+    format: Option<String>,
+}
+
+/// Writes every live note to one file. Department notes are included, marked with their department.
+async fn notes_export<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<NotesExportBody>) -> Result<Json<Value>, ApiError> {
+    if !b.path.is_absolute() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "path must be absolute".into()));
+    }
+    let r = rt(&st)?;
+    let pages = r.memory.list(None, lh_memory::State::Live).map_err(err)?;
+    let json_format = match b.format.as_deref() {
+        Some("json") => true,
+        Some("md") => false,
+        _ => b.path.extension().is_some_and(|e| e == "json"),
+    };
+    let text = if json_format { memory_notes::export_json(&pages) } else { memory_notes::export_md(&pages) };
+    std::fs::write(&b.path, text).map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("could not write the file: {e}")))?;
+    let _ = st.settings.store.log("memory_export_notes", "-", "user", &json!({"count": pages.len()}));
+    Ok(Json(json!({"count": pages.len(), "format": if json_format { "json" } else { "md" }})))
+}
+
+#[derive(Deserialize)]
+struct NotesImportBody {
+    path: PathBuf,
+    /// False: only count what would be imported. True: add the notes.
+    #[serde(default)]
+    apply: bool,
+}
+
+/// Reads notes from a Markdown or JSON file. Preview first (apply false) to show the count; then apply.
+/// Imported text is screened and stored as data. It is never run.
+async fn notes_import<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<NotesImportBody>) -> Result<Json<Value>, ApiError> {
+    if !b.path.is_absolute() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "path must be absolute".into()));
+    }
+    let r = rt(&st)?;
+    let raw = std::fs::read_to_string(&b.path).map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("could not read the file: {e}")))?;
+    let notes: Vec<Note> = if b.path.extension().is_some_and(|e| e == "json") {
+        memory_notes::parse_json(&raw).map_err(|e| ApiError(StatusCode::BAD_REQUEST, e))?
+    } else {
+        memory_notes::parse_md(&raw)
+    };
+    let existing = r.memory.list(None, lh_memory::State::Live).map_err(err)?;
+    let plan = memory_notes::plan(notes, &existing);
+    let titles: Vec<Value> = plan.notes.iter().take(200).map(|n| json!({"layer": n.layer.as_str(), "title": n.title})).collect();
+    if !b.apply {
+        return Ok(Json(json!({"count": plan.notes.len(), "duplicates": plan.duplicates, "redacted": plan.redacted, "titles": titles})));
+    }
+    let mut made = 0;
+    for n in &plan.notes {
+        let (privacy, reason) = memory_notes::privacy_of(n);
+        let mut np = NewPage::new(n.layer, n.title.clone(), n.body.clone());
+        np.gist = excerpt(&n.body, 120);
+        np.privacy = privacy;
+        np.privacy_reason = reason;
+        np.source = "import".into();
+        r.memory.create(np, By::Import).map_err(err)?;
+        made += 1;
+    }
+    let (m, e) = (r.memory.clone(), r.embedder.clone());
+    tokio::spawn(async move {
+        let _ = m.index_pending(&*e).await;
+    });
+    let _ = st.settings.store.log("memory_import_notes", "-", "user", &json!({"imported": made, "duplicates": plan.duplicates}));
+    Ok(Json(json!({"imported": made, "duplicates": plan.duplicates, "redacted": plan.redacted, "count": made, "titles": titles})))
 }
 
 async fn archive_page<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {

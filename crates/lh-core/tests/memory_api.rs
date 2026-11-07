@@ -289,3 +289,40 @@ async fn a_local_model_can_flag_what_patterns_miss_and_unsure_means_sensitive() 
     let seen = s.seen.lock().unwrap();
     assert!(seen[2].messages[0].content.as_deref().unwrap().contains("Gets very anxious") && seen.len() == 4);
 }
+
+#[tokio::test]
+async fn adding_a_note_through_the_api_saves_it_and_it_is_found_by_search() {
+    let d = tempfile::tempdir().unwrap();
+    let s = start_at(d.path(), vec![], Trust::Local, true);
+    let before = s.json(s.get("/v1/memory/pages")).await["pages"].as_array().unwrap().len();
+    let p = s.json(s.post("/v1/memory/pages", json!({"layer":"preferences","title":"Editor","text":"Uses Helix for all code."}))).await;
+    assert_eq!(p["layer"], "preferences");
+    assert_eq!(p["title"], "Editor");
+    assert_eq!(p["privacy"], "normal");
+    let after = s.json(s.get("/v1/memory/pages")).await["pages"].as_array().unwrap().len();
+    assert_eq!(after, before + 1, "the note is in the list");
+    let found = s.json(s.get("/v1/memory/search?q=Helix")).await;
+    assert_eq!(found["results"][0]["id"], p["id"]);
+    assert_eq!(s.post("/v1/memory/pages", json!({"layer":"nowhere","title":"x","text":"y"})).send().await.unwrap().status(), 400);
+}
+
+#[tokio::test]
+async fn tidy_returns_a_rewrite_that_is_saved_only_when_the_user_accepts() {
+    let reply = r#"Sure: {"title": "Cat", "text": "The cat sleeps. Key is sk-abcdefghijklmnopqrstuvwxyz123456."}"#;
+    let d = tempfile::tempdir().unwrap();
+    let s = start_at(d.path(), vec![text(reply)], Trust::Local, true);
+    let t = s.json(s.post("/v1/memory/tidy", json!({"text":"the cat sleep. key sk-abcdefghijklmnopqrstuvwxyz123456","model":"m"}))).await;
+    assert_eq!(t["title"], "Cat");
+    assert_eq!(t["redacted"], true, "a secret in the rewrite is screened out");
+    assert!(!t["text"].as_str().unwrap().contains("sk-abcdef"));
+    // tidy saves nothing
+    assert!(s.json(s.get("/v1/memory/pages")).await["pages"].as_array().unwrap().is_empty());
+    // accepting saves the screened text as a new note
+    let p = s.json(s.post("/v1/memory/pages", json!({"layer":"facts","title":t["title"],"text":t["text"]}))).await;
+    assert_eq!(p["title"], "Cat");
+    assert!(!p["body"].as_str().unwrap().contains("sk-abcdef"));
+    assert_eq!(s.json(s.get("/v1/memory/pages")).await["pages"].as_array().unwrap().len(), 1);
+    // empty note and missing model are refused before any model call
+    assert_eq!(s.post("/v1/memory/tidy", json!({"text":"  ","model":"m"})).send().await.unwrap().status(), 400);
+    assert_eq!(s.post("/v1/memory/tidy", json!({"text":"hi"})).send().await.unwrap().status(), 400);
+}
