@@ -1,5 +1,5 @@
-//! Notes the user makes by hand: the agent's tidy-up of a draft, the "about me" profile built from the
-//! user's own notes, and import and export of all notes as one Markdown or JSON file. Imported text is
+//! Notes the user makes by hand: the agent's tidy-up of a draft, the Memory summary built from all
+//! notes, and import and export of all notes as one Markdown or JSON file. Imported text is
 //! data. It is screened for secrets and stored as notes; nothing in it is run.
 
 use lh_memory::{detect, excerpt, redact, Layer, Page, Privacy};
@@ -42,13 +42,13 @@ pub fn screen(title: &str, body: &str) -> Screened {
     Screened { title: t.text, text: b.text, redacted: t.redacted || b.redacted }
 }
 
-/// The notes the "about me" profile is built from: the user's own live notes only. Department notes are
-/// left out. A sensitive note is left out too unless the model is on this machine.
-pub fn about_sources(pages: &[Page], local: bool) -> Vec<&Page> {
-    pages.iter().filter(|p| p.department.is_none() && (local || p.privacy == Privacy::Normal)).collect()
+/// The notes the Memory summary is built from: all live notes, department notes included. A sensitive
+/// note is left out unless the model is on this machine.
+pub fn summary_sources(pages: &[Page], local: bool) -> Vec<&Page> {
+    pages.iter().filter(|p| local || p.privacy == Privacy::Normal).collect()
 }
 
-pub fn about_prompt(pages: &[&Page]) -> String {
+pub fn summary_prompt(pages: &[&Page]) -> String {
     let mut s = String::from("Write a short profile of the person these notes are about. Use three to six plain sentences in the third person. Use only facts that the notes state. Do not guess. Reply with the profile text only.\n\nNotes:\n");
     for p in pages {
         s.push_str(&format!("- {}: {}\n", p.title, p.body.trim()));
@@ -228,13 +228,13 @@ mod tests {
     }
 
     #[test]
-    fn about_profile_uses_only_the_users_own_notes() {
+    fn summary_is_built_from_all_notes_including_departments() {
         let pages = vec![page("Mine", "I like tea", None, Privacy::Normal), page("Dept", "Team rule", Some("sales"), Privacy::Normal), page("Secret", "a fact", None, Privacy::Sensitive)];
-        let local = about_sources(&pages, true);
-        assert_eq!(local.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(), vec!["Mine", "Secret"]);
-        let cloud = about_sources(&pages, false);
-        assert_eq!(cloud.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(), vec!["Mine"]);
-        assert!(!about_prompt(&local).contains("Team rule"));
+        let local = summary_sources(&pages, true);
+        assert_eq!(local.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(), vec!["Mine", "Dept", "Secret"]);
+        let cloud = summary_sources(&pages, false);
+        assert_eq!(cloud.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(), vec!["Mine", "Dept"]);
+        assert!(summary_prompt(&local).contains("Team rule"), "department notes are in the summary");
     }
 
     #[test]

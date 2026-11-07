@@ -52,9 +52,9 @@ pub struct PanelData {
     pub setting_errors: HashMap<String, String>,
     pub departments_error: Option<String>,
     pub goal_note: Option<String>,
-    /// The About me profile text; None until it is read.
-    pub about: Option<String>,
-    pub about_busy: bool,
+    /// The Memory summary text; None until it is read.
+    pub summary: Option<String>,
+    pub summary_busy: bool,
     /// A message for the Memory section's own actions (export, import, profile).
     pub mem_msg: Option<String>,
     /// The counts of an import checked but not yet applied.
@@ -150,9 +150,9 @@ pub struct App {
     pub goal: Entity<TextareaState>,
     /// The folder for a chat in project mode.
     pub project_input: Entity<InputState>,
-    /// The Memory section's note editor, the About me editor and the import and export path.
+    /// The Memory section's note editor, the Memory summary editor and the import and export path.
     pub mem_edit: Option<crate::memory_ui::MemEdit>,
-    pub about_edit: Option<Entity<TextareaState>>,
+    pub summary_edit: Option<Entity<TextareaState>>,
     /// The memory whose delete was asked for once; a second click deletes it.
     pub mem_delete_armed: Option<String>,
     pub mem_path: Entity<InputState>,
@@ -496,7 +496,7 @@ impl App {
             goal,
             project_input,
             mem_edit: None,
-            about_edit: None,
+            summary_edit: None,
             mem_delete_armed: None,
             mem_path: cx.new(|cx| InputState::new(window, cx).placeholder("/full/path/to/memory.md")),
             dept_pick: None,
@@ -1260,7 +1260,7 @@ impl App {
 
     pub fn load_panels(&mut self) {
         self.pg_reload();
-        for (tag, path) in [("departments", "/v1/team/departments"), ("memory", "/v1/memory/pages"), ("proposals", "/v1/memory/proposals"), ("about", "/v1/memory/about"), ("settings", "/v1/settings"), ("runs", "/v1/team/runs")] {
+        for (tag, path) in [("departments", "/v1/team/departments"), ("memory", "/v1/memory/pages"), ("proposals", "/v1/memory/proposals"), ("summary", "/v1/memory/summary"), ("settings", "/v1/settings"), ("runs", "/v1/team/runs")] {
             self.backend.send(Cmd::Call { tag: tag.into(), method: "GET".into(), path: path.into(), body: None });
         }
     }

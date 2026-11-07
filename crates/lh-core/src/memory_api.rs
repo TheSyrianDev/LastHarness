@@ -46,8 +46,8 @@ pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/memory/pages/{id}/privacy", post(privacy_page::<M>))
         .route("/v1/memory/search", get(search::<M>))
         .route("/v1/memory/tidy", post(tidy::<M>))
-        .route("/v1/memory/about", get(about_get::<M>).put(about_save::<M>))
-        .route("/v1/memory/about/generate", post(about_generate::<M>))
+        .route("/v1/memory/summary", get(summary_get::<M>).put(summary_save::<M>))
+        .route("/v1/memory/summary/generate", post(summary_generate::<M>))
         .route("/v1/memory/notes/export", post(notes_export::<M>))
         .route("/v1/memory/notes/import", post(notes_import::<M>))
         .route("/v1/memory/scan", post(scan::<M>))
@@ -192,49 +192,50 @@ async fn tidy<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): J
     Ok(Json(json!({"title": s.title, "text": s.text, "redacted": s.redacted})))
 }
 
-/// The "about me" profile is one file beside the layer folders. It is written by the model on request and
+/// The Memory summary is one file beside the layer folders. It is written by the model on request and
 /// edited by hand; the app shows it as read-only until the user edits it.
-fn about_path<M>(st: &AppState<M>) -> Result<PathBuf, ApiError> {
+fn summary_path<M>(st: &AppState<M>) -> Result<PathBuf, ApiError> {
+    // The file keeps its old name so an existing summary still loads.
     Ok(rt(st)?.memory.root().join("about.md"))
 }
 
-async fn about_get<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
-    let path = about_path(&st)?;
+async fn summary_get<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
+    let path = summary_path(&st)?;
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     Ok(Json(json!({"text": text.trim(), "stored": path.exists()})))
 }
 
 #[derive(Deserialize)]
-struct AboutSave {
+struct SummarySave {
     text: String,
 }
 
-async fn about_save<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<AboutSave>) -> Result<Json<Value>, ApiError> {
-    let path = about_path(&st)?;
+async fn summary_save<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<SummarySave>) -> Result<Json<Value>, ApiError> {
+    let path = summary_path(&st)?;
     let text = b.text.trim().to_string();
     std::fs::write(&path, format!("{text}\n")).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(json!({"text": text, "stored": true})))
 }
 
 #[derive(Deserialize)]
-struct AboutGen {
+struct SummaryGen {
     model: Option<String>,
 }
 
-async fn about_generate<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<AboutGen>) -> Result<Json<Value>, ApiError> {
+async fn summary_generate<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<SummaryGen>) -> Result<Json<Value>, ApiError> {
     let r = rt(&st)?;
-    let model = b.model.filter(|m| !m.is_empty()).ok_or(ApiError(StatusCode::BAD_REQUEST, "give a model to write the profile with".into()))?;
+    let model = b.model.filter(|m| !m.is_empty()).ok_or(ApiError(StatusCode::BAD_REQUEST, "give a model to write the summary with".into()))?;
     let pages = r.memory.list(None, lh_memory::State::Live).map_err(err)?;
-    let sources = memory_notes::about_sources(&pages, r.trust == Trust::Local);
+    let sources = memory_notes::summary_sources(&pages, r.trust == Trust::Local);
     if sources.is_empty() {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "there are no notes of your own to write a profile from yet".into()));
+        return Err(ApiError(StatusCode::BAD_REQUEST, "there are no notes to write a summary from yet".into()));
     }
-    let reply = ask(&st, &model, memory_notes::about_prompt(&sources), 1500).await?;
+    let reply = ask(&st, &model, memory_notes::summary_prompt(&sources), 1500).await?;
     let text = reply.trim().to_string();
     if text.is_empty() {
-        return Err(ApiError(StatusCode::BAD_GATEWAY, "the model returned no profile".into()));
+        return Err(ApiError(StatusCode::BAD_GATEWAY, "the model returned no summary".into()));
     }
-    std::fs::write(about_path(&st)?, format!("{text}\n")).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    std::fs::write(summary_path(&st)?, format!("{text}\n")).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(json!({"text": text, "stored": true, "notes_used": sources.len()})))
 }
 

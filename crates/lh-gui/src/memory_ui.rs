@@ -1,4 +1,4 @@
-//! The Memory section's new parts: the "New memory" and edit editor with the agent tidy, the "About me"
+//! The Memory section's new parts: the "New memory" and edit editor with the agent tidy, the "Memory summary"
 //! profile, and the import and export of all notes. The list and its per-note buttons are in panels.rs.
 //! Every change goes through the core's memory routes; nothing is written to disk here.
 
@@ -124,30 +124,30 @@ impl App {
         self.backend.send(Cmd::Call { tag: "memory".into(), method: "GET".into(), path: "/v1/memory/pages".into(), body: None });
     }
 
-    /// Opens the about-me editor on the current profile text.
-    pub fn about_open_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.panels.about.clone().unwrap_or_default();
+    /// Opens the summary editor on the current summary text.
+    pub fn summary_open_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.panels.summary.clone().unwrap_or_default();
         let x = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 14).placeholder("Write a short profile").default_value(text));
-        self.about_edit = Some(x);
+        self.summary_edit = Some(x);
         cx.notify();
     }
 
-    pub fn about_generate(&mut self, cx: &mut Context<Self>) {
+    pub fn summary_generate(&mut self, cx: &mut Context<Self>) {
         let model = self.mem_model();
         if model.is_empty() {
             self.panels.mem_msg = Some("No model is set up to write the profile with.".into());
             cx.notify();
             return;
         }
-        self.panels.about_busy = true;
-        self.backend.send(Cmd::Call { tag: "about-generate".into(), method: "POST".into(), path: "/v1/memory/about/generate".into(), body: Some(json!({"model": model})) });
+        self.panels.summary_busy = true;
+        self.backend.send(Cmd::Call { tag: "summary-generate".into(), method: "POST".into(), path: "/v1/memory/summary/generate".into(), body: Some(json!({"model": model})) });
         cx.notify();
     }
 
-    pub fn about_save(&mut self, cx: &mut Context<Self>) {
-        let Some(x) = self.about_edit.clone() else { return };
+    pub fn summary_save(&mut self, cx: &mut Context<Self>) {
+        let Some(x) = self.summary_edit.clone() else { return };
         let text = x.read(cx).value().to_string();
-        self.backend.send(Cmd::Call { tag: "about-save".into(), method: "PUT".into(), path: "/v1/memory/about".into(), body: Some(json!({"text": text})) });
+        self.backend.send(Cmd::Call { tag: "summary-save".into(), method: "PUT".into(), path: "/v1/memory/summary".into(), body: Some(json!({"text": text})) });
     }
 
     /// Export all notes to the typed path. The format follows the file name (.json, else Markdown).
@@ -212,26 +212,26 @@ impl App {
                 Ok(_) => self.mem_reload(),
                 Err(e) => self.panels.mem_msg = Some(e.clone()),
             },
-            "about" => {
+            "summary" => {
                 if let Ok(v) = result {
                     let t = v["text"].as_str().unwrap_or("").trim().to_string();
-                    self.panels.about = Some(t);
+                    self.panels.summary = Some(t);
                 }
             }
-            "about-generate" => {
-                self.panels.about_busy = false;
+            "summary-generate" => {
+                self.panels.summary_busy = false;
                 match result {
                     Ok(v) => {
-                        self.panels.about = Some(v["text"].as_str().unwrap_or("").trim().to_string());
+                        self.panels.summary = Some(v["text"].as_str().unwrap_or("").trim().to_string());
                         self.panels.mem_msg = None;
                     }
                     Err(e) => self.panels.mem_msg = Some(e.clone()),
                 }
             }
-            "about-save" => match result {
+            "summary-save" => match result {
                 Ok(_) => {
-                    self.about_edit = None;
-                    self.backend.send(Cmd::Call { tag: "about".into(), method: "GET".into(), path: "/v1/memory/about".into(), body: None });
+                    self.summary_edit = None;
+                    self.backend.send(Cmd::Call { tag: "summary".into(), method: "GET".into(), path: "/v1/memory/summary".into(), body: None });
                 }
                 Err(e) => self.panels.mem_msg = Some(e.clone()),
             },
@@ -258,7 +258,7 @@ impl App {
         true
     }
 
-    /// The "New memory" button, the editor, the About me block and the import and export block.
+    /// The "New memory" button, the editor, the Memory summary block and the import and export block.
     pub fn memory_tools(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let mut col = div().flex().flex_col().gap_2();
@@ -290,33 +290,33 @@ impl App {
             col = col.child(box_);
         }
 
-        // About me: read-only until the user edits it
-        let mut about = div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).child(div().text_xs().text_color(p.muted).child("About me"));
-        if let Some(x) = self.about_edit.clone() {
-            let save = self.button("about-save", "Save profile", Kind::Primary, cx, |a, _, cx| a.about_save(cx));
-            let cancel = self.button("about-cancel", "Cancel", Kind::Ghost, cx, |a, _, cx| {
-                a.about_edit = None;
+        // Memory summary: read-only until the user edits it
+        let mut summary = div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).child(div().text_xs().text_color(p.muted).child("Memory summary"));
+        if let Some(x) = self.summary_edit.clone() {
+            let save = self.button("summary-save", "Save profile", Kind::Primary, cx, |a, _, cx| a.summary_save(cx));
+            let cancel = self.button("summary-cancel", "Cancel", Kind::Ghost, cx, |a, _, cx| {
+                a.summary_edit = None;
                 cx.notify();
             });
-            about = about.child(Textarea::new(&x).aria_label("About me")).child(div().flex().gap_1().child(save).child(cancel));
+            summary = summary.child(Textarea::new(&x).aria_label("Memory summary")).child(div().flex().gap_1().child(save).child(cancel));
         } else {
-            let has = self.panels.about.as_deref().is_some_and(|t| !t.is_empty());
-            let busy = self.panels.about_busy;
+            let has = self.panels.summary.as_deref().is_some_and(|t| !t.is_empty());
+            let busy = self.panels.summary_busy;
             if has {
-                let text = self.panels.about.clone().unwrap_or_default();
-                about = about.child(TextView::markdown(SharedString::from("about-text"), text));
+                let text = self.panels.summary.clone().unwrap_or_default();
+                summary = summary.child(TextView::markdown(SharedString::from("summary-text"), text));
             } else {
-                about = about.child(self.note("No profile yet. It is written from your own notes, not from department notes."));
+                summary = summary.child(self.note("No summary yet. It is written from all your notes, department notes included."));
             }
             let make_label = if busy { "Writing..." } else if has { "Regenerate" } else { "Write profile" };
-            let make = self.button("about-make", make_label, Kind::Normal, cx, |a, _, cx| a.about_generate(cx));
+            let make = self.button("summary-make", make_label, Kind::Normal, cx, |a, _, cx| a.summary_generate(cx));
             let mut row = div().flex().flex_wrap().gap_1().child(make);
             if has {
-                row = row.child(self.button("about-edit", "Edit", Kind::Ghost, cx, |a, window, cx| a.about_open_edit(window, cx)));
+                row = row.child(self.button("summary-edit", "Edit", Kind::Ghost, cx, |a, window, cx| a.summary_open_edit(window, cx)));
             }
-            about = about.child(row);
+            summary = summary.child(row);
         }
-        col = col.child(about);
+        col = col.child(summary);
 
         // import and export of all notes, one file
         let export = self.button("notes-export-btn", "Export all notes", Kind::Normal, cx, |a, _, cx| a.notes_export(cx));

@@ -314,3 +314,5 @@ Benchmaxx (the Strata engine session) proposed working together, and this sessio
 ## Real-model check not run (2026-11-07)
 
 - `crates/lh-tools/tests/memory_real_model.rs` (ignored by default) failed: llama-swap on 9292 could not start LFM3-1.7B-balanced. The config points at `/home/omar/AI/engines/llama-mainline/build/bin/llama-server`, which does not exist; only `/home/omar/AI/engines/llama-prebuilt-b12182` is there. Question: fix the llama-swap config path (user's infrastructure, not changed by the agent)?
+
+- **Memory summary: built from all notes (2026-11-07).** The user decided the generated profile uses all notes, department notes included, and is called "Memory summary" (route `/v1/memory/summary`). This replaces the earlier default that About me used only the user's own notes.

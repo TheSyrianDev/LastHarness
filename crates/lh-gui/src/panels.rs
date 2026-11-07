@@ -259,7 +259,7 @@ impl App {
         if !self.connected {
             return col.child(self.note("The core is not running, so memory cannot be shown.")).into_any_element();
         }
-        // the new-memory button, the editor, About me and import/export come first
+        // the new-memory button, the editor, Memory summary and import/export come first
         let tools = self.memory_tools(cx);
         col = col.child(tools);
         // suggestions are waiting for an answer
