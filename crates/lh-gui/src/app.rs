@@ -178,6 +178,10 @@ pub struct App {
     pub palette_input: Entity<InputState>,
     /// The chat list and the side panel sliding open and shut.
     pub left_reveal: lh_gui::motion::Reveal,
+    /// The icon rail slid out over the chat while the sidebar is auto-hidden (pointer at the left edge).
+    pub rail_reveal: lh_gui::motion::Reveal,
+    /// True while the pointer is at the left edge or over the peeked rail, with the sidebar auto-hidden.
+    pub rail_peek: bool,
     /// The raised part of the Chat/Assistant/Project switch, and the model slider's thumb.
     pub mode_glide: lh_gui::motion::Glide,
     pub tier_glide: lh_gui::motion::Glide,
@@ -512,6 +516,8 @@ impl App {
             palette: None,
             palette_input,
             left_reveal: Default::default(),
+            rail_reveal: Default::default(),
+            rail_peek: false,
             mode_glide: Default::default(),
             tier_glide: Default::default(),
             ctx_glide: Default::default(),

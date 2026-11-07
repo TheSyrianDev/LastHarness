@@ -1564,7 +1564,12 @@ impl Render for App {
         let asking = self.asking(cx);
         let total: f32 = window.viewport_size().width.into();
         // the sidebar has words; when it is hidden (Ctrl+B or a narrow window) the icon rail takes its place
-        let rail_w = if self.layout().left_visible { 0. } else { RAIL_WIDTH };
+        // with a model chat open and the sidebar collapsed, the rail is auto-hidden: it slides out at the left edge
+        let auto_hide = !self.layout().left_visible && matches!(self.page(), Page::Chat) && self.chats.current().is_some_and(|c| !c.is_draft() && !c.model.is_empty());
+        if !auto_hide {
+            self.rail_peek = false;
+        }
+        let rail_w = if self.layout().left_visible || auto_hide { 0. } else { RAIL_WIDTH };
         // on a narrow window the side panel is laid over the chat instead of squeezing it
         let overlay = self.layout().overlays(total - 24. - rail_w, 420.);
         let mut flow = self.layout().clone();
@@ -1586,10 +1591,36 @@ impl Render for App {
         self.panel_page_on = right_w > 0. && self.layout().panel == Panel::Content && self.content.get(self.content_index.min(self.content.len().saturating_sub(1))).is_some_and(|c| c.kind == lh_gui::content::ContentKind::Html);
         // one sidebar: wide, or folded to its icons. While it moves it is the wide one cut to the moving width, never
         // narrower than the folded one, so the icons stay put
-        let left = if left_now > RAIL_WIDTH { slide(left_now, left_full, self.sidebar(left_full, cx)) } else if left_now > 0. && self.layout().left_visible {
+        let left = if auto_hide {
+            div().flex_none().w(px(0.)).into_any_element()
+        } else if left_now > RAIL_WIDTH { slide(left_now, left_full, self.sidebar(left_full, cx)) } else if left_now > 0. && self.layout().left_visible {
             slide(RAIL_WIDTH, left_full, self.sidebar(left_full, cx))
         } else {
             self.sidebar_compact(cx)
+        };
+        // auto-hidden rail: a thin strip at the left edge opens it, and leaving the rail shuts it again
+        let rail_target = if auto_hide && self.rail_peek { RAIL_WIDTH } else { 0. };
+        let rail_now = self.rail_reveal.width(rail_target, now, dur);
+        if self.rail_reveal.animating(now, dur) {
+            window.request_animation_frame();
+        }
+        let rail_overlay = if auto_hide && (rail_now > 0. || self.rail_peek) {
+            let rail = slide(rail_now, RAIL_WIDTH, self.sidebar_compact(cx));
+            Some(div().absolute().top_0().bottom_0().when(rtl, |d| d.right_0()).when(!rtl, |d| d.left_0()).h_full().p_2().flex()
+                .child(rail).into_any_element())
+        } else {
+            None
+        };
+        let edge_strip = if auto_hide && !self.rail_peek {
+            Some(div().absolute().top_0().bottom_0().h_full().w(px(6.)).when(rtl, |d| d.right_0()).when(!rtl, |d| d.left_0())
+                .on_mouse_move(cx.listener(|a, _: &MouseMoveEvent, _, cx| {
+                    if !a.rail_peek {
+                        a.rail_peek = true;
+                        cx.notify();
+                    }
+                })).into_any_element())
+        } else {
+            None
         };
         let middle = match self.page().clone() {
             Page::Chat => self.chat_view(window, cx),
@@ -1632,6 +1663,11 @@ impl Render for App {
         let root = root
             .key_context(if asking { "LastHarness Asking" } else { "LastHarness" })
             .on_mouse_move(cx.listener(|a, ev: &MouseMoveEvent, _, cx| {
+                // the auto-hidden rail shuts once the pointer moves clear of it
+                if a.rail_peek && f32::from(ev.position.x) > RAIL_WIDTH + 24. {
+                    a.rail_peek = false;
+                    cx.notify();
+                }
                 if let Some((x0, start, _, ch)) = a.ctx_drag.take() {
                     let n = ch.len().max(2) as f32;
                     let x = (start + f32::from(ev.position.x) - x0).clamp(-CTX_GAP / 2., CTX_GAP * (n - 0.5));
@@ -1779,6 +1815,8 @@ impl Render for App {
             .child(
                 div().size_full().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().p_2().overflow_hidden().child(left).child(main).children(right),
             )
+            .children(edge_strip)
+            .children(rail_overlay)
             .children(over.map(|o| div().absolute().top_0().bottom_0().p_2().when(rtl, |d| d.left_0()).when(!rtl, |d| d.right_0()).flex()
                 .child(div().h_full().flex().rounded(p.radius).shadow(vec![BoxShadow { color: hsla(0., 0., 0., if p.dark { 0.5 } else { 0.18 }), offset: point(px(0.), px(8.)), blur_radius: px(28.), spread_radius: px(0.), inset: false }]).child(o))))
             .children(settings)
