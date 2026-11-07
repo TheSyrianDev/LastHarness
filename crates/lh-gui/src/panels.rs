@@ -199,7 +199,7 @@ impl App {
     /// The Departments or Memory page in the middle: the same lists as before, with room to read.
     pub fn list_page(&mut self, departments: bool, cx: &mut Context<Self>) -> AnyElement {
         let body = if departments { self.departments_body(cx) } else { self.memory_body(cx) };
-        let back = self.button("page-back", if self.rtl { "رجوع إلى المحادثة" } else { "Back to chat" }, Kind::Ghost, cx, |a, _, cx| {
+        let back = self.button("page-back", if self.rtl { "رجوع إلى المحادثة" } else { "Back to chat" }, Kind::Normal, cx, |a, _, cx| {
             a.layout_mut().back_to_chat();
             cx.notify();
         });
@@ -275,9 +275,6 @@ impl App {
                     .when(!pr.evidence.is_empty(), |d| d.child(div().text_xs().text_color(p.muted).child(format!("You said: {}", pr.evidence))))
                     .child(div().flex().gap_2().child(yes).child(no)),
             );
-        }
-        if self.panels.pages.is_empty() && self.panels.proposals.is_empty() {
-            col = col.child(self.note("Nothing is remembered yet. What the assistant learns about you shows up here, and you can edit or remove it."));
         }
         for (i, pg) in self.panels.pages.clone().into_iter().enumerate() {
             let open = self.open_blocks.contains(&(0, i));

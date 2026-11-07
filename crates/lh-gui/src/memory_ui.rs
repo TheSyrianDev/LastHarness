@@ -264,6 +264,9 @@ impl App {
         let mut col = div().flex().flex_col().gap_2();
         let new_btn = self.button("mem-new", "New memory", Kind::Primary, cx, |a, window, cx| a.mem_open_new(window, cx));
         col = col.child(div().flex().child(new_btn));
+        if self.panels.pages.is_empty() && self.panels.proposals.is_empty() {
+            col = col.child(self.note("Nothing is remembered yet. What the assistant learns about you shows up here, and you can edit or remove it."));
+        }
 
         if let Some(ed) = self.mem_edit.as_ref() {
             let heading = if ed.id.is_some() { "Edit memory" } else { "New memory" };
@@ -308,7 +311,7 @@ impl App {
             } else {
                 summary = summary.child(self.note("No summary yet. It is written from all your notes, department notes included."));
             }
-            let make_label = if busy { "Writing..." } else if has { "Regenerate" } else { "Write profile" };
+            let make_label = if busy { "Writing..." } else if has { "Regenerate" } else { "Write summary" };
             let make = self.button("summary-make", make_label, Kind::Normal, cx, |a, _, cx| a.summary_generate(cx));
             let mut row = div().flex().flex_wrap().gap_1().child(make);
             if has {
