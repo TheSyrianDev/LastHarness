@@ -25,9 +25,9 @@ fn recall(m: &Memory, q: &str, d: &Destination, cfg: &RecallConfig) -> Recalled 
 
 #[test]
 fn redact_replaces_keys_tokens_and_home_paths_and_keeps_the_rest() {
-    let s = redact("Deploy with key sk-abcdefghijklmnop1234 and read /home/omar/Projects/LastHarness/notes.md today.");
+    let s = redact("Deploy with key sk-abcdefghijklmnop and read /home/fixture-user/project/notes.md today.");
     assert!(s.redacted);
-    assert!(!s.text.contains("sk-abcdef") && !s.text.contains("/home/omar"), "{}", s.text);
+    assert!(!s.text.contains("sk-abcdef") && !s.text.contains("/home/fixture-user"), "{}", s.text);
     assert!(s.text.contains("[redacted]") && s.text.contains("[private path]"), "{}", s.text);
     assert!(s.text.contains("Deploy with key") && s.text.contains("today."), "rest of the note stays: {}", s.text);
     let clean = redact("Prefers short answers in English.");

@@ -308,10 +308,10 @@ async fn adding_a_note_through_the_api_saves_it_and_it_is_found_by_search() {
 
 #[tokio::test]
 async fn tidy_returns_a_rewrite_that_is_saved_only_when_the_user_accepts() {
-    let reply = r#"Sure: {"title": "Cat", "text": "The cat sleeps. Key is sk-abcdefghijklmnopqrstuvwxyz123456."}"#;
+    let reply = r#"Sure: {"title": "Cat", "text": "The cat sleeps. Key is sk-abcdefghijklmnop."}"#;
     let d = tempfile::tempdir().unwrap();
     let s = start_at(d.path(), vec![text(reply)], Trust::Local, true);
-    let t = s.json(s.post("/v1/memory/tidy", json!({"text":"the cat sleep. key sk-abcdefghijklmnopqrstuvwxyz123456","model":"m"}))).await;
+    let t = s.json(s.post("/v1/memory/tidy", json!({"text":"the cat sleep. key sk-abcdefghijklmnop","model":"m"}))).await;
     assert_eq!(t["title"], "Cat");
     assert_eq!(t["redacted"], true, "a secret in the rewrite is screened out");
     assert!(!t["text"].as_str().unwrap().contains("sk-abcdef"));

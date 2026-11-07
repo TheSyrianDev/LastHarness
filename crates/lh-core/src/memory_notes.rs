@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn tidied_note_is_screened_before_it_is_saved() {
-        let s = screen("", "my key is sk-abcdefghijklmnopqrstuvwxyz123456");
+        let s = screen("", "my key is sk-abcdefghijklmnop");
         assert!(s.redacted);
         assert!(!s.text.contains("sk-abcdef"));
         assert!(!s.title.is_empty());
@@ -262,7 +262,7 @@ mod tests {
         let existing = vec![page("Tea", "I drink green tea.", None, Privacy::Normal)];
         let notes = vec![
             Note { layer: Layer::Facts, title: "Tea".into(), body: "I drink green tea.".into(), id: None, sensitive: false },
-            Note { layer: Layer::Facts, title: "Key".into(), body: "token sk-abcdefghijklmnopqrstuvwxyz123456".into(), id: None, sensitive: false },
+            Note { layer: Layer::Facts, title: "Key".into(), body: "token sk-abcdefghijklmnop".into(), id: None, sensitive: false },
         ];
         let p = plan(notes, &existing);
         assert_eq!(p.duplicates, 1);

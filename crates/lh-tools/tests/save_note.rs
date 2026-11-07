@@ -94,10 +94,10 @@ async fn add_update_and_delete_each_take_one_call_and_only_delete_asks() {
 async fn secrets_and_private_paths_are_redacted_before_save() {
     let s = setup(None);
     let u = User(Answer::No, AtomicUsize::new(0));
-    let r = turn(&s, vec![call("save_note", r#"{"action":"add","title":"Deploy","text":"Use key sk-abcdefghijklmnop1234 and the repo at /home/omar/Projects/LastHarness."}"#), done()], &u).await;
+    let r = turn(&s, vec![call("save_note", r#"{"action":"add","title":"Deploy","text":"Use key sk-abcdefghijklmnop and the repo at /home/fixture-user/project."}"#), done()], &u).await;
     assert!(r[0].contains("replaced with a placeholder"), "{}", r[0]);
     let body = live(&s.mem)[0].body.clone();
-    assert!(!body.contains("sk-abcdef") && !body.contains("/home/omar"), "{body}");
+    assert!(!body.contains("sk-abcdef") && !body.contains("/home/fixture-user"), "{body}");
     assert!(body.contains("[redacted]") && body.contains("[private path]"), "{body}");
 }
 
