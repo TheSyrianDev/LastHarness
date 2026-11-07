@@ -974,7 +974,7 @@ impl App {
         self.tab_buttons = true;
         let body = self.settings_body(window, cx);
         let sidebar = self.settings_sidebar(cx);
-        let close = self.button("settings-close", if rtl { "رجوع إلى المحادثة" } else { "Back to chat" }, Kind::Ghost, cx, |a, w, cx| a.close_settings(w, cx));
+        let close = self.button("settings-close", if rtl { "رجوع إلى المحادثة" } else { "Back to chat" }, Kind::Normal, cx, |a, w, cx| a.close_settings(w, cx));
         self.tab_buttons = false;
         Some(
             self.appear(
