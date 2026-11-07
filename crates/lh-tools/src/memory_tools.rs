@@ -75,16 +75,19 @@ pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<St
                     lh_memory::Judgement::Unsure => lh_memory::Classification { privacy: Privacy::Sensitive, reason: "the model was unsure".into() },
                 };
             }
-            let mut n = NewPage::new(layer, title.clone(), text);
-            n.gist = excerpt(text, 120);
+            let (title, text, redacted) = screen(&title, text);
+            let mut n = NewPage::new(layer, title.clone(), text.clone());
+            n.gist = excerpt(&text, 120);
             n.privacy = class.privacy;
             n.privacy_reason = class.reason.clone();
             n.source = "assistant".into();
             n.project = (layer == Layer::Projects).then(|| h.dest.project.clone()).flatten();
+            n.department = h.dest.department.clone();
             let page = h.memory.create(n, By::Assistant).map_err(|e| fail(e.to_string()))?;
             let _ = h.memory.index_pending(&*h.embedder).await; // best effort: keyword search works without it
             let tail = if page.privacy == Privacy::Sensitive { format!(" It is marked sensitive ({}), so it stays on this machine.", class.reason) } else { String::new() };
-            Ok(format!("Remembered as \"{}\" in {} (id {}).{tail}", page.title, layer.as_str(), page.id))
+            let note = if redacted { " Secrets or private paths were replaced with a placeholder." } else { "" };
+            Ok(format!("Remembered as \"{}\" in {} (id {}).{tail}{note}", page.title, layer.as_str(), page.id))
         }
         Tool::Forget => {
             let id = args["id"].as_str().unwrap_or("");
@@ -96,8 +99,88 @@ pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<St
             h.memory.delete(id, By::Assistant).map_err(|e| fail(e.to_string()))?;
             Ok(format!("Removed \"{}\" from memory.", page.title))
         }
+        Tool::SaveNote => save_note(args, h).await,
         _ => Err(fail("not a memory tool")),
     }
+}
+
+/// One call adds, updates or deletes a note. A department may only change notes it owns; the
+/// user's own notes (no department) are changed from the main chat only.
+async fn save_note(args: &Value, h: &MemoryHandle) -> Result<String, ToolError> {
+    let owns = |p: &lh_memory::Page| p.department == h.dest.department;
+    let layer_ok = |l: Layer| h.layers.as_ref().is_none_or(|ls| ls.contains(&l));
+    match args["action"].as_str().unwrap_or("") {
+        "add" => {
+            let raw = args["text"].as_str().unwrap_or("").trim();
+            if raw.is_empty() {
+                return Err(ToolError::Args("`text` must not be empty".into()));
+            }
+            let layer = args["layer"].as_str().and_then(Layer::parse).unwrap_or(Layer::Facts);
+            if !layer_ok(layer) {
+                return Err(fail("this role may not save to that part of memory"));
+            }
+            let title_raw = args["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).unwrap_or_else(|| excerpt(raw, 50));
+            let (title, text, redacted) = screen(&title_raw, raw);
+            let mut class = detect(&format!("{title} {text}"));
+            if let (Privacy::Normal, Some(judge)) = (class.privacy, &h.judge) {
+                class = match judge(format!("{title}\n{text}")).await {
+                    lh_memory::Judgement::Normal => class,
+                    lh_memory::Judgement::Sensitive(why) => lh_memory::Classification { privacy: Privacy::Sensitive, reason: format!("judged sensitive: {why}") },
+                    lh_memory::Judgement::Unsure => lh_memory::Classification { privacy: Privacy::Sensitive, reason: "the model was unsure".into() },
+                };
+            }
+            let mut n = NewPage::new(layer, title.clone(), text.clone());
+            n.gist = excerpt(&text, 120);
+            n.privacy = class.privacy;
+            n.privacy_reason = class.reason.clone();
+            n.source = "assistant".into();
+            n.project = (layer == Layer::Projects).then(|| h.dest.project.clone()).flatten();
+            n.department = h.dest.department.clone();
+            let page = h.memory.create(n, By::Assistant).map_err(|e| fail(e.to_string()))?;
+            let _ = h.memory.index_pending(&*h.embedder).await;
+            let mut out = format!("Saved \"{}\" in {} (id {}).", page.title, layer.as_str(), page.id);
+            if redacted {
+                out.push_str(" Secrets or private paths were replaced with a placeholder.");
+            }
+            if page.privacy == Privacy::Sensitive {
+                out.push_str(&format!(" It is marked sensitive ({}), so it stays on this machine.", class.reason));
+            }
+            Ok(out)
+        }
+        "update" => {
+            let id = args["id"].as_str().unwrap_or("");
+            let page = h.memory.get(id).ok().filter(|p| lh_memory::visible(p, &h.dest) && owns(p) && layer_ok(p.layer)).ok_or_else(|| fail(format!("there is no note with id {id} that you can change")))?;
+            let title = args["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string);
+            let body = args["text"].as_str().map(str::trim).filter(|t| !t.is_empty());
+            if title.is_none() && body.is_none() {
+                return Err(ToolError::Args("give `title` or `text` to change".into()));
+            }
+            let (t2, b2, redacted) = screen(title.as_deref().unwrap_or(&page.title), body.unwrap_or(&page.body));
+            let gist = body.map(|b| excerpt(&screen("", b).1, 120));
+            let edit = lh_memory::Edit { title: Some(t2.clone()), body: Some(b2.clone()), gist };
+            let updated = h.memory.update(id, edit, By::Assistant).map_err(|e| fail(e.to_string()))?;
+            let _ = h.memory.index_pending(&*h.embedder).await;
+            let mut out = format!("Updated \"{}\" (id {}, version {}).", updated.title, updated.id, updated.version);
+            if redacted {
+                out.push_str(" Secrets or private paths were replaced with a placeholder.");
+            }
+            Ok(out)
+        }
+        "delete" => {
+            let id = args["id"].as_str().unwrap_or("");
+            let page = h.memory.get(id).ok().filter(|p| lh_memory::visible(p, &h.dest) && owns(p) && layer_ok(p.layer)).ok_or_else(|| fail(format!("there is no note with id {id} that you can change")))?;
+            h.memory.delete(id, By::Assistant).map_err(|e| fail(e.to_string()))?;
+            Ok(format!("Removed \"{}\" from memory.", page.title))
+        }
+        other => Err(ToolError::Args(format!("`action` must be add, update or delete, not {other:?}"))),
+    }
+}
+
+/// Screen the title and text before they reach the store. Returns (title, text, anything replaced).
+fn screen(title: &str, text: &str) -> (String, String, bool) {
+    let t = lh_memory::redact(title);
+    let b = lh_memory::redact(text);
+    (t.text, b.text, t.redacted || b.redacted)
 }
 
 /// The assistant reads a skill: first the instructions, then other files only if it needs them.

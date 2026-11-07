@@ -516,7 +516,9 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
                 MemorySlice::Layers(l) => Some(Some(l.clone())),
             };
             if let Some(layers) = layers {
-                tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: rt.destination(job.project.clone()), cfg: live.recall.clone(), layers, judge: None }));
+                let mut dest = rt.destination(job.project.clone());
+                dest.department = Some(job.dept.clone());
+                tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest, cfg: live.recall.clone(), layers, judge: None }));
             }
         }
         if let Some(lr) = &s.learn {
