@@ -43,7 +43,11 @@ async fn core() -> (tempfile::TempDir, Client, std::path::PathBuf) {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     let token = auth::new_token();
-    let app = router(AppState::new(Nothing, settings), token.clone(), port);
+    // Keys go to an in-memory store, so the test never needs a system keyring (CI has none).
+    let state = AppState::new(Nothing, settings);
+    let secrets: Arc<dyn lh_secrets::SecretStore> = Arc::new(lh_secrets::MemoryStore::default());
+    assert!(state.secrets.set(secrets).is_ok());
+    let app = router(state, token.clone(), port);
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
     (d, Client::new(format!("http://127.0.0.1:{port}"), token), cfg)
 }
