@@ -300,3 +300,17 @@ Benchmaxx (the Strata engine session) proposed working together, and this sessio
 ## Chat-mode read-only tools (proposal, 2026-11-05)
 
 - Proposal: when tools are otherwise off, offer `show`, `recall`, `web_search` and `web_fetch` behind `tools.chat_readonly` (default true). This changes what the Chat mode can do; it is not built until the user confirms.
+
+## Memory system defaults (parked 2026-11-07, decided in code, the user can change)
+
+- Stale age: a note not changed for 365 days is flagged "may be stale" at recall (`STALE_DAYS`, `RecallConfig::stale_days`). Recommended: keep 365; the user may want 90 or 180 for fast-moving facts.
+- Cross-department sharing: default OFF. A note is visible only to its own department, unless its owner sets `shared` (no UI yet, set by the page header). Recommended: keep off, offer a per-note share toggle in the GUI later.
+- Memory on by default: NOT changed here; the existing `memory.enabled` setting still decides (setup prompt asks "Remember things between sessions?"). Recommended: ask at setup, as now.
+- Conflict flag: word overlap of at least 0.5 between two visible notes from different owners that say different things. Both notes are flagged; the model decides which holds. Recommended: keep; tune later with real data.
+- Delete asks, add and update do not (user decision 2026-11-07). Recommended: keep.
+- Secret redaction: keys, tokens (32+ character strings) and /home/... or /Users/... paths are replaced; the rest of the note is saved. Recommended: keep.
+- Untrusted source: after a chat reads a web page, search result or file, `save_note` refuses for the rest of that chat. Recommended: keep; a per-chat reset (new chat) is the only way back.
+
+## Real-model check not run (2026-11-07)
+
+- `crates/lh-tools/tests/memory_real_model.rs` (ignored by default) failed: llama-swap on 9292 could not start LFM3-1.7B-balanced. The config points at `/home/omar/AI/engines/llama-mainline/build/bin/llama-server`, which does not exist; only `/home/omar/AI/engines/llama-prebuilt-b12182` is there. Question: fix the llama-swap config path (user's infrastructure, not changed by the agent)?
