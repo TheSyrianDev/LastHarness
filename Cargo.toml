@@ -31,3 +31,7 @@ gpui-pre = { path = "third_party/gpui-pre" }
 # gpui-pre-apple and gpui-pre-windows 0.3.8 unchanged except that they skip the new glass primitive (no glass there yet).
 gpui-pre-apple = { path = "third_party/gpui-pre-apple" }
 gpui-pre-windows = { path = "third_party/gpui-pre-windows" }
+
+[profile.dev]
+# Line tables only: enough for backtraces, much less debug info to write and link.
+debug = "line-tables-only"
