@@ -401,3 +401,15 @@ Built as the user asked; no new decisions. A native phone app comes later. New s
 - hf-dl becomes "Last Fetch".
 - Inside the app: "Studio" (image and video, via ComfyUI), "Search" (SearXNG), "Crew" (the user's workers).
 - CLI name: not decided (lastai or lh). It stays `lh` for now. Open.
+
+## 2026-11-11 (later): Names and direction, superseding the entry above (owner's words)
+
+Superseded, not rewritten: the entry above stays as the record of the first answer.
+
+- Company: "Last" (mission: "the last software you'll need"). Future products follow the same family, e.g. Last Photo.
+- App: "Last AI". CLI: `lastai`, with `lh` kept as an alias for one release. Prompt line: "Last AI, made by Last".
+- Engine: "Last Engine".
+- The downloader is not a branded product. It is the download part of the Models page (like LM Studio). "Last Fetch" is dropped from user-facing text; internal crate names stay.
+- Inside the app: Studio, Search, Crew (unchanged).
+- Business model (direction from the owner, not yet a finished decision): free and open for users; companies pay (a WinRAR-style licence); plus an ad-supported free tier and paid plans for hosted AI.
+- Still open: the license line in the digest (PolyForm Noncommercial 1.0.0) must be checked against the paid company licence direction before release.

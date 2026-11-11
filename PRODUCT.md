@@ -16,7 +16,7 @@ Their job: talk to an assistant all day, hand bigger work to departments, and ke
 
 ## Product Purpose
 
-Last is an AI harness, like Claude Code, Codex or Pi, that is team-first (departments and their workers do the work), local-first and endpoint-agnostic, with memory as a supporting feature ("The last AI app you'll need"). Success: a person uses it as their everyday assistant, trusts what it does on their behalf, and never has to open a terminal to set it up or run it.
+Last AI is an AI harness, like Claude Code, Codex or Pi, that is team-first (departments and their workers do the work), local-first and endpoint-agnostic, with memory as a supporting feature ("The last AI app you'll need"). Success: a person uses it as their everyday assistant, trusts what it does on their behalf, and never has to open a terminal to set it up or run it.
 
 ## Positioning
 
@@ -40,11 +40,11 @@ Last is an AI harness, like Claude Code, Codex or Pi, that is team-first (depart
 - Permission tiers: reads automatic; writes, deletes, installs, network and `sudo` ask according to the rules.
 - System prompt budget: features must not add always-on prompt text without justification (cap 300 tokens).
 - Measured desktop memory: GPUI app about 136 MB idle.
-- Undecided: the phone app approach, onboarding presentation (decided last on purpose), the theme format details, the CLI name (lastai or lh), and the final name check.
+- Undecided: the phone app approach, onboarding presentation (decided last on purpose), the theme format details, and the final name check (the CLI name is now set; see Brand Commitments).
 
 ## Brand Commitments
 
-- Name: Last, made by LastSoft (decided 2026-11-11). Tagline: "The last AI app you'll need". Inside the app: Studio (image and video, via ComfyUI), Search (SearXNG) and Crew (the user's workers). The CLI name is open. Voice: calm, plain language, short; the user may be unsure and is allowed to be.
+- Name: Last AI, made by Last (company, names set by the owner 2026-11-11). Company mission: "the last software you'll need". App tagline: "The last AI app you'll need". Engine: Last Engine. Inside the app: Studio (image and video, via ComfyUI), Search (SearXNG) and Crew (the user's workers). Model downloads are the download part of the Models page, not a separate product. CLI: `lastai`, with `lh` as an alias for one release. Voice: calm, plain language, short; the user may be unsure and is allowed to be.
 - No visuals or branding are invented by agents: the user designs the look; proposals are shown as options to choose from.
 - Must keep (confirmed 2026-10-30):
   - Arabic and right-to-left: mirrored layout, Arabic fonts (Noto Naskh Arabic default), English and Arabic mixed in one line.

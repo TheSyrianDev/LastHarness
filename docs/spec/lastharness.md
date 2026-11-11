@@ -108,7 +108,7 @@ Every front end drives the core through one authenticated local API. The browser
 
 **Small system prompt.** The system prompt stays small for the life of the project, because a large one slows time to first token on local models. Always-on text is the short base prompt, a few lines per enabled tool, and the learned and about-you blocks. Everything else loads on demand. A test enforces a size budget, and each milestone reports the measured size.
 
-**Command names.** The terminal app starts with `lastharness` or with the short form `lh`; both run the same program. `lh` clashes with a Debian Live wrapper and the `lh` directory-lister crate, so the short name is a convenience a user can skip. Checked by web search only; the name check before release must cover package databases.
+**Command names.** The terminal app is `lastai`. `lh` stays as an alias for one release and runs the same program. `lh` clashes with a Debian Live wrapper and the `lh` directory-lister crate, so the short name is a convenience a user can skip. Checked by web search only; the name check before release must cover package databases.
 
 ### 4.4 Context management — Decided
 
@@ -501,6 +501,6 @@ Onboarding sets these at first run with safe defaults. How it presents them is d
 
 1. ~~The embedding model and the store~~ decided: EmbeddingGemma 2 and SQLite.
 2. Onboarding presentation (decide last).
-3. Names (decided 2026-11-11): company LastSoft; the app is "Last" ("The last AI app you'll need"); LastEngine becomes "Last Engine"; hf-dl becomes "Last Fetch"; inside the app: Studio (image and video via ComfyUI), Search (SearXNG) and Crew (the user's workers). The CLI name is open (lastai or lh; `lh` for now). Before release, check the domain, package names and trademark for these names. Code and config names are not renamed yet.
+3. Names (set by the owner 2026-11-11, superseded the same day, see decision log): company Last; the app is "Last AI" ("The last AI app you'll need"), prompt line "Last AI, made by Last"; engine "Last Engine"; the downloader is not a product (it is the download part of the Models page); inside the app: Studio (image and video via ComfyUI), Search (SearXNG) and Crew (the user's workers). CLI: `lastai`, with `lh` as an alias for one release. Before release, check the domain, package names and trademark for these names. Code and config names are not renamed yet.
 4. Whether the spec should gain detailed sections (data formats, API schema) as the design firms up.
 

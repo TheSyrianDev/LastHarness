@@ -233,6 +233,6 @@ Separate repository and timeline, no dates yet. The first release works fully wi
 
 1. Memory model and store choice (Milestone 0).
 2. Onboarding presentation: profiles, step-by-step, or just-in-time questions.
-3. Names (decided 2026-11-11): company LastSoft; app "Last"; LastEngine becomes "Last Engine"; hf-dl becomes "Last Fetch"; inside the app: Studio, Search, Crew. The CLI name is open (lastai or lh; `lh` for now). Before release, check the domain, package names and trademark. Code and config names are not renamed yet.
+3. Names (set by the owner 2026-11-11, superseded the same day, see decision log): company Last; app "Last AI", prompt line "Last AI, made by Last"; engine "Last Engine"; the downloader is not a product (it is the Models page download); inside the app: Studio, Search, Crew. CLI: `lastai`, with `lh` as an alias for one release. Before release, check the domain, package names and trademark. Code and config names are not renamed yet.
 4. Subscription: decided as Track S, after the first release (see above).
 
