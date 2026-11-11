@@ -1451,15 +1451,26 @@ impl App {
         ];
         // the picker is drawn from the model pill, above it and anchored to its end, so it opens beside its button
         let picker = self.menus(window, cx);
+        // project mode, before the first message: the folder row sits where the file chips sit
+        let project_row = if fresh && chat.mode == Mode::Project {
+            let choose_label = if rtl { "اختيار مجلد" } else { "Choose folder" };
+            Some(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_2()
+                .child(div().flex_1().min_w_0().child(Input::new(&self.project_input).rounded(p.inner)))
+                .child(div().id("project-choose").role(Role::Button).aria_label(choose_label).flex_none().px_2p5().py_1().rounded(p.inner).border_1().border_color(p.border.opacity(0.9)).bg(p.button).hover(|s| s.bg(p.hover)).cursor_pointer().text_xs().text_color(p.text.opacity(0.85))
+                    .on_click(cx.listener(|a, _, w, cx| a.project_dialog(w, cx)))
+                    .child(choose_label)))
+        } else {
+            None
+        };
         let composer = div().relative().flex().flex_col().gap_2().px_3().pt_2().pb_2().rounded(p.radius).glass_fill(&p, p.radius).shadow(lift)
             .children(slider_card)
+            .children(project_row)
             .when(!self.staged.is_empty(), |d| {
                 let chips: Vec<AnyElement> = self.staged.files.iter().enumerate().map(|(n, f)| self.file_chip(&format!("staged-{n}"), &format!("{} ({})", f.name, lh_client::attach::size_label(f.size)), Some(n), cx)).collect();
                 d.child(div().flex().when(rtl, |d| d.flex_row_reverse()).flex_wrap().gap_1().children(chips))
             })
             .children(self.attach_note.clone().map(|n| div().text_xs().text_color(p.danger).when(rtl, |d| d.text_right()).child(n)))
             .child(Textarea::new(&self.composer).appearance(false).aria_label("Message"))
-            .when(fresh && chat.mode == Mode::Project, |d| d.child(Input::new(&self.project_input)))
             .child(
                 div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1()
                     .child(self.icon_button("attach", icons::attach(), if rtl { "إرفاق ملفات" } else { "Attach files" }, cx, |a, _, cx| a.attach_dialog(cx)))

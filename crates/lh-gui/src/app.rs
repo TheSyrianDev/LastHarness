@@ -983,6 +983,20 @@ impl App {
         .detach();
     }
 
+    /// Pick a project folder with the system dialog and put its path in the project field.
+    pub fn project_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rx = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some("Choose".into()) });
+        cx.spawn_in(window, async move |this: WeakEntity<App>, cx: &mut AsyncWindowContext| {
+            if let Ok(Ok(Some(paths))) = rx.await {
+                if let Some(path) = paths.first() {
+                    let path = path.to_string_lossy().to_string();
+                    let _ = this.update_in(cx, |a, window, cx| a.project_input.update(cx, |s, cx| s.set_value(path, window, cx)));
+                }
+            }
+        })
+        .detach();
+    }
+
     /// Stage files; the first refusal is shown as a plain sentence above the message box.
     pub fn stage_files(&mut self, paths: &[std::path::PathBuf], cx: &mut Context<Self>) {
         self.attach_note = None;
@@ -1018,7 +1032,7 @@ impl App {
         let folder = self.project_input.read(cx).value().trim().to_string();
         let start = SessionStart { mode: c.mode.as_str().into(), project_dir: (c.mode == Mode::Project).then_some(folder.clone()), incognito: c.incognito };
         if c.session.is_none() && c.mode == Mode::Project && !std::path::Path::new(&folder).is_dir() {
-            self.banner = Some("A project chat needs a folder that exists. Type its path above the message box.".into());
+            self.banner = Some("A project chat needs a folder that exists. Choose its folder or type its path above the message box.".into());
             return cx.notify();
         }
         self.banner = None;
