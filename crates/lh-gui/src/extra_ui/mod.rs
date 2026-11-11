@@ -47,6 +47,12 @@ pub struct PgState {
     pub prov_preset: String,
     /// The style picked in a saved provider's edit form, by provider id; no entry keeps the saved style.
     pub prov_api: HashMap<String, String>,
+    /// The provider shown in the right pane of the Providers page, by id.
+    pub prov_sel: Option<String>,
+    /// The last test result per provider this session (true when it answered ok). No entry means no test ran.
+    pub prov_test: HashMap<String, bool>,
+    /// Providers whose name and address boxes were filled from the core since the last save.
+    pub prov_filled: HashSet<String>,
     pub import: Option<model::data::Preview>,
     pub replace: HashSet<String>,
     pub replace_style: bool,
@@ -185,11 +191,24 @@ impl App {
             "ch-remove" => format!("Removed {arg}."),
             "prov-add" => format!("Added {arg}."),
             "prov-default" => format!("{arg} is now the default."),
-            "prov-remove" => format!("Removed {arg}."),
+            "prov-remove" => {
+                self.pg.prov_test.remove(arg);
+                self.pg.prov_filled.remove(arg);
+                format!("Removed {arg}.")
+            }
             "prov-approve" => format!("Approved {arg}. It is registered now."),
             "prov-reject" => format!("Rejected {arg}."),
-            "prov-edit" => format!("Saved {arg}."),
-            "prov-test" | "prov-models" => model::s(v, "message"),
+            "prov-edit" => {
+                self.pg.prov_filled.remove(arg);
+                format!("Saved {arg}.")
+            }
+            "prov-test" => {
+                if arg != "form" {
+                    self.pg.prov_test.insert(arg.to_string(), v["ok"] == true);
+                }
+                model::s(v, "message")
+            }
+            "prov-models" => model::s(v, "message"),
             "dev-open" => format!("Pairing is open for {} minutes. On the other device, open this computer's address and press Pair. It shows a PIN: type it below.", v["open_for_minutes"]),
             "dev-accept" => format!("Paired {}. It can sign in now.", model::s(v, "name")),
             "phone-new" => "Made a new sign-in link. The old one no longer works; phones already signed in stay in.".to_string(),

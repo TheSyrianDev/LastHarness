@@ -13,6 +13,8 @@ pub struct Provider {
     pub default: bool,
     pub key_saved: bool,
     pub local: bool,
+    /// "openai", "anthropic", or empty when the core did not say.
+    pub api: String,
     pub models: Vec<String>,
 }
 
@@ -41,7 +43,7 @@ pub fn providers(v: &Value) -> Vec<Provider> {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|p| Provider { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), default: p["default"] == true, key_saved: p["key_saved"] == true, local: p["local"] == true, models: p["models"].as_array().into_iter().flatten().filter_map(|m| m.as_str().map(str::to_string)).collect() })
+        .map(|p| Provider { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), default: p["default"] == true, key_saved: p["key_saved"] == true, local: p["local"] == true, api: s(p, "api"), models: p["models"].as_array().into_iter().flatten().filter_map(|m| m.as_str().map(str::to_string)).collect() })
         .collect()
 }
 
@@ -56,6 +58,56 @@ pub fn presets(v: &Value) -> Vec<Preset> {
 
 pub fn proposals(v: &Value) -> Vec<Proposal> {
     v["proposals"].as_array().into_iter().flatten().map(|p| Proposal { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), preset: s(p, "preset"), reason: s(p, "reason") }).collect()
+}
+
+/// The light beside a provider: ready, needs a look (missing key or failed test), or not tested yet.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Light {
+    Ready,
+    Attention,
+    Off,
+}
+
+impl Light {
+    pub fn glyph(self) -> &'static str {
+        match self {
+            Light::Ready => "●",
+            Light::Attention => "◐",
+            Light::Off => "○",
+        }
+    }
+}
+
+/// The light and its words. `tested` is the last test result this session: `None` when no test ran.
+pub fn light(p: &Provider, tested: Option<bool>) -> (Light, &'static str) {
+    if tested == Some(false) {
+        (Light::Attention, "Last test failed")
+    } else if !p.local && !p.key_saved {
+        (Light::Attention, "Key missing")
+    } else if tested == Some(true) {
+        (Light::Ready, "Ready")
+    } else {
+        (Light::Off, "Not tested yet")
+    }
+}
+
+/// The API style as a person reads it.
+pub fn api_label(api: &str) -> &'static str {
+    match api {
+        "anthropic" => "Anthropic",
+        _ => "OpenAI style",
+    }
+}
+
+/// The key as shown: never the key itself.
+pub fn key_words(p: &Provider) -> &'static str {
+    if p.key_saved {
+        "••••••••  saved"
+    } else if p.local {
+        "Not needed"
+    } else {
+        "None saved"
+    }
 }
 
 /// One line under a provider's name.
@@ -184,6 +236,28 @@ mod tests {
         let q = proposals(&json!({"proposals": [{"id": "p", "name": "N", "url": "u", "preset": "openai", "reason": "r"}]}));
         assert_eq!((q[0].id.as_str(), q[0].reason.as_str()), ("p", "r"));
         assert!(key_required("openai", &ps()) && !key_required("ollama", &ps()) && !key_required("zzz", &ps()));
+    }
+
+    #[test]
+    fn light_and_words() {
+        let l = providers(&json!({"providers": [
+            {"id": "a", "key_saved": true},
+            {"id": "b"},
+            {"id": "c", "local": true},
+            {"id": "d", "key_saved": true, "api": "anthropic"}
+        ]}));
+        assert_eq!(light(&l[0], None), (Light::Off, "Not tested yet"));
+        assert_eq!(light(&l[0], Some(true)), (Light::Ready, "Ready"));
+        assert_eq!(light(&l[0], Some(false)), (Light::Attention, "Last test failed"));
+        assert_eq!(light(&l[1], Some(true)), (Light::Attention, "Key missing"));
+        assert_eq!(light(&l[2], None).0, Light::Off);
+        assert_eq!(Light::Ready.glyph(), "●");
+        assert_eq!(key_words(&l[0]), "••••••••  saved");
+        assert_eq!(key_words(&l[1]), "None saved");
+        assert_eq!(key_words(&l[2]), "Not needed");
+        assert_eq!(l[3].api, "anthropic");
+        assert_eq!(api_label(&l[3].api), "Anthropic");
+        assert_eq!(api_label(""), "OpenAI style");
     }
 
     #[test]
