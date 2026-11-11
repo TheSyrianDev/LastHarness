@@ -1,5 +1,5 @@
 //! One set of thumb maths for every glass slider and switch (the model slider, the context-length slider, the
-//! Chat/Assistant/Project switch and the colour brightness slider), so they all feel the same. It follows the
+//! Chat/Agent/Project switch and the colour brightness slider), so they all feel the same. It follows the
 //! approach of Radix's Slider and Switch (the primitives behind shadcn/ui):
 //!
 //! - the value maps to a fraction of the track, and the thumb's edges stay inside the track: at 0 its start edge

@@ -34,20 +34,20 @@ pub struct Ask {
     pub detail: String,
 }
 
-/// How a chat works with the computer. A chat without tools only talks; an assistant works from the home
+/// How a chat works with the computer. A chat without tools only talks; an agent works from the home
 /// folder and a project works inside one folder. Both ask before anything that matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Mode {
     #[default]
     Chat,
-    Assistant,
+    Agent,
     Project,
 }
 
 impl Mode {
     pub fn parse(s: &str) -> Mode {
         match s {
-            "assistant" => Mode::Assistant,
+            "agent" | "assistant" => Mode::Agent,
             "project" => Mode::Project,
             _ => Mode::Chat,
         }
@@ -56,7 +56,7 @@ impl Mode {
     pub fn as_str(self) -> &'static str {
         match self {
             Mode::Chat => "chat",
-            Mode::Assistant => "assistant",
+            Mode::Agent => "agent",
             Mode::Project => "project",
         }
     }
@@ -471,8 +471,15 @@ mod tests {
     }
 
     #[test]
+    fn the_old_assistant_mode_name_still_reads_as_agent() {
+        assert_eq!(Mode::parse("assistant"), Mode::Agent);
+        assert_eq!(Mode::parse("agent"), Mode::Agent);
+        assert_eq!(Mode::Agent.as_str(), "agent");
+    }
+
+    #[test]
     fn modes_read_and_write_the_names_the_core_uses() {
-        for m in [Mode::Chat, Mode::Assistant, Mode::Project] {
+        for m in [Mode::Chat, Mode::Agent, Mode::Project] {
             assert_eq!(Mode::parse(m.as_str()), m);
         }
         assert_eq!(Mode::parse("something else"), Mode::Chat);

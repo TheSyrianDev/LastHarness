@@ -44,7 +44,7 @@ impl StoredChat {
 /// How a new session is made (ignored when the chat already has one).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SessionStart {
-    /// `chat`, `assistant` or `project`.
+    /// `chat`, `agent` or `project`.
     pub mode: String,
     pub project_dir: Option<String>,
     /// Nothing is remembered or stored.

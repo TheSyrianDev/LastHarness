@@ -38,7 +38,7 @@ impl App {
         let mut rows: Vec<AnyElement> = vec![
             div().flex().flex_wrap().items_center().gap_2().child(div().flex_1().child(format!("{}  ({})", c.name, c.kind))).child(div().text_sm().text_color(if c.enabled { p.accent } else { p.muted }).child(if c.enabled { "On" } else { "Off" })).into_any_element(),
             self.pg_muted(m::state_words(&c)),
-            self.pg_muted(format!("Answers: {}. Model: {}. May talk to it: {}.", if c.mode == "assistant" { "with tools, asking in the chat" } else { "chat only" }, if c.model.is_empty() { "none chosen" } else { &c.model }, if c.allow.is_empty() { "nobody yet".to_string() } else { c.allow.join(", ") })),
+            self.pg_muted(format!("Answers: {}. Model: {}. May talk to it: {}.", if c.mode == "agent" { "with tools, asking in the chat" } else { "chat only" }, if c.model.is_empty() { "none chosen" } else { &c.model }, if c.allow.is_empty() { "nobody yet".to_string() } else { c.allow.join(", ") })),
         ];
         let warning = kinds.iter().find(|k| k.kind == c.kind).map(|k| k.warning.clone()).unwrap_or_default();
         let asking = self.pg.confirm.as_deref() == Some(format!("ch-on-{name}").as_str());
@@ -75,7 +75,7 @@ impl App {
         buttons = buttons.child(self.button(format!("pg-ch-edit-{name}"), "Edit", Kind::Ghost, cx, move |a, _, cx| {
             a.pg.editing = Some(edit.name.clone());
             a.pg.channel_kind = edit.kind.clone();
-            a.pg.channel_assistant = edit.mode == "assistant";
+            a.pg.channel_agent = edit.mode == "agent";
             a.pg.open.insert("ch-form".into());
             a.pg.set_next.insert("ch.name".into(), edit.name.clone());
             a.pg.set_next.insert("ch.allow".into(), edit.allow.join(", "));
@@ -96,7 +96,7 @@ impl App {
             return div().flex().child(self.button("pg-ch-new", "Add a channel", Kind::Normal, cx, |a, _, cx| {
                 a.pg.editing = None;
                 a.pg.channel_kind = String::new();
-                a.pg.channel_assistant = false;
+                a.pg.channel_agent = false;
                 a.pg.open.insert("ch-form".into());
                 cx.notify();
             })).into_any_element();
@@ -122,14 +122,14 @@ impl App {
         let name = self.xp_field("ch.name", "Name", "family-chat", window, cx);
         let allow = self.xp_field("ch.allow", "Who may talk to it (ids, separated by commas)", "123456789, 987654321", window, cx);
         let model = self.xp_field("ch.model", "Model that answers", "a model name from your list", window, cx);
-        let assistant = self.pg.channel_assistant;
+        let agent = self.pg.channel_agent;
         let mode = div().flex().flex_wrap().gap_1()
-            .child(self.button("pg-ch-mode-chat", "Chat only", if assistant { Kind::Normal } else { Kind::Primary }, cx, |a, _, cx| {
-                a.pg.channel_assistant = false;
+            .child(self.button("pg-ch-mode-chat", "Chat only", if agent { Kind::Normal } else { Kind::Primary }, cx, |a, _, cx| {
+                a.pg.channel_agent = false;
                 cx.notify();
             }))
-            .child(self.button("pg-ch-mode-asst", "With tools, asking in the chat", if assistant { Kind::Primary } else { Kind::Normal }, cx, |a, _, cx| {
-                a.pg.channel_assistant = true;
+            .child(self.button("pg-ch-mode-asst", "With tools, asking in the chat", if agent { Kind::Primary } else { Kind::Normal }, cx, |a, _, cx| {
+                a.pg.channel_agent = true;
                 cx.notify();
             }));
         let mut fields: Vec<AnyElement> = vec![];
@@ -141,7 +141,7 @@ impl App {
         let save = self.button("pg-ch-save", if editing.is_some() { "Save" } else { "Add (it starts off)" }, Kind::Primary, cx, move |a, _, cx| {
             let values: Vec<(String, String)> = kind_for_save.fields.iter().map(|f| (f.name.clone(), a.pg_text(&format!("ch.set.{}", f.name), cx))).collect();
             let (name, allow, model) = (a.pg_text("ch.name", cx), a.pg_text("ch.allow", cx), a.pg_text("ch.model", cx));
-            match m::form_body(&name, &kind_for_save, &allow, &model, a.pg.channel_assistant, &values) {
+            match m::form_body(&name, &kind_for_save, &allow, &model, a.pg.channel_agent, &values) {
                 Ok(mut body) => {
                     let n = a.pg.editing.clone().unwrap_or_else(|| name.trim().to_string());
                     if a.pg.editing.is_some() {

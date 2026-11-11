@@ -121,7 +121,7 @@ The first release has one owner per install. From day one, every memory item, ru
 ### 4.5 Projects and modes — Decided
 
 - A **project is a folder.** Opening the harness in a folder attaches that project's memory and decisions. Global memory applies everywhere.
-- **Folderless mode:** plain chat, or a **general assistant** that starts in the user's home folder and does tasks for them. Assistant mode uses the same permissions as everywhere (§9.1).
+- **Folderless mode:** plain chat, or a **general agent** that starts in the user's home folder and does tasks for them. Agent mode uses the same permissions as everywhere (§9.1).
 
 ---
 
@@ -331,7 +331,7 @@ Big goals work as: the harness proposes a breakdown, the user approves or edits 
 
 ### 9.1 Permissions
 
-- **Default: tiers.** Reads are automatic. Writes inside the project ask once per session. Anything outside the project, deleting, installing and network access always ask. **`sudo` is off for agents by default**; enabling it is offered at onboarding. When enabled it asks like any other command and can be covered by allow rules; the bypass mode skips the prompt but does not turn `sudo` on if it is off in settings. This is the same permission system in every mode, including the general assistant that starts in the home folder, in the manner of Claude Code's default mode, with the bypass mode below as the opt-out.
+- **Default: tiers.** Reads are automatic. Writes inside the project ask once per session. Anything outside the project, deleting, installing and network access always ask. **`sudo` is off for agents by default**; enabling it is offered at onboarding. When enabled it asks like any other command and can be covered by allow rules; the bypass mode skips the prompt but does not turn `sudo` on if it is off in settings. This is the same permission system in every mode, including the general agent that starts in the home folder, in the manner of Claude Code's default mode, with the bypass mode below as the opt-out.
 - Per-command **allow rules**, as in Claude Code, can be promoted (for example allow `omarchy-pkg-add`). Promotion is itself a confirmed rule.
 - **Ask for everything** is a selectable setting.
 - **Bypass:** `--dangerously-skip-permissions`. What it covers is a setting with three levels: everything off; tool permissions only; tool permissions plus hard locks (the sensitive-data rule, silent key registration). The default is the third. Using the bypass shows a clear warning that the user accepts the risk and the project is not responsible for the outcome.

@@ -42,7 +42,7 @@ fn estimate_tokens(chars: usize) -> u64 {
 fn info_json<M>(st: &AppState<M>, c: &ConversationInfo) -> Value {
     let live = st.sessions.lock().unwrap().get(&c.id).map(|s| s.known_tokens.load(Ordering::SeqCst));
     json!({
-        "id": c.id, "title": c.title, "project": c.project, "mode": c.mode, "model": c.model,
+        "id": c.id, "title": c.title, "project": c.project, "mode": crate::normalize_mode(&c.mode), "model": c.model,
         "started": c.started, "last": c.last, "messages": c.messages,
         "context_tokens": estimate_tokens(c.chars), "estimated": true,
         "live": live.is_some(),
@@ -166,7 +166,7 @@ async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
         return Ok(Json(json!({"session": id, "context_tokens": tokens, "resumed_messages": 0, "model": model, "live": true})));
     }
     let project = c.project.clone().map(std::path::PathBuf::from).filter(|p| p.is_dir());
-    let mode = if project.is_some() { None } else if c.mode == "assistant" { Some("assistant".to_string()) } else { Some("chat".to_string()) };
+    let mode = if project.is_some() { None } else if crate::normalize_mode(&c.mode) == "agent" { Some("agent".to_string()) } else { Some("chat".to_string()) };
     if c.mode == "project" && project.is_none() {
         return Err(ApiError(StatusCode::CONFLICT, "this chat belongs to a project folder that no longer exists".into()));
     }

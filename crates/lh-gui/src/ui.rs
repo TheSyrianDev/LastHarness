@@ -107,7 +107,7 @@ const CTX_GAP: f32 = 64.;
 /// The model slider's ball, the context slider's ball and the mode switch's drop, in pixels tall.
 const SLIDER_KNOB: f32 = 22.;
 const CTX_KNOB: f32 = 18.;
-const MODE_H: f32 = 34.;
+const MODE_H: f32 = 25.;
 
 /// Line icons on a 24 by 24 grid, drawn by the app in one stroke weight.
 pub(crate) mod icons {
@@ -230,9 +230,11 @@ impl App {
             let lerp = |a: f32, b: f32| a + (b - a) * e;
             // the drop clears as it is pressed: less fill, more bend, a brighter rim
             let fill = if dark { lerp(0.12, 0.06) } else { lerp(0.3, 0.12) };
-            // the tint leans toward the look's own surface hue (warm in Claude and Matte, cool in Glass), kept faint
+            // the tint leans toward the look's own surface hue (warm in Matte, cool in Glass), kept faint
             let tint = gpui::Hsla { h: surface.h, s: surface.s.min(0.35), l: if dark { 0.92 } else { 1. }, a: fill };
-            window.paint_glass(bounds, px(radius), gpui::GlassParams { blur: px(lerp(1.5, 1.)), refraction: px(lerp(8., 12.)), tint, rim: lerp(0.6, 0.8), variant, energy });
+            // a drop in transit softens a little more (rule 4: a slide with a touch of blur), then clears as it settles
+            let travel = if still { 0. } else { 1.2 };
+            window.paint_glass(bounds, px(radius), gpui::GlassParams { blur: px(lerp(1.5, 1.) + travel), refraction: px(lerp(8., 12.)), tint, rim: lerp(0.6, 0.8), variant, energy });
         }).absolute().top_0().left_0().size_full();
         let l = |a: f32, b: f32| a + (b - a) * lift;
         d.hover(|s| s).child(lens).border_1().border_color(gpui::Hsla { h: 0., s: 0., l: 1., a: rim }).shadow(vec![
@@ -1280,8 +1282,8 @@ impl App {
         let fresh = chat.session.is_none() && chat.blocks.is_empty() && !chat.dormant;
         let mut bar: Vec<AnyElement> = vec![];
         if fresh {
-            const SEG: f32 = 96.;
-            let modes = [(Mode::Chat, if rtl { "محادثة" } else { "Chat" }), (Mode::Assistant, if rtl { "مساعد" } else { "Assistant" }), (Mode::Project, if rtl { "مشروع" } else { "Project" })];
+            const SEG: f32 = 72.;
+            let modes = [(Mode::Chat, if rtl { "محادثة" } else { "Chat" }), (Mode::Agent, if rtl { "وكيل" } else { "Agent" }), (Mode::Project, if rtl { "مشروع" } else { "Project" })];
             let idx = modes.iter().position(|(m, _)| *m == chat.mode).unwrap_or(0);
             let slot = if rtl { modes.len() - 1 - idx } else { idx };
             let (now, dur) = (std::time::Instant::now(), motion::panel(p.anim));
@@ -1397,10 +1399,11 @@ impl App {
                     });
                 let title = at.map(|i| format!("{} · {model_label}", titles[i])).unwrap_or(model_label.clone());
                 if self.slider_open {
+                    // a fixed width for the head, so a longer or shorter model name does not move the card's contents (rule 5)
                     let head = div().id("slider-name").role(Role::Button).aria_label(if rtl { "اختر نموذجًا بنفسك" } else { "Pick a model yourself" })
-                        .flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1p5().px_2().py_1().rounded(p.inner).cursor_pointer().hover(|s| s.bg(p.button))
+                        .flex().when(rtl, |d| d.flex_row_reverse()).items_center().justify_center().gap_1p5().w(px(260.)).px_2().py_1().rounded(p.inner).cursor_pointer().hover(|s| s.bg(p.button))
                         .on_click(cx.listener(|a, _, w, cx| a.toggle_model_menu(w, cx)))
-                        .child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(title.clone()))
+                        .child(div().min_w_0().truncate().text_sm().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(title.clone()))
                         .child(icon_view(&p, if rtl { icons::chevron_left() } else { icons::chevron_right() }, p.muted, 14.));
                     let card = div().id("slider-card").flex().flex_col().items_center().gap_2().p_3()
                         .on_mouse_down_out(cx.listener(|a, _, _, cx| {
@@ -1411,7 +1414,8 @@ impl App {
                         }))
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(head)
-                        .child(div().px_4().pt_2().pb_1().rounded(p.inner).bg(p.sunken.opacity(0.8)).child(track));
+                        // the card's 12 px padding is the step in: the sunken well's corner is the card's corner less that step (rule 2)
+                        .child(div().px_4().pt_2().pb_1().rounded(px((f32::from(p.radius) - 12.).max(3.))).bg(p.sunken.opacity(0.8)).child(track));
                     // held at the pill's end edge (right, or left in Arabic), which stays put when a longer model name widens
                     // the pill; `anchored` keeps the card inside the window on narrow windows
                     let at = if rtl { gpui::Anchor::BottomLeft } else { gpui::Anchor::BottomRight };
@@ -1431,7 +1435,7 @@ impl App {
         }
         let kind_hint = fresh.then(|| match chat.mode {
             Mode::Chat => if chat.incognito { "Nothing is remembered or stored" } else { "Plain conversation, no tools" },
-            Mode::Assistant => "Works from your home folder and asks before changing anything",
+            Mode::Agent => "Works from your home folder and asks before changing anything",
             Mode::Project => "Works inside one folder and asks before changing anything",
         });
         // a round button: an arrow to send, a square to stop
@@ -1711,7 +1715,7 @@ impl Render for App {
                     let slot = lh_gui::slide::snap(x, 88., 3);
                     let i = if a.rtl { 2 - slot } else { slot };
                     if (x - start).abs() > 2. {
-                        a.set_mode([Mode::Chat, Mode::Assistant, Mode::Project][i], cx);
+                        a.set_mode([Mode::Chat, Mode::Agent, Mode::Project][i], cx);
                     }
                     cx.notify();
                 }

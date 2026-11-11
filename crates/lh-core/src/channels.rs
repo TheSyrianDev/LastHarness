@@ -41,7 +41,12 @@ fn put_setting(store: &Store, key: &str, value: &str) {
 }
 
 pub fn load(store: &Store) -> Vec<ChannelConfig> {
-    get_setting(store, KEY).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    let mut list: Vec<ChannelConfig> = get_setting(store, KEY).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    // a channel saved before the rename says "assistant"; it reads as "agent"
+    for c in &mut list {
+        c.mode = crate::normalize_mode(&c.mode).to_string();
+    }
+    list
 }
 
 fn save(store: &Store, list: &[ChannelConfig]) {
@@ -67,7 +72,7 @@ fn bad(m: impl Into<String>) -> ApiError {
 }
 
 fn shown(c: &ChannelConfig, store: &Store) -> Value {
-    json!({"name": c.name, "kind": c.kind, "enabled": c.enabled, "allow": c.allow, "mode": c.mode, "model": c.model, "settings": c.settings, "status": status(store, &c.name)})
+    json!({"name": c.name, "kind": c.kind, "enabled": c.enabled, "allow": c.allow, "mode": crate::normalize_mode(&c.mode), "model": c.model, "settings": c.settings, "status": status(store, &c.name)})
 }
 
 async fn list<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<Value> {
@@ -85,8 +90,8 @@ fn check_fields(c: &ChannelConfig) -> Result<(), ApiError> {
     if required_settings(&c.kind).is_none() {
         return Err(bad(format!("unknown channel kind {}; the kinds are {}", c.kind, KINDS.join(", "))));
     }
-    if !["chat", "assistant"].contains(&c.mode.as_str()) {
-        return Err(bad("mode must be chat (no tools) or assistant (tools, with questions asked in the chat)"));
+    if !["chat", "agent"].contains(&c.mode.as_str()) {
+        return Err(bad("mode must be chat (no tools) or agent (tools, with questions asked in the chat)"));
     }
     for (k, v) in &c.settings {
         let secretish = k.contains("token");
@@ -552,5 +557,19 @@ async fn run_channel(cfg: ChannelConfig, store: Arc<Store>, base: String, token:
                 backoff = (backoff * 2).min(Duration::from_secs(60));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_channel_saved_with_the_old_assistant_mode_loads_as_agent() {
+        let store = Store::open_memory().unwrap();
+        let saved = json!([{"name": "home", "kind": "telegram", "enabled": false, "allow": ["12"], "mode": "assistant", "model": "llama", "settings": {}}]);
+        put_setting(&store, KEY, &saved.to_string());
+        let list = load(&store);
+        assert_eq!(list[0].mode, "agent");
     }
 }

@@ -238,7 +238,7 @@ async fn channel_conversations_never_see_sensitive_notes_or_rules() {
 async fn questions_go_to_the_phone_and_the_answer_comes_back_from_it() {
     let write = Response { tool_calls: vec![ToolCall { id: "c1".into(), name: "write_file".into(), arguments: json!({"path": "/tmp/lh-channel-test-should-not-exist.txt", "content": "x"}).to_string(), repaired: false }], finish: Some(FinishReason::ToolCalls), ..Default::default() };
     let r = rig(vec![write, text("I could not write it.")], Duration::ZERO).await;
-    r.channel(json!({"mode": "assistant"})).await;
+    r.channel(json!({"mode": "agent"})).await;
     r.tg.say(42, "write a file for me");
     let sent = r.tg.wait_sent(1).await;
     assert!(sent[0].1.contains("wants to use write") && sent[0].1.contains("Reply yes or no"), "{sent:?}");

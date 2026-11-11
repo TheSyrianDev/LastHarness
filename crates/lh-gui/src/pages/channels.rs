@@ -92,7 +92,7 @@ pub fn check_secret(field: &str, value: &str) -> Result<(), String> {
 }
 
 /// What the form holds, as the core wants it. `values` is each setting field's typed text.
-pub fn form_body(name: &str, kind: &Kind, allow: &str, model: &str, assistant: bool, values: &[(String, String)]) -> Result<Value, String> {
+pub fn form_body(name: &str, kind: &Kind, allow: &str, model: &str, agent: bool, values: &[(String, String)]) -> Result<Value, String> {
     let name = name.trim();
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return Err("Give the channel a name with letters, digits, - or _.".into());
@@ -108,7 +108,7 @@ pub fn form_body(name: &str, kind: &Kind, allow: &str, model: &str, assistant: b
             settings.insert(f.name.clone(), json!(v));
         }
     }
-    Ok(json!({"name": name, "kind": kind.kind, "allow": parse_allow(allow), "model": model.trim(), "mode": if assistant { "assistant" } else { "chat" }, "settings": settings}))
+    Ok(json!({"name": name, "kind": kind.kind, "allow": parse_allow(allow), "model": model.trim(), "mode": if agent { "agent" } else { "chat" }, "settings": settings}))
 }
 
 /// Switching on needs a list of people, a model and the warning read. This says what is still missing.
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn the_form_builds_the_body_and_starts_with_what_the_core_needs() {
         let b = form_body(" home ", &tg(), "12, 34 ,", " llama ", true, &[("token".into(), "env:TG".into()), ("api_base".into(), "".into())]).unwrap();
-        assert_eq!(b, json!({"name": "home", "kind": "telegram", "allow": ["12", "34"], "model": "llama", "mode": "assistant", "settings": {"token": "env:TG"}}));
+        assert_eq!(b, json!({"name": "home", "kind": "telegram", "allow": ["12", "34"], "model": "llama", "mode": "agent", "settings": {"token": "env:TG"}}));
         assert_eq!(form_body("a", &tg(), "", "", false, &[("token".into(), "secret:x".into())]).unwrap()["mode"], "chat");
     }
 

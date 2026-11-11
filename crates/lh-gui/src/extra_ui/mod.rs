@@ -41,7 +41,7 @@ pub struct PgState {
     pub confirm: Option<String>,
     pub activity_kind: String,
     pub channel_kind: String,
-    pub channel_assistant: bool,
+    pub channel_agent: bool,
     pub editing: Option<String>,
     /// The preset chosen in the add-a-provider form; empty means a typed address.
     pub prov_preset: String,

@@ -70,7 +70,7 @@ async fn a_channel_is_added_off_and_switched_on_only_after_the_warning_is_confir
     let mut yes = |_: &str| true;
     assert!(run(&c, &args("enable phone"), &mut yes).await.unwrap().starts_with("Switched on."));
     assert!(run(&c, &[], &mut no).await.unwrap().contains("on, not running"));
-    assert!(run(&c, &args("edit phone --allow 42 --mode assistant --set api_base=http://x"), &mut no).await.unwrap().contains("allowed: 42"));
+    assert!(run(&c, &args("edit phone --allow 42 --mode agent --set api_base=http://x"), &mut no).await.unwrap().contains("allowed: 42"));
     assert!(run(&c, &args("disable phone"), &mut no).await.unwrap().starts_with("Switched off."));
     assert_eq!(run(&c, &args("remove phone"), &mut no).await.unwrap(), "Removed.");
     assert!(run(&c, &args("add x"), &mut no).await.is_err());

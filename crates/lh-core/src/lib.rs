@@ -1,7 +1,7 @@
 //! The core's local API: plain HTTP on localhost, server-sent events (SSE) for streaming.
 //!
 //! ```text
-//! POST   /v1/sessions                       {model, project_dir? | mode?: chat|assistant, system?, ask_all?, max_tokens?,
+//! POST   /v1/sessions                       {model, project_dir? | mode?: chat|agent, system?, ask_all?, max_tokens?,
 //!                                            sampling?: {temperature, top_p, top_k, min_p, repeat_penalty, extra}}  -> {id}
 //! GET    /v1/sessions/{id}                  -> {busy, messages}
 //! DELETE /v1/sessions/{id}
@@ -472,12 +472,18 @@ async fn list_models<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> 
     Ok(Json(json!({"models": models, "details": details})))
 }
 
+/// The mode name a stored or sent value means now. "assistant" was the old name of "agent"; it is still read so saved
+/// chats and channels keep working. New values are always written as "agent".
+pub fn normalize_mode(s: &str) -> &str {
+    if s == "assistant" { "agent" } else { s }
+}
+
 #[derive(Deserialize)]
 struct NewSession {
     model: String,
     /// A project is a folder. Without one the session is folderless (see `mode`).
     project_dir: Option<PathBuf>,
-    /// `chat` (no tools; the default without a folder) or `assistant` (works from the home folder
+    /// `chat` (no tools; the default without a folder) or `agent` (works from the home folder
     /// under the same permissions). Ignored when `project_dir` is given.
     mode: Option<String>,
     system: Option<String>,
@@ -512,7 +518,7 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     if let Some(axum::Extension(web::Via::Device(_))) = via {
         if let Some(d) = &b.project_dir {
             web::device_folder_ok(d).map_err(|e| ApiError(StatusCode::FORBIDDEN, e))?;
-        } else if b.mode.as_deref() == Some("assistant") {
+        } else if b.mode.as_deref().map(normalize_mode) == Some("agent") {
             b.ask_all = true; // from a browser, the home folder is not read without asking
         }
     }
@@ -522,11 +528,11 @@ async fn create_session<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
 /// Build a session. `forced_id` is used when a stored chat is opened again: the session then carries the
 /// chat's own id, so what is said next is stored in the same conversation.
 async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, forced_id: Option<String>) -> Result<Json<Value>, ApiError> {
-    let (dir, tools_on) = match (&b.project_dir, b.mode.as_deref()) {
+    let (dir, tools_on) = match (&b.project_dir, b.mode.as_deref().map(normalize_mode)) {
         (Some(d), _) => (d.clone(), true),
-        (None, Some("assistant")) => (std::env::var_os("HOME").map(PathBuf::from).ok_or(ApiError(StatusCode::BAD_REQUEST, "no home folder".into()))?, true),
+        (None, Some("agent")) => (std::env::var_os("HOME").map(PathBuf::from).ok_or(ApiError(StatusCode::BAD_REQUEST, "no home folder".into()))?, true),
         (None, None | Some("chat")) => (std::env::temp_dir(), false),
-        (None, Some(other)) => return Err(ApiError(StatusCode::BAD_REQUEST, format!("mode must be \"chat\" or \"assistant\", not \"{other}\""))),
+        (None, Some(other)) => return Err(ApiError(StatusCode::BAD_REQUEST, format!("mode must be \"chat\" or \"agent\", not \"{other}\""))),
     };
     let mut perms = Permissions::new(&dir).map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("project_dir: {e}")))?;
     // bypass, sudo and the ask-for-everything setting come from the live settings at each tool call; the
@@ -546,7 +552,7 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
     let model_name = req.model.clone();
     let mode_name = match (&b.project_dir, tools_on) {
         (Some(_), _) => "project",
-        (None, true) => "assistant",
+        (None, true) => "agent",
         (None, false) => "chat",
     };
     let project = b.project_dir.as_ref().and_then(|d| std::fs::canonicalize(d).ok()).map(|d| d.to_string_lossy().to_string());

@@ -31,7 +31,7 @@ Milestone 0 may take one to two weeks, to be decided when it starts; the totals 
 
 From Milestone 1, keep OS-specific code (paths, shell, key storage, process control) behind one thin layer and run the test suite on all three systems in CI, so Milestone 10 is a port and not a rewrite.
 
-The weeks above have not yet been adjusted for web search, the activity log, auto-compaction, projects and assistant mode, MCP, and memory sync. Treat the total as a lower bound.
+The weeks above have not yet been adjusted for web search, the activity log, auto-compaction, projects and agent mode, MCP, and memory sync. Treat the total as a lower bound.
 
 ---
 
@@ -61,7 +61,7 @@ Throwaway code that answers the questions the design depends on.
 - [ ] Auto-compaction when a conversation nears the model's context limit; the context length it starts at is adjustable in settings. Summaries are appended so the prefix cache is kept.
 - [ ] One append-only activity log: every tool call, every request that left the machine, every rule, skill, role or setting change, with undo where it makes sense.
 - [ ] Web fetch and web search tools. Search provider chosen at setup: none, a paid search API with your key, the subscription's search, an existing SearXNG, an app-managed SearXNG (setup shows its RAM cost), or a free provider such as TinyFish.
-- [ ] Projects are folders: opening a folder attaches its memory. Folderless mode: plain chat, or a general assistant starting in the home folder (it uses the same permissions as everywhere).
+- [ ] Projects are folders: opening a folder attaches its memory. Folderless mode: plain chat, or a general agent starting in the home folder (it uses the same permissions as everywhere).
 - [ ] Terminal UI.
 - [ ] One role runner with a tool loop and deny-by-default tools.
 - [ ] `sudo` is off for agents by default; onboarding offers to enable it.

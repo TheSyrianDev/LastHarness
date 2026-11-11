@@ -182,7 +182,7 @@ pub struct App {
     pub rail_reveal: lh_gui::motion::Reveal,
     /// True while the pointer is at the left edge or over the peeked rail, with the sidebar auto-hidden.
     pub rail_peek: bool,
-    /// The raised part of the Chat/Assistant/Project switch, and the model slider's thumb.
+    /// The raised part of the Chat/Agent/Project switch, and the model slider's thumb.
     pub mode_glide: lh_gui::motion::Glide,
     pub tier_glide: lh_gui::motion::Glide,
     pub ctx_glide: lh_gui::motion::Glide,
@@ -196,7 +196,7 @@ pub struct App {
     pub rise_from: (u64, usize),
     /// The model slider is showing above the model button.
     pub slider_open: bool,
-    /// The Chat/Assistant/Project switch's raised part, held: pointer start, thumb start, now.
+    /// The Chat/Agent/Project switch's raised part, held: pointer start, thumb start, now.
     pub mode_drag: Option<(f32, f32, f32)>,
     /// The context-length slider in the model list, held: pointer start, thumb start, now, and the model for each stop.
     pub ctx_drag: Option<(f32, f32, f32, Vec<String>)>,
@@ -948,7 +948,7 @@ impl App {
         );
         self.model_menu = false;
         self.new_chat(cx);
-        self.set_mode(Mode::Assistant, cx);
+        self.set_mode(Mode::Agent, cx);
         self.composer.update(cx, |s, cx| s.set_value(prompt, window, cx));
         self.send(window, cx);
     }
