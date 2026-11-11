@@ -391,3 +391,13 @@ Built as the user asked; no new decisions. A native phone app comes later. New s
 
 - The user chose a separate Omarchy release. `crates/lh-gui` has a Cargo feature `omarchy`, on by default for local builds and off in the generic Linux (AppImage), Windows and macOS release builds (`--no-default-features`). Without it the Omarchy looks are not listed, Hyprland is never asked, and the window-rule hint in Settings is hidden.
 - The release adds `LastHarness-<version>-omarchy-x86_64.tar.gz`: the binaries built `--features omarchy`, `install-omarchy.sh` (installs into the home folder, safe to run again, `--uninstall`, `--dry-run`), the icon refresh script and the theme-set hook. The script never edits the Hyprland config; it prints the one window rule for class `lastharness-gui`.
+
+## 2026-11-11: Names (decided by the owner)
+
+- Company: LastSoft.
+- This app is named "Last". Tagline: "The last AI app you'll need". It replaces LastHarness as the product name in the documents.
+- Code, crates, binaries, config paths and the prompt line keep their current names. Renaming them is a separate decision.
+- LastEngine becomes "Last Engine".
+- hf-dl becomes "Last Fetch".
+- Inside the app: "Studio" (image and video, via ComfyUI), "Search" (SearXNG), "Crew" (the user's workers).
+- CLI name: not decided (lastai or lh). It stays `lh` for now. Open.

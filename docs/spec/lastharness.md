@@ -501,6 +501,6 @@ Onboarding sets these at first run with safe defaults. How it presents them is d
 
 1. ~~The embedding model and the store~~ decided: EmbeddingGemma 2 and SQLite.
 2. Onboarding presentation (decide last).
-3. The name is LastHarness ("the last harness you'll need"). Before release, check the domain, package names and trademark (Harness is also a DevOps company).
+3. Names (decided 2026-11-11): company LastSoft; the app is "Last" ("The last AI app you'll need"); LastEngine becomes "Last Engine"; hf-dl becomes "Last Fetch"; inside the app: Studio (image and video via ComfyUI), Search (SearXNG) and Crew (the user's workers). The CLI name is open (lastai or lh; `lh` for now). Before release, check the domain, package names and trademark for these names. Code and config names are not renamed yet.
 4. Whether the spec should gain detailed sections (data formats, API schema) as the design firms up.
 

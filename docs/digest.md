@@ -4,7 +4,7 @@ Details: `spec/lastharness.md` (what it is), `roadmap.md` (when), `../.grill/las
 
 ## What it is
 
-An AI harness, like Claude Code, Codex or Pi, but **team-first** (departments and their workers do the work), **local-first** and **endpoint-agnostic**, with memory as a supporting feature. It is for technical users: Linux users, Office power users, people on ChatGPT, DeepSeek or LM Studio. The name stays LastHarness ("the last harness you'll need"). It is free, open source (PolyForm Noncommercial 1.0.0) and works with no account.
+An AI harness, like Claude Code, Codex or Pi, but **team-first** (departments and their workers do the work), **local-first** and **endpoint-agnostic**, with memory as a supporting feature. It is for technical users: Linux users, Office power users, people on ChatGPT, DeepSeek or LM Studio. The app is named Last ("The last AI app you'll need"), made by LastSoft. Inside the app: Studio (image and video, via ComfyUI), Search (SearXNG) and Crew (the user's workers). The CLI name is open (lastai or lh; `lh` for now). It is free, open source (PolyForm Noncommercial 1.0.0) and works with no account.
 
 ## How it works
 
@@ -47,7 +47,7 @@ About 40 weeks. This is a lower bound: search, the activity log, auto-compaction
 ## Still open
 
 - **Onboarding presentation:** decided last, on purpose.
-- **Name check:** domain, packages and trademark before release (Harness is also a DevOps company).
+- **Name check:** domain, packages and trademark for Last, LastSoft and the inside names before release. The CLI name is open.
 - **Themes:** the format, and how Omarchy theming is followed.
 - **Optional:** detailed spec sections (data formats, API schema).
 
