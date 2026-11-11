@@ -53,7 +53,7 @@ LastHarness is an AI harness, like Claude Code, Codex or Pi, that is team-first 
 
 ## Evidence on Hand
 
-- Built-in themes: `crates/lh-gui/themes/` (Calm, Matte, Glass, each light and dark; two dev-only themes, Claude and ChatGPT).
+- Built-in themes: `crates/lh-gui/themes/` (Calm, Matte, Glass, Grove, Cobalt, each light and dark).
 - Milestone reports with measured numbers: `docs/milestone-*-report.md`.
 - No users, testimonials, benchmarks against other products, or press exist yet; none may be invented.
 

@@ -1,5 +1,5 @@
 //! Themes: a TOML file sets colours, background, roundness, blur, shadows and animation. Fourteen looks come
-//! with the app in seven families (Calm, Matte, Glass, Grove, Cobalt, Claude and ChatGPT), each light and dark; users add their own in a folder and
+//! with the app in five families (Calm, Matte, Glass, Grove, Cobalt), each light and dark; users add their own in a folder and
 //! changes are picked up while the app runs. This module knows nothing about the window toolkit.
 
 use std::path::{Path, PathBuf};
@@ -499,11 +499,6 @@ const BUILTIN: &[(&str, &str)] = &[
     ("grove-dark", include_str!("../themes/grove-dark.toml")),
     ("cobalt-light", include_str!("../themes/cobalt-light.toml")),
     ("cobalt-dark", include_str!("../themes/cobalt-dark.toml")),
-    // "Claude" and "ChatGPT" are looks named after two products; they use open fonts only.
-    ("claude-light", include_str!("../themes/claude-light.toml")),
-    ("claude-dark", include_str!("../themes/claude-dark.toml")),
-    ("chatgpt-light", include_str!("../themes/chatgpt-light.toml")),
-    ("chatgpt-dark", include_str!("../themes/chatgpt-dark.toml")),
 ];
 
 /// The themes that ship with the app. Calm light is first, and is what a fresh install uses.
@@ -867,15 +862,15 @@ mod tests {
     }
 
     #[test]
-    fn all_fourteen_built_in_themes_load_and_have_unique_labels() {
+    fn all_ten_built_in_themes_load_and_have_unique_labels() {
         let t = builtin();
-        assert_eq!(t.len(), 14);
+        assert_eq!(t.len(), 10);
         let mut labels: Vec<String> = t.iter().map(|t| t.label()).collect();
         labels.sort();
         labels.dedup();
-        assert_eq!(labels.len(), 14);
+        assert_eq!(labels.len(), 10);
         assert_eq!(t[0].label(), "Calm light", "the plain default comes first");
-        for name in ["Calm", "Matte", "Glass", "Grove", "Cobalt", "Claude", "ChatGPT"] {
+        for name in ["Calm", "Matte", "Glass", "Grove", "Cobalt"] {
             for mode in ["light", "dark"] {
                 assert!(t.iter().any(|x| x.label() == format!("{name} {mode}")), "{name} {mode}");
             }
@@ -886,7 +881,7 @@ mod tests {
     #[test]
     fn three_families_each_with_both_modes_and_the_mode_picks_the_variant() {
         let set = ThemeSet::load(Path::new("/no/such/folder"));
-        assert_eq!(set.families(), ["Calm", "Matte", "Glass", "Grove", "Cobalt", "Claude", "ChatGPT"]);
+        assert_eq!(set.families(), ["Calm", "Matte", "Glass", "Grove", "Cobalt"]);
         for f in set.families() {
             assert!(set.has_both(&f), "{f}");
             let (l, d) = (set.variant(&f, false).unwrap(), set.variant(&f, true).unwrap());
@@ -1022,20 +1017,10 @@ mod tests {
     }
 
     #[test]
-    fn the_dev_themes_set_fonts_and_the_calm_looks_set_none() {
-        let t = builtin();
-        for x in &t {
-            let sets = !x.fonts.latin.is_empty();
-            assert_eq!(sets, x.name == "Claude" || x.name == "ChatGPT", "{}", x.label());
-            if sets {
-                assert!(!x.fonts.arabic.is_empty() && !x.fonts.mono.is_empty(), "{}", x.label());
-            }
+    fn the_built_in_looks_set_no_fonts_so_the_defaults_apply() {
+        for x in &builtin() {
+            assert!(x.fonts.latin.is_empty() && x.fonts.arabic.is_empty() && x.fonts.mono.is_empty(), "{}", x.label());
         }
-        let claude = t.iter().find(|x| x.label() == "Claude light").unwrap();
-        assert_eq!(claude.colors.background, Color::parse("#F5F4EE").unwrap());
-        assert_eq!(claude.colors.accent, Color::parse("#B5532F").unwrap());
-        assert_eq!(t.iter().find(|x| x.label() == "Claude dark").unwrap().colors.background, Color::parse("#262624").unwrap());
-        assert_eq!(t.iter().find(|x| x.label() == "ChatGPT dark").unwrap().colors.background, Color::parse("#212121").unwrap());
     }
 
     #[test]
@@ -1090,7 +1075,7 @@ mod tests {
         std::fs::write(dir.join("bad.toml"), "name = \"Bad\"\n[colors]\ntext = \"nope\"\n").unwrap();
         std::fs::write(dir.join("notes.txt"), "ignored").unwrap();
         let mut set = ThemeSet::load(&dir);
-        assert_eq!(set.themes.len(), 15, "fourteen built in, one of the person's own, and one replaced");
+        assert_eq!(set.themes.len(), 11, "ten built in, one of the person's own, and one replaced");
         assert!(set.find("Mine dark").is_some());
         assert_eq!(set.find("Calm light").unwrap().colors.accent.rgba(), 0x00aa00ff, "replaced the built-in");
         assert_eq!(set.problems.len(), 1);

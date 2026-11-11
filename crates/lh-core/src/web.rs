@@ -412,13 +412,9 @@ const STYLE: &str = include_str!("../web/style.css");
 /// motion 12.23.12 (motion.dev, MIT), vendored unchanged; see THIRD-PARTY-NOTICES.md.
 const MOTION: &str = include_str!("../web/motion.js");
 /// The desktop app's built-in looks, so the browser page offers the same ones.
-const THEMES: [&str; 14] = [
+const THEMES: [&str; 10] = [
     include_str!("../../lh-gui/themes/calm-light.toml"),
     include_str!("../../lh-gui/themes/calm-dark.toml"),
-    include_str!("../../lh-gui/themes/chatgpt-light.toml"),
-    include_str!("../../lh-gui/themes/chatgpt-dark.toml"),
-    include_str!("../../lh-gui/themes/claude-light.toml"),
-    include_str!("../../lh-gui/themes/claude-dark.toml"),
     include_str!("../../lh-gui/themes/cobalt-light.toml"),
     include_str!("../../lh-gui/themes/cobalt-dark.toml"),
     include_str!("../../lh-gui/themes/glass-light.toml"),
