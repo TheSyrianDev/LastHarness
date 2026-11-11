@@ -25,6 +25,8 @@ pub fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/providers/{id}/default", post(make_default::<M>))
         .route("/v1/providers/{id}/test", post(test_entry::<M>))
         .route("/v1/providers/{id}/models", post(refresh_models::<M>))
+        .route("/v1/providers/{id}/models/toggle", post(toggle_model::<M>))
+        .route("/v1/providers/{id}/default-model", post(default_model::<M>))
 }
 
 /// The registry of this core, opened on first use: from the settings file when there is one.
@@ -127,6 +129,8 @@ struct EditBody {
     key: Option<String>,
     #[serde(default)]
     remove_key: bool,
+    /// Off: the provider's models are not routed. Absent: keep as is.
+    enabled: Option<bool>,
 }
 
 async fn edit<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>, Json(b): Json<EditBody>) -> Result<Json<Value>, ApiError> {
@@ -142,7 +146,7 @@ async fn edit<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Optio
         KeyChange::Remove => Some("removed"),
     };
     let r = registry(&st);
-    let e = r.update(&id, &Update { name: b.name, url: b.url, api: b.api, trust: b.trust, key: Some(key) }).map_err(bad)?;
+    let e = r.update(&id, &Update { name: b.name, url: b.url, api: b.api, trust: b.trust, key: Some(key), enabled: b.enabled }).map_err(bad)?;
     let _ = st.settings.store.log("provider_edited", "providers", "user", &json!({"id": e.id, "url": e.url, "api": e.api, "trust": e.trust, "key": key_word}));
     Ok(Json(json!({"provider": e.public(r.default_id() == e.id)})))
 }
@@ -174,4 +178,32 @@ async fn refresh_models<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     r.set_models(&id, models.clone());
     let _ = st.settings.store.log("provider_models", "providers", "user", &json!({"id": id, "count": models.len()}));
     Ok(Json(json!({"ok": true, "message": format!("{} model{}.", models.len(), if models.len() == 1 { "" } else { "s" }), "models": models})))
+}
+
+#[derive(Deserialize)]
+struct ToggleBody {
+    model: String,
+    enabled: bool,
+}
+
+async fn toggle_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>, Json(b): Json<ToggleBody>) -> Result<Json<Value>, ApiError> {
+    no_device(via)?;
+    let r = registry(&st);
+    let e = r.set_model_enabled(&id, &b.model, b.enabled).map_err(bad)?;
+    let _ = st.settings.store.log("provider_model_toggled", "providers", "user", &json!({"id": id, "model": b.model, "enabled": b.enabled}));
+    Ok(Json(json!({"provider": e.public(r.default_id() == e.id)})))
+}
+
+#[derive(Deserialize)]
+struct DefaultModelBody {
+    /// Null clears the default model.
+    model: Option<String>,
+}
+
+async fn default_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>, Json(b): Json<DefaultModelBody>) -> Result<Json<Value>, ApiError> {
+    no_device(via)?;
+    let r = registry(&st);
+    let e = r.set_default_model(&id, b.model.as_deref()).map_err(bad)?;
+    let _ = st.settings.store.log("provider_default_model", "providers", "user", &json!({"id": id, "model": b.model}));
+    Ok(Json(json!({"provider": e.public(r.default_id() == e.id)})))
 }

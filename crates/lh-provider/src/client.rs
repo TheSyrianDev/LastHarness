@@ -13,6 +13,9 @@ pub enum Error {
     Http { status: u16, body: String },
     #[error("unexpected reply: {0}")]
     Format(String),
+    /// The settings turned this provider or model off; nothing was sent.
+    #[error("{0}")]
+    Refused(String),
 }
 
 impl Error {
@@ -21,7 +24,7 @@ impl Error {
         match self {
             Error::Network(e) => e.is_connect() || e.is_timeout() || e.is_request(),
             Error::Http { status, .. } => matches!(*status, 408 | 409 | 425 | 429 | 500 | 502 | 503 | 504 | 529),
-            Error::Format(_) => false,
+            Error::Format(_) | Error::Refused(_) => false,
         }
     }
 
@@ -35,6 +38,7 @@ impl Error {
             Error::Http { status, .. } if *status >= 500 => "The server failed while answering. It may be loading a model or out of memory.".into(),
             Error::Http { status, body } => format!("The server rejected the request ({status}): {body}"),
             Error::Format(_) => "The server answered in a format this app does not understand.".into(),
+            Error::Refused(m) => m.clone(),
         }
     }
 }

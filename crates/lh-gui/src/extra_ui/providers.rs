@@ -187,6 +187,14 @@ impl App {
                     a.pg_act("providers", &format!("prov-default:{n}"), "POST", format!("/v1/providers/{n}/default"), None, cx)
                 }));
             }
+            {
+                let (en, on, mk) = (id.clone(), !p.enabled, menu_key.clone());
+                let label = if p.enabled { "Turn off" } else { "Turn on" };
+                menu = menu.child(self.button(format!("pg-prov-enable-{id}"), label, Kind::Normal, cx, move |a, _, cx| {
+                    a.pg.open.remove(&mk);
+                    a.pg_act("providers", &format!("prov-enable:{en}"), "PATCH", format!("/v1/providers/{en}"), Some(json!({"enabled": on})), cx)
+                }));
+            }
             menu = menu.child(self.pg_confirm_button(&format!("prov-rm-menu-{id}"), "Remove", "Yes, remove it", cx, {
                 let n = id.clone();
                 move |a, _, cx| a.pg_act("providers", &format!("prov-remove:{n}"), "DELETE", format!("/v1/providers/{n}"), None, cx)
@@ -257,7 +265,22 @@ impl App {
             models = models.child(self.pg_muted(m::models_words(&p)));
         } else {
             for name in &p.models {
-                models = models.child(div().flex().items_center().gap_2().text_sm().child(div().text_color(pal.accent).child("☑")).child(name.clone()));
+                let on = p.model_on(name);
+                let is_default = p.default_model.as_deref() == Some(name.as_str());
+                let (mn, mid) = (id.clone(), name.clone());
+                let box_glyph = if on { "☑" } else { "☐" };
+                let mut row = div().flex().items_center().gap_2().text_sm().child(self.button(format!("pg-prov-model-{id}-{name}"), box_glyph, Kind::Ghost, cx, move |a, _, cx| {
+                    a.pg_act("providers", &format!("prov-model:{mn}"), "POST", format!("/v1/providers/{mn}/models/toggle"), Some(m::toggle_body(&mid, !on)), cx)
+                })).child(div().flex_1().min_w_0().text_color(if on { pal.text } else { pal.muted }).child(name.clone()));
+                if is_default {
+                    row = row.child(div().text_xs().text_color(pal.accent).child("Default"));
+                } else if on {
+                    let (dn, dm) = (id.clone(), name.clone());
+                    row = row.child(self.button(format!("pg-prov-mdef-{id}-{name}"), "Make default", Kind::Ghost, cx, move |a, _, cx| {
+                        a.pg_act("providers", &format!("prov-default-model:{dn}"), "POST", format!("/v1/providers/{dn}/default-model"), Some(m::default_model_body(Some(&dm))), cx)
+                    }));
+                }
+                models = models.child(row);
             }
         }
         col = col.child(models);

@@ -16,6 +16,11 @@ pub struct Provider {
     /// "openai", "anthropic", or empty when the core did not say.
     pub api: String,
     pub models: Vec<String>,
+    /// Off in the settings: its models are not routed.
+    pub enabled: bool,
+    /// Models the person turned off. Any other listed model is on.
+    pub disabled_models: Vec<String>,
+    pub default_model: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,8 +48,19 @@ pub fn providers(v: &Value) -> Vec<Provider> {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|p| Provider { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), default: p["default"] == true, key_saved: p["key_saved"] == true, local: p["local"] == true, api: s(p, "api"), models: p["models"].as_array().into_iter().flatten().filter_map(|m| m.as_str().map(str::to_string)).collect() })
+        .map(|p| Provider { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), default: p["default"] == true, key_saved: p["key_saved"] == true, local: p["local"] == true, api: s(p, "api"), models: strings(&p["models"]), enabled: p["enabled"] != false, disabled_models: strings(&p["disabled_models"]), default_model: p["default_model"].as_str().map(str::to_string) })
         .collect()
+}
+
+fn strings(v: &Value) -> Vec<String> {
+    v.as_array().into_iter().flatten().filter_map(|m| m.as_str().map(str::to_string)).collect()
+}
+
+impl Provider {
+    /// A listed model is on unless the person turned it off.
+    pub fn model_on(&self, model: &str) -> bool {
+        !self.disabled_models.iter().any(|m| m == model)
+    }
 }
 
 pub fn presets(v: &Value) -> Vec<Preset> {
@@ -80,7 +96,9 @@ impl Light {
 
 /// The light and its words. `tested` is the last test result this session: `None` when no test ran.
 pub fn light(p: &Provider, tested: Option<bool>) -> (Light, &'static str) {
-    if tested == Some(false) {
+    if !p.enabled {
+        (Light::Off, "Off")
+    } else if tested == Some(false) {
         (Light::Attention, "Last test failed")
     } else if !p.local && !p.key_saved {
         (Light::Attention, "Key missing")
@@ -89,6 +107,16 @@ pub fn light(p: &Provider, tested: Option<bool>) -> (Light, &'static str) {
     } else {
         (Light::Off, "Not tested yet")
     }
+}
+
+/// The body that turns one model on or off.
+pub fn toggle_body(model: &str, on: bool) -> Value {
+    json!({"model": model, "enabled": on})
+}
+
+/// The body that sets the default model; `None` clears it.
+pub fn default_model_body(model: Option<&str>) -> Value {
+    json!({"model": model})
 }
 
 /// The API style as a person reads it.
@@ -258,6 +286,31 @@ mod tests {
         assert_eq!(l[3].api, "anthropic");
         assert_eq!(api_label(&l[3].api), "Anthropic");
         assert_eq!(api_label(""), "OpenAI style");
+    }
+
+    fn prov(enabled: bool, disabled: &[&str], default_model: Option<&str>) -> Provider {
+        Provider { id: "x".into(), name: "X".into(), url: "u".into(), default: false, key_saved: true, local: false, api: "openai".into(), models: vec!["a".into(), "b".into()], enabled, disabled_models: disabled.iter().map(|s| s.to_string()).collect(), default_model: default_model.map(str::to_string) }
+    }
+
+    #[test]
+    fn enabled_flag_and_model_state_read() {
+        let p = providers(&json!({"providers": [
+            {"id": "old", "name": "Old", "url": "u", "models": ["a"]},
+            {"id": "n", "name": "N", "url": "u", "models": ["a", "b"], "enabled": false, "disabled_models": ["b"], "default_model": "a"}
+        ]}));
+        assert!(p[0].enabled, "missing flag loads as on");
+        assert!(p[0].model_on("a") && p[0].default_model.is_none());
+        assert!(!p[1].enabled && !p[1].model_on("b") && p[1].model_on("a"));
+        assert_eq!(p[1].default_model.as_deref(), Some("a"));
+        assert_eq!(light(&p[1], Some(true)), (Light::Off, "Off"));
+        assert_eq!(light(&prov(true, &[], None), Some(true)).0, Light::Ready);
+    }
+
+    #[test]
+    fn model_toggle_and_default_bodies() {
+        assert_eq!(toggle_body("b", false), json!({"model": "b", "enabled": false}));
+        assert_eq!(default_model_body(Some("a")), json!({"model": "a"}));
+        assert_eq!(default_model_body(None), json!({"model": null}));
     }
 
     #[test]

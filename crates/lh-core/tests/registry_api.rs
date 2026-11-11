@@ -235,3 +235,40 @@ async fn entry_test_and_model_refresh_use_the_saved_key() {
     assert_eq!(s.call("POST", "/v1/providers/nope/test", None).await.0, 404);
     assert_eq!(s.call("POST", "/v1/providers/nope/models", None).await.0, 404);
 }
+
+#[tokio::test]
+async fn enabled_flag_model_toggles_and_default_model_over_the_api() {
+    let s = start(vec![], true);
+    let base = fake_models().await;
+    s.call("POST", "/v1/providers", Some(json!({"url": base, "name": "Box", "key": "sk-good"}))).await;
+    s.call("POST", "/v1/providers/box/models", None).await;
+    // default model must be listed and on
+    let (c, b) = s.call("POST", "/v1/providers/box/default-model", Some(json!({"model": "zeta"}))).await;
+    assert_eq!(c, 400, "{b}");
+    assert!(b.to_string().contains("Default model must be one of the enabled models."), "{b}");
+    let (c, d) = s.call("POST", "/v1/providers/box/default-model", Some(json!({"model": "beta"}))).await;
+    assert_eq!((c, d["provider"]["default_model"].clone()), (200, json!("beta")), "{d}");
+    // the default model cannot be switched off
+    let (c, _) = s.call("POST", "/v1/providers/box/models/toggle", Some(json!({"model": "beta", "enabled": false}))).await;
+    assert_eq!(c, 400);
+    // another model can be switched off and back on
+    let (c, t) = s.call("POST", "/v1/providers/box/models/toggle", Some(json!({"model": "alpha", "enabled": false}))).await;
+    assert_eq!((c, t["provider"]["disabled_models"].clone()), (200, json!(["alpha"])), "{t}");
+    let (_, t) = s.call("POST", "/v1/providers/box/models/toggle", Some(json!({"model": "alpha", "enabled": true}))).await;
+    assert_eq!(t["provider"]["disabled_models"], json!([]));
+    // turning the provider off is allowed only when it is not the default
+    let (c, _) = s.call("PATCH", "/v1/providers/box", Some(json!({"enabled": false}))).await;
+    assert_eq!(c, 400);
+    s.call("POST", "/v1/providers", Some(json!({"url": "https://other.example.com/v1", "name": "Other"}))).await;
+    s.call("POST", "/v1/providers/other/default", None).await;
+    let (c, e) = s.call("PATCH", "/v1/providers/box", Some(json!({"enabled": false}))).await;
+    assert_eq!((c, e["provider"]["enabled"].clone()), (200, json!(false)), "{e}");
+    let (_, l) = s.call("GET", "/v1/providers", None).await;
+    assert_eq!(l["providers"][0]["enabled"], json!(false));
+    assert_eq!(l["providers"][0]["default_model"], json!("beta"));
+    // clearing the default model
+    let (c, d) = s.call("POST", "/v1/providers/box/default-model", Some(json!({"model": null}))).await;
+    assert_eq!((c, d["provider"]["default_model"].clone()), (200, json!(null)));
+    // the key never appears in any of these responses
+    assert!(!l.to_string().contains("sk-good"));
+}

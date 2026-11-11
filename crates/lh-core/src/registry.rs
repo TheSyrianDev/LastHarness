@@ -30,6 +30,19 @@ pub struct Entry {
     pub trust: String,
     #[serde(default)]
     pub models: Vec<String>,
+    /// Off: its models are not routed. Missing in old files: on.
+    #[serde(default = "enabled_true")]
+    pub enabled: bool,
+    /// Models the person turned off. A model not listed here is on.
+    #[serde(default)]
+    pub disabled_models: Vec<String>,
+    /// The model used when a role does not name one. Must be on and listed.
+    #[serde(default)]
+    pub default_model: Option<String>,
+}
+
+fn enabled_true() -> bool {
+    true
 }
 
 impl Entry {
@@ -38,8 +51,31 @@ impl Entry {
     }
     /// What is safe to show: everything but the key reference.
     pub fn public(&self, default: bool) -> Value {
-        json!({"id": self.id, "name": self.name, "preset": self.preset, "url": self.url, "api": self.api, "trust": self.trust, "local": self.local(), "key_saved": self.key_ref.is_some(), "default": default, "models": self.models})
+        json!({"id": self.id, "name": self.name, "preset": self.preset, "url": self.url, "api": self.api, "trust": self.trust, "local": self.local(), "key_saved": self.key_ref.is_some(), "default": default, "models": self.models, "enabled": self.enabled, "disabled_models": self.disabled_models, "default_model": self.default_model})
     }
+}
+
+/// Refuse a call that the entry's settings turn off: the provider itself, or a model it has switched off.
+/// An empty model name is a listing call and only checks the provider.
+pub fn check_route(e: &Entry, model: &str) -> Result<(), String> {
+    if !e.enabled {
+        return Err(format!("{} is turned off. Turn it on in Providers.", e.name));
+    }
+    if !model.is_empty() && e.disabled_models.iter().any(|m| m == model) {
+        return Err(format!("{model} is turned off for {}.", e.name));
+    }
+    Ok(())
+}
+
+/// Check that `model` may be the default: listed by the server and not turned off.
+pub fn check_default_model(e: &Entry, model: &str) -> Result<(), String> {
+    if e.models.is_empty() {
+        return Err("Refresh the model list first, then pick a default.".into());
+    }
+    if !e.models.iter().any(|m| m == model) || e.disabled_models.iter().any(|m| m == model) {
+        return Err("Default model must be one of the enabled models.".into());
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -87,6 +123,7 @@ pub struct Update {
     pub api: Option<String>,
     pub trust: Option<String>,
     pub key: Option<KeyChange>,
+    pub enabled: Option<bool>,
 }
 
 /// What adding a provider needs. A preset fills what is missing.
@@ -159,7 +196,7 @@ impl Registry {
         let legacy = cfg.as_ref().and_then(|c| {
             let url = c.get_opt("provider.url")?;
             let api = c.get("provider.api");
-            Some(Entry { id: "main".into(), name: c.get_opt("provider.name").unwrap_or_else(|| "Main".into()), preset: None, trust: if lh_provider::is_local_url(&url) { "local".into() } else { "any".into() }, url, api, key_ref: c.get_opt("provider.key"), models: vec![] })
+            Some(Entry { id: "main".into(), name: c.get_opt("provider.name").unwrap_or_else(|| "Main".into()), preset: None, trust: if lh_provider::is_local_url(&url) { "local".into() } else { "any".into() }, url, api, key_ref: c.get_opt("provider.key"), models: vec![], enabled: true, disabled_models: vec![], default_model: None })
         });
         Self::open(Some(config.with_file_name("providers.json")), legacy, secrets)
     }
@@ -237,7 +274,7 @@ impl Registry {
                 }
                 None => None,
             };
-            let e = Entry { id, name, preset, url, api, key_ref, trust, models: vec![] };
+            let e = Entry { id, name, preset, url, api, key_ref, trust, models: vec![], enabled: true, disabled_models: vec![], default_model: None };
             if d.entries.is_empty() {
                 d.default = e.id.clone();
             }
@@ -304,7 +341,13 @@ impl Registry {
                 }
             }
             let moved = url != cur.url || api != cur.api;
-            let e = Entry { id: cur.id.clone(), name, preset: cur.preset.clone(), url, api, key_ref, trust, models: if moved { vec![] } else { cur.models.clone() } };
+            let enabled = u.enabled.unwrap_or(cur.enabled);
+            if !enabled && d.default == id {
+                return Err("This is the default provider; make another one the default first.".into());
+            }
+            // a moved address has other models, so the model settings start again
+            let (models, disabled_models, default_model) = if moved { (vec![], vec![], None) } else { (cur.models.clone(), cur.disabled_models.clone(), cur.default_model.clone()) };
+            let e = Entry { id: cur.id.clone(), name, preset: cur.preset.clone(), url, api, key_ref, trust, models, enabled, disabled_models, default_model };
             d.entries[i] = e.clone();
             e
         };
@@ -350,9 +393,52 @@ impl Registry {
 
     pub fn set_models(&self, id: &str, models: Vec<String>) {
         if let Some(e) = self.data.lock().unwrap().entries.iter_mut().find(|e| e.id == id) {
+            // a default that the server no longer lists is dropped
+            if e.default_model.as_ref().is_some_and(|m| !models.contains(m)) {
+                e.default_model = None;
+            }
             e.models = models;
         }
         self.save();
+    }
+
+    /// Turn one model on or off for a provider. Turning off the default model is refused.
+    pub fn set_model_enabled(&self, id: &str, model: &str, on: bool) -> Result<Entry, String> {
+        let e = {
+            let mut d = self.data.lock().unwrap();
+            let e = d.entries.iter_mut().find(|e| e.id == id).ok_or("No such provider.")?;
+            if model.trim().is_empty() {
+                return Err("Name the model to turn on or off.".into());
+            }
+            if !on && e.default_model.as_deref() == Some(model) {
+                return Err("This is the default model; make another model the default first.".into());
+            }
+            e.disabled_models.retain(|m| m != model);
+            if !on {
+                e.disabled_models.push(model.to_string());
+            }
+            e.clone()
+        };
+        self.save();
+        Ok(e)
+    }
+
+    /// Set (or clear, with `None`) the provider's default model. It must be listed and on.
+    pub fn set_default_model(&self, id: &str, model: Option<&str>) -> Result<Entry, String> {
+        let e = {
+            let mut d = self.data.lock().unwrap();
+            let e = d.entries.iter_mut().find(|e| e.id == id).ok_or("No such provider.")?;
+            match model {
+                Some(m) => {
+                    check_default_model(e, m)?;
+                    e.default_model = Some(m.to_string());
+                }
+                None => e.default_model = None,
+            }
+            e.clone()
+        };
+        self.save();
+        Ok(e)
     }
 
     /// The old single-provider settings (or the address the core was started with) changed: keep the `main`
@@ -372,7 +458,7 @@ impl Registry {
                     }
                 }
                 None => {
-                    d.entries.push(Entry { id: "main".into(), name: if name.is_empty() { "Main".into() } else { name.into() }, preset: None, url: url.into(), api: api.into(), key_ref, trust, models: vec![] });
+                    d.entries.push(Entry { id: "main".into(), name: if name.is_empty() { "Main".into() } else { name.into() }, preset: None, url: url.into(), api: api.into(), key_ref, trust, models: vec![], enabled: true, disabled_models: vec![], default_model: None });
                     if d.default.is_empty() {
                         d.default = "main".into();
                     }
@@ -447,11 +533,20 @@ impl Fleet {
         let id = id.or_else(|| Some(self.reg.default_id()).filter(|d| !d.is_empty()));
         (id.and_then(|i| self.reg.client(&i)), model)
     }
+    /// Like `pick`, but refuses a provider or model that the settings turn off.
+    fn route(&self, full: &str) -> Result<(Option<Arc<Provider>>, String), lh_provider::Error> {
+        let (id, model) = self.reg.split(full);
+        let id = id.or_else(|| Some(self.reg.default_id()).filter(|d| !d.is_empty()));
+        if let Some(e) = id.as_deref().and_then(|i| self.reg.get(i)) {
+            check_route(&e, &model).map_err(lh_provider::Error::Refused)?;
+        }
+        Ok((id.and_then(|i| self.reg.client(&i)), model))
+    }
 }
 
 impl Model for Fleet {
     async fn complete(&self, req: &ChatRequest, on_event: &mut (dyn FnMut(lh_provider::Event) + Send)) -> Result<lh_provider::Response, lh_provider::Error> {
-        let (p, model) = self.pick(&req.model);
+        let (p, model) = self.route(&req.model)?;
         let mut r = req.clone();
         r.model = model;
         Model::complete(p.as_deref().unwrap_or(&self.base), &r, on_event).await
@@ -477,7 +572,7 @@ impl Model for Fleet {
         Model::provider_name(p.as_deref().unwrap_or(&self.base)).await
     }
     async fn generate_images(&self, model: &str, prompt: &str, size: Option<&str>, n: u32) -> Result<Vec<lh_provider::GeneratedImage>, lh_provider::Error> {
-        let (p, m) = self.pick(model);
+        let (p, m) = self.route(model)?;
         Model::generate_images(p.as_deref().unwrap_or(&self.base), &m, prompt, size, n).await
     }
     fn release_idle(&self) {
@@ -580,5 +675,65 @@ mod tests {
         let r = Registry::from_config(&cfg, Arc::new(MemoryStore::default()));
         assert_eq!((r.default_id(), r.list()[0].url.clone()), ("main".into(), "http://localhost:9292/v1".into()));
         assert!(dir.path().join("providers.json").exists());
+    }
+
+    #[test]
+    fn legacy_entries_load_enabled_with_no_model_settings() {
+        let old = r#"{"id":"cloud","name":"Cloud","url":"https://x/v1","api":"openai","trust":"any","models":["a"]}"#;
+        let e: Entry = serde_json::from_str(old).unwrap();
+        assert!(e.enabled);
+        assert!(e.disabled_models.is_empty());
+        assert_eq!(e.default_model, None);
+    }
+
+    #[test]
+    fn disabled_provider_and_model_are_not_routed() {
+        let mut e: Entry = serde_json::from_str(r#"{"id":"c","name":"C","url":"u","api":"openai","trust":"any"}"#).unwrap();
+        assert!(check_route(&e, "m").is_ok());
+        e.disabled_models.push("m".into());
+        assert!(check_route(&e, "m").unwrap_err().contains("turned off for C"));
+        assert!(check_route(&e, "other").is_ok());
+        e.enabled = false;
+        assert!(check_route(&e, "other").unwrap_err().contains("turned off"));
+    }
+
+    #[test]
+    fn default_model_must_be_listed_and_enabled() {
+        let mut e: Entry = serde_json::from_str(r#"{"id":"c","name":"C","url":"u","api":"openai","trust":"any"}"#).unwrap();
+        assert!(check_default_model(&e, "a").unwrap_err().contains("Refresh"));
+        e.models = vec!["a".into(), "b".into()];
+        e.disabled_models = vec!["b".into()];
+        assert!(check_default_model(&e, "a").is_ok());
+        assert_eq!(check_default_model(&e, "b").unwrap_err(), "Default model must be one of the enabled models.");
+        assert!(check_default_model(&e, "zz").is_err());
+    }
+
+    #[test]
+    fn model_toggle_and_default_model_persist_and_validate() {
+        let (r, _s) = reg();
+        r.add(&NewProvider { url: Some("http://h:1/v1".into()), name: Some("H".into()), ..Default::default() }, None).unwrap();
+        let id = r.list()[0].id.clone();
+        r.set_models(&id, vec!["a".into(), "b".into()]);
+        assert!(r.set_default_model(&id, Some("zz")).is_err());
+        r.set_default_model(&id, Some("a")).unwrap();
+        // turning off the default model is refused
+        assert!(r.set_model_enabled(&id, "a", false).is_err());
+        let e = r.set_model_enabled(&id, "b", false).unwrap();
+        assert_eq!(e.disabled_models, vec!["b".to_string()]);
+        assert!(r.set_default_model(&id, Some("b")).is_err());
+        // a model the server stops listing drops the default
+        r.set_models(&id, vec!["b".into()]);
+        assert_eq!(r.get(&id).unwrap().default_model, None);
+        let back = r.set_model_enabled(&id, "b", true).unwrap();
+        assert!(back.disabled_models.is_empty());
+    }
+
+    #[test]
+    fn default_provider_cannot_be_turned_off() {
+        let (r, _s) = reg();
+        r.add(&NewProvider { url: Some("http://h:1/v1".into()), name: Some("H".into()), ..Default::default() }, None).unwrap();
+        let id = r.list()[0].id.clone();
+        assert!(r.update(&id, &Update { enabled: Some(false), ..Default::default() }).is_err());
+        assert!(r.get(&id).unwrap().enabled);
     }
 }
