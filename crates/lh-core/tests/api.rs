@@ -132,7 +132,7 @@ async fn a_turn_streams_and_is_kept_in_the_history() {
     let h: Value = s.get(&format!("/v1/sessions/{id}")).send().await.unwrap().json().await.unwrap();
     let all: Vec<_> = h["messages"].as_array().unwrap().iter().map(|m| (m["role"].as_str().unwrap(), m["content"].as_str().unwrap())).collect();
     assert_eq!(all[0].0, "system", "the built-in base prompt comes first");
-    assert!(all[0].1.starts_with("You are m. LastHarness, made by LastSoftware, is the app you run in;"));
+    assert!(all[0].1.starts_with("You are m. Last AI, made by Last, is the app you run in;"));
     assert_eq!(&all[1..], [("user", "hi"), ("assistant", "hello there")]);
 }
 
@@ -293,7 +293,7 @@ async fn sampling_and_limits_from_the_session_reach_the_model() {
     assert_eq!((r.sampling.temperature, r.sampling.top_k), (Some(0.3), Some(20)));
     assert_eq!(r.sampling.extra["chat_template_kwargs"]["enable_thinking"], false);
     let sys = r.messages[0].content.clone().unwrap();
-    assert!(sys.starts_with("You are m. LastHarness, made by LastSoftware, is the app you run in;") && sys.ends_with("\n\nBe brief."), "the client's text follows the base prompt: {sys}");
+    assert!(sys.starts_with("You are m. Last AI, made by Last, is the app you run in;") && sys.ends_with("\n\nBe brief."), "the client's text follows the base prompt: {sys}");
 }
 
 #[tokio::test]
@@ -344,7 +344,7 @@ async fn the_base_prompt_comes_first_and_is_the_same_on_every_turn() {
     assert_eq!(reqs.len(), 3);
     let first = reqs[0].messages[0].content.clone().unwrap();
     assert_eq!(reqs[0].messages[0].role, lh_provider::Role::System);
-    assert!(first.starts_with("You are m. LastHarness, made by LastSoftware, is the app you run in;"), "{first}");
+    assert!(first.starts_with("You are m. Last AI, made by Last, is the app you run in;"), "{first}");
     assert!(first.contains("Mode: project") && first.contains(&format!("folder {}", d.path().canonicalize().unwrap().display())) && first.contains("sudo is off") && first.contains("A refusal is final"), "{first}");
     assert!(first.find("Sensitive notes never go to a cloud model.").unwrap() < first.find("The user's own words.").unwrap(), "the client's text comes after the base prompt");
     for r in &reqs[1..] {
@@ -382,7 +382,7 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     turn("two").await;
     let reqs = seen.lock().unwrap().clone();
     let first = reqs[0].messages[0].content.clone().unwrap();
-    assert!(first.starts_with("You are Qwen3.6-35B-A3B (34.7B), served by llama-swap, an endpoint, not the model's maker. LastHarness, made by LastSoftware, is the app you run in;"), "{first}");
+    assert!(first.starts_with("You are Qwen3.6-35B-A3B (34.7B), served by llama-swap, an endpoint, not the model's maker. Last AI, made by Last, is the app you run in;"), "{first}");
     assert_eq!(reqs[1].messages[0], reqs[0].messages[0], "the same bytes on the next turn");
 
     // switching model: an unknown session is 404, a known one is 204, and the next turn names the new model
@@ -391,7 +391,7 @@ async fn the_first_line_names_the_model_and_service_as_reported_and_a_model_swit
     turn("three").await;
     let reqs = seen.lock().unwrap().clone();
     let third = reqs[2].messages[0].content.clone().unwrap();
-    assert!(third.starts_with("You are gpt-4o (34.7B), served by llama-swap, an endpoint, not the model's maker. LastHarness, made by LastSoftware, is the app you run in;"), "{third}");
+    assert!(third.starts_with("You are gpt-4o (34.7B), served by llama-swap, an endpoint, not the model's maker. Last AI, made by Last, is the app you run in;"), "{third}");
     assert_eq!(reqs[2].model, "gpt-4o");
     assert_eq!(&reqs[2].messages[1..4], &reqs[1].messages[1..4], "the conversation itself is unchanged");
     let log = store.recent(10, Some("model_switched")).unwrap();

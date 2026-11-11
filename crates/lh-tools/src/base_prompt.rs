@@ -113,7 +113,7 @@ pub fn ymd(days: i64) -> String {
 }
 
 pub fn base_prompt(c: &BaseContext) -> String {
-    let mut s = format!("{} LastHarness, made by LastSoftware, is the app you run in; it did not make you. Asked who made you, name the model's maker if known, else say you don't know. Be brief.\nToday: {}. ", identity_line(&c.identity), c.date);
+    let mut s = format!("{} Last AI, made by Last, is the app you run in; it did not make you. Asked who made you, name the model's maker if known, else say you don't know. Be brief.\nToday: {}. ", identity_line(&c.identity), c.date);
     let folder = c.folder.map(|p| p.display().to_string()).unwrap_or_default();
     s.push_str(&match c.kind {
         SessionKind::Chat => "Mode: chat, no files or commands.\n".to_string(),
@@ -185,7 +185,7 @@ mod tests {
             // and inside the whole prompt the first line is that line
             let none: Vec<String> = vec![];
             let p = base_prompt(&BaseContext { identity, kind: SessionKind::Chat, folder: None, permissions: Mode::Tiered, sudo_enabled: false, date: "2026-10-11", guidelines: &none });
-            assert!(p.starts_with(&format!("{want} LastHarness, made by LastSoftware, is the app you run in;")), "{p}");
+            assert!(p.starts_with(&format!("{want} Last AI, made by Last, is the app you run in;")), "{p}");
             assert!(!p.contains("  "));
         }
     }
@@ -229,7 +229,7 @@ mod tests {
     fn it_says_what_the_agent_is_where_it_works_and_what_it_may_do() {
         let g: Vec<String> = vec![];
         let p = base_prompt(&ctx(SessionKind::Project, Mode::Tiered, false, Some(Path::new("/work/shop")), &g));
-        for want in ["LastHarness", "Today: 2026-10-11.", "Mode: project, folder /work/shop (stay inside it).", "Reads are free", "writes ask once per session", "always ask", "sudo is off", "A refusal is final", "Sensitive notes never go to a cloud model."] {
+        for want in ["Last AI, made by Last", "Today: 2026-10-11.", "Mode: project, folder /work/shop (stay inside it).", "Reads are free", "writes ask once per session", "always ask", "sudo is off", "A refusal is final", "Sensitive notes never go to a cloud model."] {
             assert!(p.contains(want), "missing {want:?} in:\n{p}");
         }
     }
