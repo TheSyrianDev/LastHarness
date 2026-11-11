@@ -96,7 +96,7 @@ struct Import {
 
 async fn import<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<Import>) -> Result<Json<Value>, ApiError> {
     let dir = FsPath::new(&b.dir);
-    let manifest: Value = std::fs::read_to_string(dir.join("manifest.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or_else(|| bad(format!("{} is not a LastHarness export (no manifest.json)", b.dir)))?;
+    let manifest: Value = std::fs::read_to_string(dir.join("manifest.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or_else(|| bad(format!("{} is not a Last AI export (no manifest.json)", b.dir)))?;
     if manifest["format"] != "lastharness-export" || manifest["version"].as_u64().is_none_or(|v| v > 1) {
         return Err(bad("this export was made by a newer or different program and cannot be read"));
     }

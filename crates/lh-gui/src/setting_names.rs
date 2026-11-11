@@ -183,7 +183,7 @@ pub const INFO: &[Info] = &[
     i("team.parallel", Departments, "Workers at the same time", "How many workers a department may run at once.", Show::Count("worker", "workers"), false),
     i("team.attempts", Departments, "Tries for each step", "How many times a step is tried before the failure is passed up to you.", Show::Count("try", "tries"), false),
     i("team.unavailable", Departments, "When a model is missing", "Stop and tell you, or try the backup models listed for that kind of job.", Show::Words(&[("stop", "Stop and tell me"), ("fallback", "Try a backup model")]), false),
-    i("web.listen", Web, "Address for the browser and phone", "Lets you use LastHarness in a browser over HTTPS, for example at 127.0.0.1:7843. Every device must be paired first. Leave it empty to keep this off.", Show::Text("Off"), true),
+    i("web.listen", Web, "Address for the browser and phone", "Lets you use Last AI in a browser over HTTPS, for example at 127.0.0.1:7843. Every device must be paired first. Leave it empty to keep this off.", Show::Text("Off"), true),
     i("web.tailscale", Web, "Reach it from your phone over Tailscale", "Opens the browser page on this computer's Tailscale address only, so a phone on your tailnet can use it. Sign the phone in under Phone, after a restart.", Show::OnOff, true),
     i("tools.list_models", Tools, "Let the model see your providers and models", "The model can list the providers you registered and the models each offers. It cannot see keys.", Show::OnOff, false),
     i("tools.select_model", Tools, "Let the model switch models", "The model can switch the chat to another model from a provider you registered, and ask a local provider to load one. Each switch is logged.", Show::OnOff, false),

@@ -725,7 +725,7 @@ pub fn load_or_create_tls(dir: &std::path::Path, extra_names: &[String]) -> Resu
             names.extend(extra_names.iter().cloned());
             names.dedup();
             let mut params = rcgen::CertificateParams::new(names.clone()).map_err(tls_err)?;
-            params.distinguished_name.push(rcgen::DnType::CommonName, "LastHarness");
+            params.distinguished_name.push(rcgen::DnType::CommonName, "Last AI");
             let today: Vec<i64> = lh_tools::today().split('-').filter_map(|p| p.parse().ok()).collect();
             let (y, m, d) = (today[0] as i32, today[1] as u8, today[2] as u8);
             params.not_before = rcgen::date_time_ymd(y, m, d);

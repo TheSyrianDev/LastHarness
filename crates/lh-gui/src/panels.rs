@@ -1067,8 +1067,8 @@ impl App {
             cx.notify();
         });
         let why = match &target {
-            Some(path) => format!("It is the file {}. LastHarness does not run web pages itself; your own browser opens this one file.", path.display()),
-            None => "LastHarness does not run web pages itself, and this one is not a file on this computer, so there is nothing to open in a browser. You can read its source.".to_string(),
+            Some(path) => format!("It is the file {}. Last AI does not run web pages itself; your own browser opens this one file.", path.display()),
+            None => "Last AI does not run web pages itself, and this one is not a file on this computer, so there is nothing to open in a browser. You can read its source.".to_string(),
         };
         // when the page could be drawn inside the app but was not, say why in plain words
         let reason = self.page_reason(item);

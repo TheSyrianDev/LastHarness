@@ -13,6 +13,11 @@ path = "src/main.rs"
 name = "lastharness"
 path = "src/bin/lastharness.rs"
 
+# the same program under the Last AI name
+[[bin]]
+name = "lastai"
+path = "src/bin/lastai.rs"
+
 [dependencies]
 lh-provider = { path = "../lh-provider" }
 lh-client = { path = "../lh-client" }

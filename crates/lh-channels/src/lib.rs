@@ -101,7 +101,7 @@ pub fn required_settings(kind: &str) -> Option<(SettingHelp, SettingHelp)> {
 
 /// What the user must be told before the channel is switched on.
 pub fn warning(kind: &str) -> String {
-    let common = "Messages on this channel pass through the service's servers, which can read them. LastHarness cannot protect them and makes no promise about their security. Notes marked sensitive are never sent here, and a reply that looks like it holds sensitive information is held back. Only the people you list can talk to the assistant; everyone else is ignored.";
+    let common = "Messages on this channel pass through the service's servers, which can read them. Last AI cannot protect them and makes no promise about their security. Notes marked sensitive are never sent here, and a reply that looks like it holds sensitive information is held back. Only the people you list can talk to the assistant; everyone else is ignored.";
     match kind {
         "slack" => format!("{common} Slack keeps message history, and the workspace owner and Slack itself can read messages in the workspace. Use a workspace you control and create your own Slack app (this avoids Slack's Marketplace limits)."),
         "telegram" => format!("{common} Telegram bot chats are not end-to-end encrypted."),

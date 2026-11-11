@@ -90,5 +90,5 @@ async fn memory_rules_style_and_roles_move_to_another_machine_without_replacing_
     assert!(again.contains("rules_added: 0") && again.contains("memory_pages_added: 0"), "{again}");
     let replaced = import(&b, &args(&[dest.to_str().unwrap(), "--apply", "--replace-style", "--replace", "writer"])).await.unwrap();
     assert!(replaced.contains("style_set: true") && replaced.contains("role writer"), "{replaced}");
-    assert!(import(&b, &args(&[a_dir.path().to_str().unwrap()])).await.unwrap_err().contains("not a LastHarness export"));
+    assert!(import(&b, &args(&[a_dir.path().to_str().unwrap()])).await.unwrap_err().contains("not a Last AI export"));
 }

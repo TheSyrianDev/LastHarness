@@ -168,7 +168,7 @@ impl ksni::Tray for Tray {
         "lastharness-gui".into()
     }
     fn title(&self) -> String {
-        "LastHarness".into()
+        "Last AI".into()
     }
     fn icon_name(&self) -> String {
         // hosts prefer a name over pixmaps, so the name is empty unless the colour is unknown

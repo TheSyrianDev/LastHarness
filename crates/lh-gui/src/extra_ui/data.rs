@@ -33,7 +33,7 @@ impl App {
 
     fn export_card(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let input = self.xp_input("data.export", "/path/to/a/new/folder", window, cx);
-        let choose = self.button("pg-export-choose", "Choose folder", Kind::Normal, cx, |a, _, cx| a.pg_pick_folder("data.export", "LastHarness-export", cx));
+        let choose = self.button("pg-export-choose", "Choose folder", Kind::Normal, cx, |a, _, cx| a.pg_pick_folder("data.export", "LastAI-export", cx));
         let go = self.button("pg-export-go", "Save a copy", Kind::Primary, cx, |a, _, cx| {
             let dir = a.pg_text("data.export", cx);
             if dir.trim().is_empty() {

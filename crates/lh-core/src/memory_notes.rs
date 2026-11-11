@@ -77,7 +77,7 @@ pub fn export_json(pages: &[Page]) -> String {
 
 /// Markdown: a title line, then one `## Title` per note, each followed by a `layer:` line and the body.
 pub fn export_md(pages: &[Page]) -> String {
-    let mut s = String::from("# LastHarness memory\n\nEach note starts with a `## ` heading and a `layer:` line.\n");
+    let mut s = String::from("# Last AI memory\n\nEach note starts with a `## ` heading and a `layer:` line.\n");
     for p in pages {
         s.push_str(&format!("\n## {}\n\nlayer: {}\n\n{}\n", p.title.trim(), p.layer.as_str(), p.body.trim()));
     }

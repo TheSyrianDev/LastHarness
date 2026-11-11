@@ -66,7 +66,7 @@ pub type Probe<'a> = &'a dyn Fn(&str) -> Option<Vec<String>>;
 pub type SaveSecret<'a> = &'a dyn Fn(&str, &str) -> Result<String, String>;
 
 pub fn run(p: &mut dyn Prompter, cfg: &mut ConfigFile, probe: Probe, save_secret: SaveSecret) -> Result<(), String> {
-    p.say("LastHarness setup. Press Enter to accept the answer in brackets. You can change any of this later with `lh settings`.\n");
+    p.say("Last AI setup. Press Enter to accept the answer in brackets. You can change any of this later with `lh settings`.\n");
     // 1. where the models are
     loop {
         let url = p.ask("Where are your models served? (an OpenAI-compatible address)", &cfg.get_opt("provider.url").unwrap_or_else(|| "http://localhost:9292/v1".into()));

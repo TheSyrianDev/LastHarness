@@ -34,7 +34,7 @@ fn main() {
         let opts = WindowOptions {
             window_background: WindowBackgroundAppearance::Transparent,
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(1180.), px(760.)), cx))),
-            titlebar: Some(TitlebarOptions { title: Some("LastHarness".into()), ..Default::default() }),
+            titlebar: Some(TitlebarOptions { title: Some("Last AI".into()), ..Default::default() }),
             app_id: Some("lastharness-gui".into()),
             ..Default::default()
         };

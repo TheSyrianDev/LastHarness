@@ -23,7 +23,7 @@ pub fn find_lhd() -> Option<PathBuf> {
 }
 
 pub fn unit_text(lhd: &Path) -> String {
-    format!("[Unit]\nDescription=LastHarness core\nAfter=network.target\n\n[Service]\nExecStart={}\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n", lhd.display())
+    format!("[Unit]\nDescription=Last AI core\nAfter=network.target\n\n[Service]\nExecStart={}\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n", lhd.display())
 }
 
 fn steps_text(steps: &[&[&str]]) -> String {
