@@ -73,9 +73,10 @@ pub fn models_words(p: &Provider) -> String {
     }
 }
 
-/// The body for editing: only the fields that were typed. An address is checked before it is sent.
-pub fn edit_body(name: &str, url: &str, key: &str) -> Result<Value, String> {
-    let (name, url, key) = (name.trim(), url.trim(), key.trim());
+/// The body for editing: only the fields that were typed or picked. An address is checked before it is sent.
+/// `api` is "openai", "anthropic", or empty to keep the saved style.
+pub fn edit_body(name: &str, url: &str, key: &str, api: &str) -> Result<Value, String> {
+    let (name, url, key, api) = (name.trim(), url.trim(), key.trim(), api.trim());
     let mut b = serde_json::Map::new();
     if !url.is_empty() {
         if !(url.starts_with("http://") || url.starts_with("https://")) {
@@ -89,7 +90,28 @@ pub fn edit_body(name: &str, url: &str, key: &str) -> Result<Value, String> {
     if !key.is_empty() {
         b.insert("key".into(), json!(key));
     }
+    if !api.is_empty() {
+        if api != "openai" && api != "anthropic" {
+            return Err("Pick OpenAI style or Anthropic.".into());
+        }
+        b.insert("api".into(), json!(api));
+    }
     Ok(Value::Object(b))
+}
+
+/// The body for testing an address before saving: the address, the typed key and the style when given.
+/// The key and the style are left out when empty, so the core uses the saved ones.
+pub fn test_body(url: &str, key: &str, api: Option<&str>) -> Value {
+    let mut b = serde_json::Map::new();
+    b.insert("url".into(), json!(url.trim()));
+    let key = key.trim();
+    if !key.is_empty() {
+        b.insert("key".into(), json!(key));
+    }
+    if let Some(a) = api.map(str::trim).filter(|a| !a.is_empty()) {
+        b.insert("api".into(), json!(a));
+    }
+    Value::Object(b)
 }
 
 /// Does approving or adding this need a key? A known preset says; an unknown address might, so the box is offered.
@@ -174,10 +196,16 @@ mod tests {
         assert!(add_body(Some("nope"), "", "", "", &p).is_err());
         assert_eq!(add_body(None, " http://h:1/v1 ", "", "", &p).unwrap(), json!({"url": "http://h:1/v1"}));
         assert!(add_body(None, "ftp://x", "", "", &p).is_err());
-        assert_eq!(edit_body(" New ", "", "").unwrap(), json!({"name": "New"}));
-        assert_eq!(edit_body("", "https://h/v1", " k ").unwrap(), json!({"url": "https://h/v1", "key": "k"}));
-        assert_eq!(edit_body("", "", "").unwrap(), json!({}));
-        assert!(edit_body("", "ftp://x", "").is_err());
+        assert_eq!(edit_body(" New ", "", "", "").unwrap(), json!({"name": "New"}));
+        assert_eq!(edit_body("", "https://h/v1", " k ", "").unwrap(), json!({"url": "https://h/v1", "key": "k"}));
+        assert_eq!(edit_body("", "", "", "").unwrap(), json!({}));
+        assert_eq!(edit_body("", "", "", " anthropic ").unwrap(), json!({"api": "anthropic"}));
+        assert_eq!(edit_body("N", "", "", "openai").unwrap(), json!({"name": "N", "api": "openai"}));
+        assert!(edit_body("", "", "", "gemini").is_err());
+        assert!(edit_body("", "ftp://x", "", "").is_err());
+        assert_eq!(test_body(" http://h:1/v1 ", " k ", Some("anthropic")), json!({"url": "http://h:1/v1", "key": "k", "api": "anthropic"}));
+        assert_eq!(test_body("http://h:1/v1", "  ", None), json!({"url": "http://h:1/v1"}));
+        assert_eq!(test_body("http://h:1/v1", "", Some(" ")), json!({"url": "http://h:1/v1"}));
         assert_eq!(approve_body("  "), json!({}));
         assert_eq!(approve_body("k"), json!({"key": "k"}));
     }

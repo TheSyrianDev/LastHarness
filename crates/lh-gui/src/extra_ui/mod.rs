@@ -45,6 +45,8 @@ pub struct PgState {
     pub editing: Option<String>,
     /// The preset chosen in the add-a-provider form; empty means a typed address.
     pub prov_preset: String,
+    /// The style picked in a saved provider's edit form, by provider id; no entry keeps the saved style.
+    pub prov_api: HashMap<String, String>,
     pub import: Option<model::data::Preview>,
     pub replace: HashSet<String>,
     pub replace_style: bool,

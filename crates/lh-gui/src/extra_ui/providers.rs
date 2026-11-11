@@ -98,11 +98,23 @@ impl App {
         let url_box = self.xp_field(&uk, "Address (leave empty to keep it)", &p.url, window, cx);
         let key_label = if p.key_saved { "New key (leave empty to keep the saved one)" } else { "Key (leave empty if none is needed)" };
         let key_box = self.xp_secret(&kk, key_label, window, cx);
+        let chosen_api = self.pg.prov_api.get(&id).cloned().unwrap_or_default();
+        let mut apis = div().flex().flex_wrap().gap_1();
+        for (val, label) in [("openai", "OpenAI style"), ("anthropic", "Anthropic")] {
+            let sid = id.clone();
+            apis = apis.child(self.button(format!("pg-prov-api-{val}-{id}"), label, if chosen_api == val { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| {
+                a.pg.prov_api.insert(sid.clone(), val.to_string());
+                cx.notify();
+            }));
+        }
+        let api_label = self.pg_muted("API style (none picked keeps the saved one)");
         let save_id = id.clone();
         let save = self.button(format!("pg-prov-save-{id}"), "Save changes", Kind::Primary, cx, move |a, _, cx| {
             let (name, url, key) = (a.pg_text(&format!("prov.edit.name.{save_id}"), cx), a.pg_text(&format!("prov.edit.url.{save_id}"), cx), a.pg_text(&format!("prov.edit.key.{save_id}"), cx));
-            match m::edit_body(&name, &url, &key) {
+            let api = a.pg.prov_api.get(&save_id).cloned().unwrap_or_default();
+            match m::edit_body(&name, &url, &key, &api) {
                 Ok(body) => {
+                    a.pg.prov_api.remove(&save_id);
                     a.pg_clear(&[format!("prov.edit.key.{save_id}").as_str()]);
                     a.pg.open.remove(&format!("prov-edit:{save_id}"));
                     a.pg_act("providers", &format!("prov-edit:{save_id}"), "PATCH", format!("/v1/providers/{save_id}"), Some(body), cx);
@@ -113,7 +125,7 @@ impl App {
                 }
             }
         });
-        let mut col = div().flex().flex_col().gap_2().child(name_box).child(url_box).child(key_box);
+        let mut col = div().flex().flex_col().gap_2().child(name_box).child(url_box).child(api_label).child(apis).child(key_box);
         if p.key_saved {
             let rm = id.clone();
             col = col.child(self.pg_confirm_button(&format!("prov-key-rm-{id}"), "Remove the saved key", "Yes, remove the key", cx, move |a, _, cx| a.pg_act("providers", &format!("prov-edit:{rm}"), "PATCH", format!("/v1/providers/{rm}"), Some(json!({"remove_key": true})), cx)));
@@ -212,12 +224,22 @@ impl App {
                 }
             }
         });
+        let test = self.button("pg-prov-test-form", "Test", Kind::Normal, cx, |a, _, cx| {
+            let presets = a.prov_presets();
+            let chosen = a.pg.prov_preset.clone();
+            let url = match presets.iter().find(|p| p.id == chosen) {
+                Some(p) => p.url.clone(),
+                None => a.pg_text("prov.url", cx),
+            };
+            let key = a.pg_text("prov.key", cx);
+            a.pg_act("providers", "prov-test:form", "POST", "/v1/provider/test", Some(m::test_body(&url, &key, None)), cx);
+        });
         let cancel = self.button("pg-prov-cancel", "Cancel", Kind::Ghost, cx, |a, _, cx| {
             a.pg_clear(&["prov.url", "prov.name", "prov.key"]);
             a.pg.open.remove("prov-form");
             cx.notify();
         });
-        rows.push(div().flex().gap_1().child(save).child(cancel).into_any_element());
+        rows.push(div().flex().gap_1().child(save).child(test).child(cancel).into_any_element());
         self.xp_card(rows).into_any_element()
     }
 }
