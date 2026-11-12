@@ -18,6 +18,8 @@ pub struct CreateJob {
     /// `running`, `done` or `failed`.
     pub state: String,
     pub files: Vec<String>,
+    /// A still image of the result for the page: the image itself, or the first frame of a video.
+    pub poster: Option<String>,
     pub message: String,
 }
 
@@ -83,7 +85,7 @@ fn workflow_template(file: &str) -> Result<Value, ApiError> {
 fn new_job(prompt: &str) -> u64 {
     let mut list = jobs().lock().unwrap();
     let id = list.len() as u64 + 1;
-    list.push(CreateJob { id, prompt: prompt.to_string(), state: "running".into(), files: vec![], message: String::new() });
+    list.push(CreateJob { id, prompt: prompt.to_string(), state: "running".into(), files: vec![], poster: None, message: String::new() });
     id
 }
 
@@ -103,6 +105,7 @@ fn spawn_job(id: u64, workflow: Value, output_node: &'static str, ram: u64, labe
                 Ok(files) => {
                     j.state = "done".into();
                     j.files = files.iter().map(|p| p.display().to_string()).collect();
+                    j.poster = files.first().and_then(|f| create_job::poster_for(f, "ffmpeg")).map(|p| p.display().to_string());
                 }
                 Err(e) => {
                     j.state = "failed".into();
@@ -161,7 +164,7 @@ mod tests {
 
     #[test]
     fn job_list_starts_empty_and_serializes() {
-        let v = serde_json::to_value(CreateJob { id: 1, prompt: "p".into(), state: "running".into(), files: vec![], message: String::new() }).unwrap();
+        let v = serde_json::to_value(CreateJob { id: 1, prompt: "p".into(), state: "running".into(), files: vec![], poster: None, message: String::new() }).unwrap();
         assert_eq!(v["state"], "running");
     }
 }

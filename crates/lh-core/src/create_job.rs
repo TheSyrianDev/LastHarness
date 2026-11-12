@@ -287,3 +287,76 @@ mod job_tests {
         assert!(mem_available().unwrap_or(1) > 0);
     }
 }
+
+/// A still image to show inline for a finished job: the file itself for an image, or the first frame
+/// of an MP4 (written next to it as `<name>.poster.png`, via `ffmpeg`). `None` when ffmpeg is missing.
+pub fn poster_for(file: &std::path::Path, ffmpeg: &str) -> Option<std::path::PathBuf> {
+    let ext = file.extension()?.to_str()?.to_ascii_lowercase();
+    if ext != "mp4" {
+        return Some(file.to_path_buf());
+    }
+    let out = file.with_extension("poster.png");
+    let status = std::process::Command::new(ffmpeg).args(["-v", "error", "-y", "-i"]).arg(file).args(["-frames:v", "1"]).arg(&out).status().ok()?;
+    (status.success() && out.exists()).then_some(out)
+}
+
+#[cfg(test)]
+mod poster_tests {
+    use super::poster_for;
+    use std::path::Path;
+
+    #[test]
+    fn images_are_their_own_poster_and_missing_ffmpeg_gives_none() {
+        assert_eq!(poster_for(Path::new("/x/a.png"), "ffmpeg"), Some(Path::new("/x/a.png").to_path_buf()));
+        assert_eq!(poster_for(Path::new("/x/a.mp4"), "/nonexistent/ffmpeg-binary"), None);
+    }
+}
+
+#[cfg(test)]
+mod mock_comfy_tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    /// A stand-in ComfyUI on 127.0.0.1: answers each route the job runner uses, then stops.
+    fn serve(video_name: &'static str) -> String {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", l.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in l.incoming().take(12) {
+                let Ok(mut s) = stream else { continue };
+                let mut buf = [0u8; 4096];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let line = req.lines().next().unwrap_or("").to_string();
+                let body: Vec<u8> = if line.starts_with("POST /prompt") {
+                    br#"{"prompt_id":"p1","node_errors":{}}"#.to_vec()
+                } else if line.starts_with("GET /history/p1") {
+                    format!(r#"{{"p1":{{"status":{{"completed":true,"status_str":"success"}},"outputs":{{"12":{{"images":[{{"filename":"{video_name}","subfolder":"","type":"output"}}]}}}}}}}}"#).into_bytes()
+                } else if line.starts_with("GET /view") {
+                    b"FAKEVIDEO".to_vec()
+                } else {
+                    b"{}".to_vec()
+                };
+                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = s.write_all(head.as_bytes());
+                let _ = s.write_all(&body);
+            }
+        });
+        base
+    }
+
+    #[test]
+    fn image_job_submits_waits_copies_and_releases_the_lock() {
+        let dir = std::env::temp_dir().join(format!("lh-create-mock-{}", std::process::id()));
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let lock = dir.join(".machine-busy");
+        std::fs::write(&lock, "").unwrap();
+        let http = ComfyHttp { base: serve("wan22_test.mp4") };
+        let files = run_image_job(&lock, &json!({}), "12", 0, &http, &out, "test").unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(std::fs::read(&files[0]).unwrap(), b"FAKEVIDEO");
+        assert_eq!(std::fs::read_to_string(&lock).unwrap().trim(), "", "our lock line must be removed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
