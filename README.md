@@ -49,6 +49,26 @@ o.window("lastharness-gui", { opacity = "0.85 override 0.85 override" })
 
 To start the core at every login: `lh service preview`, then `lh service install` (a systemd user service; no sudo; closing the terminal never stops the core).
 
+## Providers and models
+
+Providers are the servers that answer chat: a local llama-swap or llama.cpp, Ollama, LM Studio, or an OpenAI-compatible or Anthropic-style cloud API. Add and test them on the Models and keys page of the desktop app, or with `lh settings`. API keys are read from environment variables you name; nothing is sent to a provider you have not added.
+
+On the Models and keys page, search Hugging Face for GGUF models. Results are grouped by whether they fit this computer's memory (Fits in memory, Tight, Too big, Size not known). Download a file to `~/AI/Models/`. A downloaded model that a llama-swap router does not serve yet can be registered with its Run button, which backs up the router files, validates the matrix and restarts llama-swap. Models that are already served show "Use in chat". The search needs the network; without it the page says so.
+
+## Create (images and video)
+
+The Create block on the Models and keys page makes images (Z-Image Turbo) and short videos (Wan 2.2 TI2V-5B, MP4) through a local ComfyUI on `127.0.0.1:8188`. Type a prompt, choose Image or Video, press Generate. The job list shows progress and, when it is done, the result inline (the image, or the first frame of the video). Files are saved in `~/AI/Create/`. Image and video jobs take the machine lock and free GPU memory afterwards, so they wait while another session holds the lock. ComfyUI and its model files are not part of this repository.
+
+## Web search
+
+`web_search` uses a SearXNG instance. If the settings name none, LastHarness looks for one on `127.0.0.1:8888`. If nothing answers there, the tool says so and suggests starting SearXNG or setting its address.
+
+## Install and release build
+
+- Source: `cargo build --release` (needs Rust stable; on Linux the desktop app needs the usual GPUI and system libraries).
+- Linux AppImage: `packaging/build-appimage.sh` (needs `linuxdeploy`; see the script's header).
+- Omarchy: `scripts/install-omarchy.sh`.
+
 ## Commands
 
 Every command has `help`, which works without the core running, for example `lh team help`.
