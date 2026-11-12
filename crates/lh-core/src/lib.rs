@@ -27,6 +27,7 @@
 pub mod auth;
 pub mod registry;
 pub mod registry_api;
+pub mod models_api;
 mod model_tools;
 pub mod attachments;
 pub mod idle;
@@ -413,6 +414,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(hooks_api::routes::<M>())
         .merge(provider_api::routes::<M>())
         .merge(registry_api::routes::<M>())
+        .merge(models_api::routes::<M>())
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
         .merge(schedules_api::routes::<M>())

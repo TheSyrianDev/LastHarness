@@ -422,6 +422,118 @@ impl CatalogSource for HfdCatalog {
     }
 }
 
+impl Fit {
+    /// Plain words for the group heading on the Models page.
+    pub fn label(self) -> &'static str {
+        match self {
+            Fit::Fits => "Fits in memory",
+            Fit::Tight => "Tight: needs system RAM as well",
+            Fit::TooBig => "Too big for this computer",
+            Fit::Unknown => "Size not known",
+        }
+    }
+}
+
+/// One repo, placed in the fit group of its best quant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FitHit {
+    pub repo: String,
+    pub name: String,
+    pub downloads: u64,
+    /// Fit of the best quant (the biggest one that fits, else the smallest).
+    pub fit: Fit,
+    pub best_quant: Option<String>,
+    pub best_bytes: u64,
+}
+
+/// Search hits grouped by fit. Order inside a group keeps the Hub order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FitGroups {
+    pub fits: Vec<FitHit>,
+    pub tight: Vec<FitHit>,
+    pub too_big: Vec<FitHit>,
+    pub unknown: Vec<FitHit>,
+}
+
+/// Search GGUF repos and group them by how well their quants fit.
+///
+/// Uses only the source and the two memory figures, so tests can pass a [`FakeCatalog`].
+pub fn group_hits_by_fit(source: &dyn CatalogSource, query: &str, free_ram: u64, free_vram: u64) -> Result<FitGroups, CatalogError> {
+    fn rank(f: Fit) -> u8 {
+        match f {
+            Fit::Fits => 0,
+            Fit::Tight => 1,
+            Fit::TooBig => 2,
+            Fit::Unknown => 3,
+        }
+    }
+    let mut out = FitGroups::default();
+    for hit in source.search(query, true)? {
+        let files = source.files(&hit.repo)?;
+        // groups come biggest first; prefer the best fit, then the bigger quant
+        let mut best: Option<(Fit, String, u64)> = None;
+        for g in group_by_quant(&files) {
+            let f = fit_for(g.total_bytes, free_ram, free_vram);
+            let better = match &best {
+                None => true,
+                Some((bf, _, bb)) => rank(f) < rank(*bf) || (rank(f) == rank(*bf) && g.total_bytes > *bb),
+            };
+            if better {
+                best = Some((f, g.quant.clone(), g.total_bytes));
+            }
+        }
+        let (fit, best_quant, best_bytes) = match best {
+            Some((f, q, b)) => (f, Some(q), b),
+            None => (Fit::Unknown, None, 0),
+        };
+        let item = FitHit { repo: hit.repo, name: hit.name, downloads: hit.downloads, fit, best_quant, best_bytes };
+        match fit {
+            Fit::Fits => out.fits.push(item),
+            Fit::Tight => out.tight.push(item),
+            Fit::TooBig => out.too_big.push(item),
+            Fit::Unknown => out.unknown.push(item),
+        }
+    }
+    Ok(out)
+}
+
+/// One model listed in the local registry (`~/AI/Rig/registry/models.json`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Installed {
+    pub id: String,
+    pub file: String,
+    pub size_bytes: u64,
+    pub kind: String,
+    pub ctx_max: Option<u64>,
+}
+
+/// Read the `models` list from registry JSON text. Entries without an `id` are skipped.
+pub fn parse_installed(json: &str) -> Result<Vec<Installed>, CatalogError> {
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| CatalogError::Message(format!("the registry is not valid JSON: {e}")))?;
+    Ok(v["models"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| {
+                    Some(Installed {
+                        id: m["id"].as_str()?.to_string(),
+                        file: m["file"].as_str().unwrap_or("").to_string(),
+                        size_bytes: m["size_bytes"].as_u64().unwrap_or(0),
+                        kind: m["kind"].as_str().unwrap_or("text").to_string(),
+                        ctx_max: m["ctx_max"].as_u64(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+/// Read the local registry file. Read only.
+pub fn read_installed(path: &std::path::Path) -> Result<Vec<Installed>, CatalogError> {
+    let text = std::fs::read_to_string(path).map_err(|e| CatalogError::Message(format!("cannot read {}: {e}", path.display())))?;
+    parse_installed(&text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,5 +660,47 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].size_bytes, 4000);
         assert!(cat.files("org/missing").is_err());
+    }
+
+    #[test]
+    fn hits_are_grouped_by_the_best_quant_fit_with_labels() {
+        const GB: u64 = 1024 * 1024 * 1024;
+        let hit = |repo: &str, name: &str| RepoHit { repo: repo.into(), name: name.into(), downloads: 5, has_gguf: true };
+        let cat = FakeCatalog {
+            repos: vec![
+                (hit("a/small", "small"), vec![CatalogFile::new("small-Q4_K_M.gguf", GB)]),
+                (hit("a/huge", "huge"), vec![CatalogFile::new("huge-Q4_K_M.gguf", 400 * GB)]),
+                (hit("a/mid", "mid"), vec![CatalogFile::new("mid-Q2_K.gguf", GB), CatalogFile::new("mid-Q8_0.gguf", 30 * GB)]),
+            ],
+        };
+        // 4 GB RAM and 0 VRAM: the 1 GB model fits, the 30 GB quant is far too big, the 400 GB one too big
+        let g = group_hits_by_fit(&cat, "", 4 * GB, 0).unwrap();
+        assert_eq!(g.fits.iter().map(|h| h.repo.as_str()).collect::<Vec<_>>(), vec!["a/small", "a/mid"]);
+        assert_eq!(g.fits[1].best_quant.as_deref(), Some("Q2_K"));
+        assert!(g.tight.is_empty());
+        assert_eq!(g.too_big.iter().map(|h| h.repo.as_str()).collect::<Vec<_>>(), vec!["a/huge"]);
+        assert!(g.unknown.is_empty());
+        assert_eq!(Fit::TooBig.label(), "Too big for this computer");
+        assert_eq!(Fit::Fits.label(), "Fits in memory");
+        // a search for one name keeps only that repo
+        let only = group_hits_by_fit(&cat, "huge", 4 * GB, 0).unwrap();
+        assert_eq!(only.too_big.len(), 1);
+        assert!(only.fits.is_empty());
+    }
+
+    #[test]
+    fn installed_list_reads_the_registry_and_skips_entries_without_id() {
+        let json = r#"{"schema":1,"models":[
+            {"id":"Clover-35B-A3B","file":"/x/a.gguf","size_bytes":14754269120,"kind":"text","ctx_max":131072},
+            {"file":"/x/no-id.gguf","size_bytes":1},
+            {"id":"tiny","size_bytes":5}]}"#;
+        let got = parse_installed(json).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].id, "Clover-35B-A3B");
+        assert_eq!(got[0].ctx_max, Some(131072));
+        assert_eq!(got[1].kind, "text");
+        assert_eq!(got[1].ctx_max, None);
+        assert!(parse_installed("not json").is_err());
+        assert!(parse_installed("{}").unwrap().is_empty());
     }
 }
