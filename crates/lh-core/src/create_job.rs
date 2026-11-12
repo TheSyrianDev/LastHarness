@@ -183,3 +183,87 @@ mod tests {
         assert_ne!(fresh_seed(1), fresh_seed(2));
     }
 }
+
+/// Where a finished image is copied: `~/AI/Create/`.
+pub fn output_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("AI/Create"))
+}
+
+/// Free RAM in bytes from `/proc/meminfo` (`MemAvailable`).
+pub fn mem_available() -> Option<u64> {
+    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let line = text.lines().find(|l| l.starts_with("MemAvailable:"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb * 1024)
+}
+
+/// Steps of one image job, in contract order: lock, unload llama-swap, RAM check, run, free, unlock.
+/// Returns the copied file paths. The lock file gets one line from us, removed only if still ours.
+pub fn run_image_job(lock: &std::path::Path, workflow: &Value, ram_needed: u64, http: &ComfyHttp, out_dir: &std::path::Path, label: &str) -> Result<Vec<std::path::PathBuf>, String> {
+    let busy = std::fs::read_to_string(lock).map(|t| !t.trim().is_empty()).unwrap_or(false);
+    if busy {
+        return Err("the machine is busy (another session holds the lock)".into());
+    }
+    let my_line = format!("claude-agent lastharness (Create {label}) {}", std::process::id());
+    std::fs::write(lock, format!("{my_line}\n")).map_err(|e| format!("cannot take the lock: {e}"))?;
+    let result = (|| {
+        if !http.up() {
+            return Err("ComfyUI is not running on 127.0.0.1:8188 (start the comfyui service)".to_string());
+        }
+        let _ = std::process::Command::new("curl").args(["-s", "-m", "10", "127.0.0.1:9292/unload"]).output();
+        match mem_available() {
+            Some(free) if free < ram_needed => return Err(format!("not enough free RAM: {} MiB free, {} MiB needed", free >> 20, ram_needed >> 20)),
+            None => return Err("cannot read free RAM from /proc/meminfo".into()),
+            _ => {}
+        }
+        let id = http.submit(workflow, "lastharness-create")?;
+        let outputs = loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            match parse_history(&http.history(&id)?, &id, "10")? {
+                Done::Pending => continue,
+                Done::Failed { message } => return Err(format!("ComfyUI failed: {message}")),
+                Done::Success { outputs } => break outputs,
+            }
+        };
+        std::fs::create_dir_all(out_dir).map_err(|e| e.to_string())?;
+        let mut saved = Vec::new();
+        for f in outputs {
+            let url = format!("{}/view?filename={}&subfolder={}&type=output", http.base, f.filename, f.subfolder);
+            let out = std::process::Command::new("curl").args(["-s", "-m", "60", "-o"]).arg(out_dir.join(&f.filename)).arg(&url).status().map_err(|e| e.to_string())?;
+            if !out.success() {
+                return Err(format!("cannot copy {}", f.filename));
+            }
+            saved.push(out_dir.join(&f.filename));
+        }
+        Ok(saved)
+    })();
+    // always free VRAM after the job (contract step 5), then release only our line
+    let _ = http.free();
+    if let Ok(t) = std::fs::read_to_string(lock) {
+        let rest: String = t.lines().filter(|l| *l != my_line).map(|l| format!("{l}\n")).collect();
+        let _ = std::fs::write(lock, rest);
+    }
+    result
+}
+
+#[cfg(test)]
+mod job_tests {
+    use super::*;
+
+    #[test]
+    fn job_refuses_while_another_session_holds_the_lock() {
+        let dir = std::env::temp_dir().join(format!("lh-create-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let lock = dir.join(".machine-busy");
+        std::fs::write(&lock, "lastengine-74 busy\n").unwrap();
+        let err = run_image_job(&lock, &json!({}), 1, &ComfyHttp { base: "http://127.0.0.1:1".into() }, &dir, "t").unwrap_err();
+        assert!(err.contains("busy"));
+        assert_eq!(std::fs::read_to_string(&lock).unwrap(), "lastengine-74 busy\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mem_available_reads_a_positive_number_on_linux() {
+        assert!(mem_available().unwrap_or(1) > 0);
+    }
+}

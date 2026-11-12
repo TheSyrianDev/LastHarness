@@ -45,6 +45,7 @@ pub mod provider_api;
 pub mod models_catalog;
 pub mod model_run;
 pub mod create_job;
+pub mod create_api;
 mod session;
 pub mod web;
 mod settings_api;
@@ -417,6 +418,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .merge(provider_api::routes::<M>())
         .merge(registry_api::routes::<M>())
         .merge(models_api::routes::<M>())
+        .merge(create_api::routes::<Arc<AppState<M>>>())
         .merge(export_api::routes::<M>())
         .merge(channels::routes::<M>())
         .merge(schedules_api::routes::<M>())
