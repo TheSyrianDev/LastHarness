@@ -288,6 +288,11 @@ fn quant_of(path: &str) -> String {
 }
 
 /// A quant tag: `Q4_K_M`, `Q8_0`, `IQ3_XS`, `MXFP4`, `BF16`, `F16`, `F32`. A model name such as `Qwen3` is not one.
+/// True for a quant tag such as `Q4_K_M`, `Q8_0`, `BF16`.
+pub fn is_quant_tag(tok: &str) -> bool {
+    looks_like_quant(tok)
+}
+
 fn looks_like_quant(tok: &str) -> bool {
     let up = tok.to_uppercase();
     if matches!(up.as_str(), "BF16" | "F16" | "F32") {

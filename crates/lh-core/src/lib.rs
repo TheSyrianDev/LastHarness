@@ -43,6 +43,7 @@ mod memory_api;
 mod memory_notes;
 pub mod provider_api;
 pub mod models_catalog;
+pub mod model_run;
 mod session;
 pub mod web;
 mod settings_api;
