@@ -202,14 +202,28 @@ pub fn mmproj_files(files: &[CatalogFile]) -> Vec<CatalogFile> {
 /// - `TooBig` otherwise. A size of 0 means unknown.
 /// - `free_vram` is reserved for the "GPU offload possible" hint. This rule does not use it yet.
 ///
-/// Temporary: hfd-core's `fit_for` (80 percent of RAM plus VRAM) replaces this once hf-dl
-/// aligns its rule with the registry rule. Keep one rule. Until then, do not switch.
+/// With the `hf-catalog` feature this delegates to hfd-core's `fit_for` (f0260ad), which uses
+/// the same registry rule. The size-0 guard stays here because hfd-core treats 0 as fitting.
 pub fn fit_for(total_bytes: u64, free_ram: u64, free_vram: u64) -> Fit {
     // Reserved for the GPU offload hint; kept in the signature on purpose.
     let _ = free_vram;
     if total_bytes == 0 {
         return Fit::Unknown;
     }
+    fit_rule(total_bytes, free_ram)
+}
+
+#[cfg(feature = "hf-catalog")]
+fn fit_rule(total_bytes: u64, free_ram: u64) -> Fit {
+    match hfd_core::catalog::fit_for(total_bytes, free_ram) {
+        hfd_core::catalog::Fit::Fits => Fit::Fits,
+        hfd_core::catalog::Fit::Tight => Fit::Tight,
+        hfd_core::catalog::Fit::TooBig => Fit::TooBig,
+    }
+}
+
+#[cfg(not(feature = "hf-catalog"))]
+fn fit_rule(total_bytes: u64, free_ram: u64) -> Fit {
     if total_bytes <= free_ram {
         Fit::Fits
     } else if u128::from(total_bytes) * 100 <= u128::from(free_ram) * 110 {
