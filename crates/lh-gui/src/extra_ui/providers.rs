@@ -60,20 +60,19 @@ impl App {
         // the selection must be one that is still listed; otherwise the first one is shown
         let sel = self.pg.prov_sel.clone().filter(|s| list.iter().any(|p| &p.id == s)).or_else(|| list.first().map(|p| p.id.clone()));
 
-        let mut left = div().flex().flex_col().gap_0p5().p_1().w(px(230.)).flex_shrink_0().rounded(self.pal.inner).bg(self.pal.sunken);
+        // one full-width row per provider; Manage opens its detail below that row, and only then
+        let mut rows = div().flex().flex_col().gap_1p5().w_full();
         for p in &list {
-            let selected = !adding && sel.as_deref() == Some(p.id.as_str());
-            left = left.child(self.prov_row(p, selected, cx));
+            let manage = !adding && sel.as_deref() == Some(p.id.as_str()) && self.pg.open.contains("prov-manage");
+            rows = rows.child(self.prov_row(p, manage, cx));
+            if manage {
+                rows = rows.child(div().w_full().pl_4().child(self.provider_detail(p.clone(), window, cx)));
+            }
         }
-
-        let right = if adding {
-            div().flex_1().min_w(px(280.)).min_w_0().child(self.registry_form(&presets, window, cx)).into_any_element()
-        } else if let Some(p) = sel.as_ref().and_then(|s| list.iter().find(|p| &p.id == s)) {
-            div().flex_1().min_w(px(280.)).min_w_0().child(self.provider_detail(p.clone(), window, cx)).into_any_element()
-        } else {
-            div().flex_1().min_w(px(280.)).min_w_0().child(self.pg_note_line("Pick a provider on the left, or add one.")).into_any_element()
-        };
-        col = col.child(div().flex().flex_wrap().gap_3().items_start().child(left).child(right));
+        col = col.child(rows);
+        if adding {
+            col = col.child(self.registry_form(&presets, window, cx));
+        }
         col = col.child(self.prov_default_row(&list, cx));
         col.child(div().flex().child(self.pg_refresh(Category::Models, cx))).into_any_element()
     }
@@ -116,8 +115,9 @@ impl App {
         }
     }
 
-    /// One provider in the left column: its light and its name. The selected one is tinted.
-    fn prov_row(&mut self, p: &m::Provider, selected: bool, cx: &mut Context<Self>) -> AnyElement {
+    /// One provider as a full-width row: status dot, name, full address, and a Manage button that is never clipped.
+    /// `open` tints the row and means its detail is shown below it.
+    fn prov_row(&mut self, p: &m::Provider, open: bool, cx: &mut Context<Self>) -> AnyElement {
         let tested = self.pg.prov_test.get(&p.id).copied();
         let (light, words) = m::light(p, tested);
         let color = self.light_color(light);
@@ -130,10 +130,16 @@ impl App {
         let (btn_label, btn_id) = if signin { ("Sign in", format!("pg-prov-signin-{}", p.id)) } else { ("Manage", format!("pg-prov-manage-{}", p.id)) };
         let (bid, key_open) = (id.clone(), format!("prov-key:{}", p.id));
         let button = self.button(btn_id, btn_label, Kind::Normal, cx, move |a, _, cx| {
-            a.pg.prov_sel = Some(bid.clone());
-            a.pg.open.remove("prov-form");
-            if signin {
-                a.pg.open.insert(key_open.clone());
+            let same = a.pg.prov_sel.as_deref() == Some(bid.as_str());
+            if same && !signin && a.pg.open.contains("prov-manage") {
+                a.pg.open.remove("prov-manage");
+            } else {
+                a.pg.prov_sel = Some(bid.clone());
+                a.pg.open.remove("prov-form");
+                a.pg.open.insert("prov-manage".into());
+                if signin {
+                    a.pg.open.insert(key_open.clone());
+                }
             }
             cx.notify();
         });
@@ -143,25 +149,22 @@ impl App {
             .id(SharedString::from(format!("pg-prov-row-{}", p.id)))
             .role(Role::Button)
             .aria_label(format!("{label}, {words}"))
+            .w_full()
             .flex()
             .items_center()
-            .gap_2()
-            .px_2()
-            .py_1p5()
+            .gap_3()
+            .px_3()
+            .py_2()
             .rounded(self.pal.inner)
-            .cursor_pointer()
+            .border_1()
+            .border_color(self.pal.border)
             .text_sm()
             .text_color(self.pal.text)
-            .bg(if selected { tint } else { hsla(0., 0., 0., 0.) })
+            .bg(if open { tint } else { hsla(0., 0., 0., 0.) })
             .hover(move |s| s.bg(hover_bg))
-            .on_click(cx.listener(move |a, _, _, cx| {
-                a.pg.prov_sel = Some(id.clone());
-                a.pg.open.remove("prov-form");
-                cx.notify();
-            }))
-            .child(div().text_color(color).child(light.glyph()))
-            .child(div().flex_1().min_w_0().overflow_hidden().child(div().child(label)).child(div().text_xs().text_color(muted).overflow_hidden().child(endpoint)))
-            .child(button)
+            .child(div().flex_shrink_0().text_color(color).child(light.glyph()))
+            .child(div().flex_1().min_w_0().child(div().child(label)).child(div().text_xs().text_color(muted).child(endpoint)))
+            .child(div().flex_shrink_0().child(button))
             .into_any_element()
     }
 

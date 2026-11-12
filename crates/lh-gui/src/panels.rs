@@ -960,6 +960,10 @@ impl App {
                 return col.child(body).into_any_element();
             }
         }
+        // Models and keys: the providers come first, then the slider and the cards below
+        if !searching && page == Category::Models && self.connected {
+            col = col.child(self.pg_providers(window, cx));
+        }
         // Models and keys, Learning and Departments draw their own editors; the cards they replace are left out
         if !searching && self.connected {
             if let Some(extra) = self.extra_page(page, window, cx) {
@@ -978,9 +982,6 @@ impl App {
         }
         if !searching && page == Category::Web {
             col = col.child(self.pg_devices(window, cx));
-        }
-        if !searching && page == Category::Models && self.connected {
-            col = col.child(self.pg_providers(window, cx));
         }
         if searching && !show_appearance && shown.is_empty() {
             col = col.child(self.note("No setting matches. Try fewer or different words."));
