@@ -52,6 +52,7 @@ fn hit_json(h: &FitHit) -> Value {
         "best_quant": h.best_quant,
         "best_bytes": h.best_bytes,
         "best_files": h.best_files,
+        "other_quants": h.other_quants.iter().map(|(q, b, f)| json!({ "quant": q, "bytes": b, "fit": f.label() })).collect::<Vec<_>>(),
     })
 }
 

@@ -448,6 +448,20 @@ pub struct FitHit {
     pub best_bytes: u64,
     /// Repo paths of the files in the best quant (all shards), for download.
     pub best_files: Vec<String>,
+    /// Every other quant of the repo: (quant, bytes, fit), biggest first.
+    pub other_quants: Vec<(String, u64, Fit)>,
+}
+
+/// Pick the quant to show: Q4_K_M if it fits, else the largest K-quant that fits, else the best fit overall.
+fn pick_quant(groups: &[QuantGroup], free_ram: u64, free_vram: u64) -> Option<usize> {
+    let fits = |g: &QuantGroup| fit_for(g.total_bytes, free_ram, free_vram) == Fit::Fits;
+    if let Some(i) = groups.iter().position(|g| g.quant == "Q4_K_M" && fits(g)) {
+        return Some(i);
+    }
+    if let Some(i) = groups.iter().position(|g| g.quant.starts_with('Q') && g.quant.contains("_K") && fits(g)) {
+        return Some(i);
+    }
+    groups.iter().enumerate().max_by_key(|(_, g)| (fits(g), g.total_bytes)).map(|(i, _)| i)
 }
 
 /// Search hits grouped by fit. Order inside a group keeps the Hub order.
@@ -463,34 +477,26 @@ pub struct FitGroups {
 ///
 /// Uses only the source and the two memory figures, so tests can pass a [`FakeCatalog`].
 pub fn group_hits_by_fit(source: &dyn CatalogSource, query: &str, free_ram: u64, free_vram: u64) -> Result<FitGroups, CatalogError> {
-    fn rank(f: Fit) -> u8 {
-        match f {
-            Fit::Fits => 0,
-            Fit::Tight => 1,
-            Fit::TooBig => 2,
-            Fit::Unknown => 3,
-        }
-    }
     let mut out = FitGroups::default();
     for hit in source.search(query, true)? {
         let files = source.files(&hit.repo)?;
         // groups come biggest first; prefer the best fit, then the bigger quant
-        let mut best: Option<(Fit, String, u64, Vec<String>)> = None;
-        for g in group_by_quant(&files) {
-            let f = fit_for(g.total_bytes, free_ram, free_vram);
-            let better = match &best {
-                None => true,
-                Some((bf, _, bb, _)) => rank(f) < rank(*bf) || (rank(f) == rank(*bf) && g.total_bytes > *bb),
-            };
-            if better {
-                best = Some((f, g.quant.clone(), g.total_bytes, g.files.iter().map(|x| x.path.clone()).collect()));
+        let groups = group_by_quant(&files);
+        let chosen = pick_quant(&groups, free_ram, free_vram);
+        let mut other_quants = Vec::new();
+        let (fit, best_quant, best_bytes, best_files) = match chosen {
+            Some(i) => {
+                for (j, g) in groups.iter().enumerate() {
+                    if j != i {
+                        other_quants.push((g.quant.clone(), g.total_bytes, fit_for(g.total_bytes, free_ram, free_vram)));
+                    }
+                }
+                let g = &groups[i];
+                (fit_for(g.total_bytes, free_ram, free_vram), Some(g.quant.clone()), g.total_bytes, g.files.iter().map(|x| x.path.clone()).collect())
             }
-        }
-        let (fit, best_quant, best_bytes, best_files) = match best {
-            Some((f, q, b, paths)) => (f, Some(q), b, paths),
             None => (Fit::Unknown, None, 0, Vec::new()),
         };
-        let item = FitHit { repo: hit.repo, name: hit.name, downloads: hit.downloads, fit, best_quant, best_bytes, best_files };
+        let item = FitHit { repo: hit.repo, name: hit.name, downloads: hit.downloads, fit, best_quant, best_bytes, best_files, other_quants };
         match fit {
             Fit::Fits => out.fits.push(item),
             Fit::Tight => out.tight.push(item),
@@ -716,6 +722,26 @@ mod tests {
         let only = group_hits_by_fit(&cat, "huge", 4 * GB, 0).unwrap();
         assert_eq!(only.too_big.len(), 1);
         assert!(only.fits.is_empty());
+    }
+
+    #[test]
+    fn shown_quant_prefers_q4_k_m_then_largest_k_quant_that_fits() {
+        const GB: u64 = 1024 * 1024 * 1024;
+        let hit = |repo: &str| RepoHit { repo: repo.into(), name: repo.into(), downloads: 1, has_gguf: true };
+        let cat = FakeCatalog {
+            repos: vec![
+                // Q4_K_M present and fits: shown even though Q8_0 is bigger and also fits
+                (hit("a/q4"), vec![CatalogFile::new("m-Q8_0.gguf", 3 * GB), CatalogFile::new("m-Q4_K_M.gguf", 2 * GB), CatalogFile::new("m-Q5_K_M.gguf", 2 * GB + GB / 2)]),
+                // no Q4_K_M: largest K-quant that fits (Q5_K_M over Q3_K_S), Q8_0 is not a K-quant
+                (hit("a/nok4"), vec![CatalogFile::new("n-Q3_K_S.gguf", GB), CatalogFile::new("n-Q5_K_M.gguf", 3 * GB), CatalogFile::new("n-Q8_0.gguf", 3 * GB + GB / 2)]),
+            ],
+        };
+        let g = group_hits_by_fit(&cat, "", 4 * GB, 0).unwrap();
+        let q4 = g.fits.iter().find(|h| h.repo == "a/q4").unwrap();
+        assert_eq!(q4.best_quant.as_deref(), Some("Q4_K_M"));
+        assert_eq!(q4.other_quants.len(), 2);
+        let nok4 = g.fits.iter().find(|h| h.repo == "a/nok4").unwrap();
+        assert_eq!(nok4.best_quant.as_deref(), Some("Q5_K_M"));
     }
 
     #[test]

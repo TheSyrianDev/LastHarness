@@ -19,6 +19,8 @@ pub struct SearchRow {
     pub quant: String,
     pub size: String,
     pub downloads: u64,
+    /// Other quants of the repo as (label, size) text, biggest first.
+    pub others: Vec<(String, String)>,
 }
 
 /// One installed model row.
@@ -72,6 +74,7 @@ pub fn groups(v: &Value) -> Vec<(&'static str, Vec<SearchRow>)> {
                             quant: h["best_quant"].as_str().unwrap_or("no GGUF quant found").to_string(),
                             size: gb(h["best_bytes"].as_u64().unwrap_or(0)),
                             downloads: h["downloads"].as_u64().unwrap_or(0),
+                            others: h["other_quants"].as_array().map(|o| o.iter().map(|x| (format!("{} · {}", x["quant"].as_str().unwrap_or(""), x["fit"].as_str().unwrap_or("")), gb(x["bytes"].as_u64().unwrap_or(0)))).collect()).unwrap_or_default(),
                         })
                         .collect()
                 })
@@ -151,8 +154,24 @@ impl App {
                             a.pg_fetch("models-downloads", "/v1/models/downloads");
                             cx.notify();
                         });
-                        let row = div().flex().items_center().gap_2().child(div().flex_1().flex_col().child(div().text_sm().text_color(self.pal.text).child(r.repo)).child(self.pg_muted(meta)));
-                        col = col.child(div().flex().pl_2().child(row).child(if r.files.is_empty() { div().into_any_element() } else { dl }));
+                        let disc_name = format!("other-{}", r.repo);
+                        let expanded = self.pg.open.contains(&disc_name);
+                        let mut left = div().flex().flex_col().flex_1().child(div().text_sm().text_color(self.pal.text).child(r.repo)).child(self.pg_muted(meta));
+                        if !r.others.is_empty() {
+                            let label = if expanded { "Hide other sizes".to_string() } else { format!("Other sizes ({})", r.others.len()) };
+                            let toggle = self.button(format!("disc-{}", disc_name), label, Kind::Ghost, cx, move |a, _, cx| {
+                                a.pg_toggle(&disc_name);
+                                cx.notify();
+                            });
+                            left = left.child(div().child(toggle));
+                            if expanded {
+                                for (q, sz) in r.others {
+                                    left = left.child(self.pg_muted(format!("{q} · {sz}")));
+                                }
+                            }
+                        }
+                        let row = div().flex().items_start().gap_3().child(left).child(div().flex_none().child(if r.files.is_empty() { div().into_any_element() } else { dl }));
+                        col = col.child(div().flex().pl_2().child(row));
                     }
                 }
             }
