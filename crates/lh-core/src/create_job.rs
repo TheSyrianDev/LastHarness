@@ -78,18 +78,18 @@ pub fn parse_history(history: &Value, prompt_id: &str, output_node: &str) -> Res
 
 /// Seed for a new request: never a repeat, so ComfyUI's cache is not hit.
 pub fn fresh_seed(nanos: u128) -> u64 {
-    // a 31-bit seed: the 64-bit seeds of earlier runs gave colour noise on Wan (reference uses seed 1)
+    // 0..=2^31-1 for every job (image and video): the 64-bit seeds of earlier runs gave colour noise on Wan
     let x = (nanos as u64) ^ 0x9E37_79B9_7F4A_7C15;
-    (x % 0x7FFF_FFFE) + 1
+    x % 0x8000_0000
 }
 
 #[cfg(test)]
 mod seed_tests {
     #[test]
-    fn fresh_seed_is_small_and_never_zero() {
-        for n in [0u128, 1, u64::MAX as u128, 9714302917628910720u128] {
+    fn fresh_seed_stays_in_31_bits_for_every_input() {
+        for n in [0u128, 1, u64::MAX as u128, 9714302917628910720u128, u128::MAX] {
             let s = super::fresh_seed(n);
-            assert!((1..=0x7FFF_FFFE).contains(&s), "{s}");
+            assert!(s < 1 << 31, "{s}");
         }
     }
 }
