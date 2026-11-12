@@ -102,6 +102,8 @@ impl App {
                 self.pg_fetch("providers", "/v1/providers");
                 self.pg_fetch("prov-presets", "/v1/providers/presets");
                 self.pg_fetch("prov-proposals", "/v1/providers/proposals");
+                // the core asks each provider for its models (short timeout, no key sent here); the reply sets the dots
+                self.backend.send(Cmd::Call { tag: "pg:prov-tests".into(), method: "POST".into(), path: "/v1/providers/test-all".into(), body: None });
             }
             Category::Schedules => {
                 self.pg_fetch("schedules", "/v1/schedules");
@@ -159,6 +161,17 @@ impl App {
 
     pub fn on_pg_reply(&mut self, tag: &str, result: Result<Value, String>) {
         if let Some(key) = tag.strip_prefix("pg:") {
+            if key == "prov-tests" {
+                // each provider's dot: ok, or error; the list is read again so the model counts show
+                if let Ok(v) = &result {
+                    if let Some(map) = v["results"].as_object() {
+                        for (id, r) in map {
+                            self.pg.prov_test.insert(id.clone(), r["ok"] == true);
+                        }
+                    }
+                }
+                self.pg_fetch("providers", "/v1/providers");
+            }
             self.pg.data.insert(key.to_string(), result);
             return;
         }

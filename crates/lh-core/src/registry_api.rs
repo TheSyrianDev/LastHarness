@@ -19,6 +19,7 @@ pub fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
     Router::new()
         .route("/v1/providers", get(list::<M>).post(add::<M>))
         .route("/v1/providers/proposals", get(proposals::<M>))
+        .route("/v1/providers/test-all", post(test_all::<M>))
         .route("/v1/providers/proposals/{id}/approve", post(approve::<M>))
         .route("/v1/providers/proposals/{id}/reject", post(reject::<M>))
         .route("/v1/providers/{id}", delete(remove::<M>).patch(edit::<M>))
@@ -222,6 +223,36 @@ async fn refresh_models<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, 
     Ok(Json(json!({"ok": true, "message": format!("{} model{}.", models.len(), if models.len() == 1 { "" } else { "s" }), "models": models})))
 }
 
+/// Ask every saved provider for its models at once, each with a short timeout. A provider that answers keeps its
+/// model list (the app shows the count). Returns one result per id; no key is ever in the answer.
+pub async fn probe_all(r: &Registry, wait: std::time::Duration) -> Value {
+    let tries = r.list().into_iter().filter(|e| !e.id.starts_with("detected-")).map(|e| {
+        let client = r.client(&e.id);
+        async move {
+            let Some(c) = client else { return (e.id, json!({"ok": false, "count": 0, "message": "No such provider."}), None) };
+            match tokio::time::timeout(wait, c.models()).await {
+                Ok(Ok(m)) => (e.id, json!({"ok": true, "count": m.len(), "message": format!("{} model{}.", m.len(), if m.len() == 1 { "" } else { "s" })}), Some(m)),
+                Ok(Err(err)) => (e.id, json!({"ok": false, "count": e.models.len(), "message": err.explain()}), None),
+                Err(_) => (e.id, json!({"ok": false, "count": e.models.len(), "message": "The server did not answer in time."}), None),
+            }
+        }
+    });
+    let mut out = serde_json::Map::new();
+    for (id, res, models) in futures_util::future::join_all(tries).await {
+        if let Some(m) = models {
+            r.set_models(&id, m);
+        }
+        out.insert(id, res);
+    }
+    Value::Object(out)
+}
+
+async fn test_all<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>) -> Result<Json<Value>, ApiError> {
+    no_device(via)?;
+    let r = registry(&st);
+    Ok(Json(json!({"results": probe_all(&r, std::time::Duration::from_secs(3)).await})))
+}
+
 #[derive(Deserialize)]
 struct ToggleBody {
     model: String,
@@ -254,7 +285,10 @@ async fn default_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, v
 
 #[cfg(test)]
 mod tests {
-    use super::{refuse_detected, reachable_ports};
+    use super::{probe_all, refuse_detected, reachable_ports};
+    use crate::registry::{NewProvider, Registry};
+    use lh_secrets::MemoryStore;
+    use std::sync::Arc;
 
     #[test]
     fn detected_ids_refuse_changes_with_a_clear_error() {
@@ -276,5 +310,39 @@ mod tests {
         };
         assert_eq!(reachable_ports(&[up, down]).await, vec![up]);
         assert!(reachable_ports(&[]).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_all_counts_models_in_parallel_and_skips_nothing_silently() {
+        // one fake server answers /v1/models with two models; the other saved address has nothing on it
+        let fake = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let up = fake.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = fake.accept().await else { return };
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let _ = tokio::io::AsyncReadExt::read(&mut sock, &mut buf).await;
+                    let body = r#"{"data":[{"id":"m1"},{"id":"m2"}]}"#;
+                    let resp = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                    let _ = tokio::io::AsyncWriteExt::write_all(&mut sock, resp.as_bytes()).await;
+                });
+            }
+        });
+        let down = {
+            let t = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            t.local_addr().unwrap().port()
+        };
+        let r = Registry::open(None, None, Arc::new(MemoryStore::default()));
+        let up_e = r.add(&NewProvider { url: Some(format!("http://127.0.0.1:{up}/v1")), name: Some("Up".into()), ..Default::default() }, None).unwrap();
+        let down_e = r.add(&NewProvider { url: Some(format!("http://127.0.0.1:{down}/v1")), name: Some("Down".into()), ..Default::default() }, None).unwrap();
+        let out = probe_all(&r, std::time::Duration::from_secs(2)).await;
+        assert_eq!(out[&up_e.id]["ok"], true);
+        assert_eq!(out[&up_e.id]["count"], 2);
+        assert_eq!(out[&down_e.id]["ok"], false);
+        assert!(!out.to_string().contains("sk-"));
+        // the counts are kept, so the next list shows them
+        assert_eq!(r.get(&up_e.id).unwrap().models, vec!["m1".to_string(), "m2".to_string()]);
+        assert!(r.get(&down_e.id).unwrap().models.is_empty());
     }
 }

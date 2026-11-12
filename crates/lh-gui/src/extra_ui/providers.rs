@@ -38,7 +38,9 @@ impl App {
             a.pg.open.insert("prov-form".into());
             cx.notify();
         });
-        col = col.child(div().flex().flex_wrap().items_center().justify_between().gap_2().child(self.pg_title("Providers")).child(add_top));
+        // Refresh sits in the header, next to "+ Add provider"
+        let header_actions = div().flex().items_center().gap_2().child(self.pg_refresh(Category::Models, cx)).child(add_top);
+        col = col.child(div().flex().flex_wrap().items_center().justify_between().gap_2().child(self.pg_title("Providers")).child(header_actions));
         col = col.child(self.pg_muted("Model services this app can use. The default answers when a role does not name one. A key is typed here only, kept in the core, and never shown again."));
         if let Some(n) = self.pg_note_for("providers") {
             col = col.child(n);
@@ -74,7 +76,7 @@ impl App {
             col = col.child(self.registry_form(&presets, window, cx));
         }
         col = col.child(self.prov_default_row(&list, cx));
-        col.child(div().flex().child(self.pg_refresh(Category::Models, cx))).into_any_element()
+        col.into_any_element()
     }
 
     /// The default model line: its words and a Change button that opens a picker of tested providers' models.
