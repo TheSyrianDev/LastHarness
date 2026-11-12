@@ -216,12 +216,7 @@ pub const MAX_WAIT_SECS: u64 = 900;
 /// Steps of one job (image or video), in contract order: lock, unload llama-swap, RAM check, run, free, unlock.
 /// Returns the copied file paths. The lock file gets one line from us, removed only if still ours.
 pub fn run_image_job(lock: &std::path::Path, workflow: &Value, output_node: &str, ram_needed: u64, http: &ComfyHttp, out_dir: &std::path::Path, label: &str) -> Result<Vec<std::path::PathBuf>, String> {
-    let busy = std::fs::read_to_string(lock).map(|t| !t.trim().is_empty()).unwrap_or(false);
-    if busy {
-        return Err("the machine is busy (another session holds the lock)".into());
-    }
-    let my_line = format!("claude-agent lastharness (Create {label}) {}", std::process::id());
-    std::fs::write(lock, format!("{my_line}\n")).map_err(|e| format!("cannot take the lock: {e}"))?;
+    crate::machine_lock::take(lock, &format!("Create {label}"))?;
     let result = (|| {
         if !http.up() {
             return Err("ComfyUI is not running on 127.0.0.1:8188 (start the comfyui service)".to_string());
@@ -257,12 +252,9 @@ pub fn run_image_job(lock: &std::path::Path, workflow: &Value, output_node: &str
         }
         Ok(saved)
     })();
-    // always free VRAM after the job (contract step 5), then release only our line
+    // always free VRAM after the job (contract step 5), then release our lock
     let _ = http.free();
-    if let Ok(t) = std::fs::read_to_string(lock) {
-        let rest: String = t.lines().filter(|l| *l != my_line).map(|l| format!("{l}\n")).collect();
-        let _ = std::fs::write(lock, rest);
-    }
+    crate::machine_lock::release(lock);
     result
 }
 
@@ -275,10 +267,10 @@ mod job_tests {
         let dir = std::env::temp_dir().join(format!("lh-create-lock-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let lock = dir.join(".machine-busy");
-        std::fs::write(&lock, "lastengine-74 busy\n").unwrap();
+        std::fs::write(&lock, "lastengine-74 | busy | 2026-11-12\n").unwrap();
         let err = run_image_job(&lock, &json!({}), "10", 1, &ComfyHttp { base: "http://127.0.0.1:1".into() }, &dir, "t").unwrap_err();
         assert!(err.contains("busy"));
-        assert_eq!(std::fs::read_to_string(&lock).unwrap(), "lastengine-74 busy\n");
+        assert_eq!(std::fs::read_to_string(&lock).unwrap(), "lastengine-74 | busy | 2026-11-12\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -351,12 +343,12 @@ mod mock_comfy_tests {
         let out = dir.join("out");
         std::fs::create_dir_all(&out).unwrap();
         let lock = dir.join(".machine-busy");
-        std::fs::write(&lock, "").unwrap();
+        let _ = std::fs::remove_file(&lock);
         let http = ComfyHttp { base: serve("wan22_test.mp4") };
         let files = run_image_job(&lock, &json!({}), "12", 0, &http, &out, "test").unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(std::fs::read(&files[0]).unwrap(), b"FAKEVIDEO");
-        assert_eq!(std::fs::read_to_string(&lock).unwrap().trim(), "", "our lock line must be removed");
+        assert!(!lock.exists(), "our lock must be removed");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -93,18 +93,9 @@ pub trait Steps {
 /// Full flow. Refuses while the machine lock has content (another session). Writes the matrix and config
 /// only after taking the lock, keeps `.bak` copies, and restores them when validation fails.
 pub fn run(rig: &Path, lock: &Path, plan: &RunPlan, steps: &dyn Steps) -> Result<RunReport, String> {
-    let busy = std::fs::read_to_string(lock).map(|t| !t.trim().is_empty()).unwrap_or(false);
-    if busy {
-        return Err("the machine is busy (another session holds the lock); try again later".into());
-    }
-    let my_line = format!("claude-agent {} (Run {}) {}", "lastharness", plan.id, now_stamp());
-    std::fs::write(lock, format!("{my_line}\n")).map_err(|e| format!("cannot take the lock: {e}"))?;
+    crate::machine_lock::take(lock, &format!("Run {}", plan.id))?;
     let result = run_locked(rig, plan, steps);
-    // Release only our own line.
-    if let Ok(t) = std::fs::read_to_string(lock) {
-        let rest: String = t.lines().filter(|l| *l != my_line).map(|l| format!("{l}\n")).collect();
-        let _ = std::fs::write(lock, rest);
-    }
+    crate::machine_lock::release(lock);
     result
 }
 
@@ -228,7 +219,7 @@ mod tests {
         std::fs::write(base.join("router/config.yaml"), CONFIG).unwrap();
         std::fs::write(base.join("router/matrix.yaml"), MATRIX).unwrap();
         let lock = base.join("machine-busy");
-        std::fs::write(&lock, "").unwrap();
+        let _ = std::fs::remove_file(&lock);
         (base, lock)
     }
 
@@ -240,7 +231,7 @@ mod tests {
         assert_eq!(r.id, "Qwen3-1.7B-low");
         assert!(r.backup.exists());
         assert!(std::fs::read_to_string(rig.join("router/config.yaml")).unwrap().contains("Qwen3-1.7B-low"));
-        assert_eq!(std::fs::read_to_string(&lock).unwrap().trim(), "");
+        assert!(!lock.exists());
     }
 
     #[test]
