@@ -109,7 +109,7 @@ async fn installed() -> Json<Value> {
         Ok(list) => {
             let rows: Vec<Value> = list
                 .iter()
-                .map(|m| json!({ "id": m.id, "file": m.file, "size_bytes": m.size_bytes, "kind": m.kind, "ctx_max": m.ctx_max, "registered": router_config_has(&m.file) }))
+                .map(|m| json!({ "id": m.id, "file": m.file, "size_bytes": m.size_bytes, "kind": m.kind, "ctx_max": m.ctx_max, "registered": router_config_has(m.file.rsplit('/').next().unwrap_or("")) }))
                 .collect();
             Json(json!({ "models": rows, "message": shown }))
         }
