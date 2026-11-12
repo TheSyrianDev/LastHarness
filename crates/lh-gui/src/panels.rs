@@ -964,6 +964,7 @@ impl App {
         if !searching && page == Category::Models && self.connected {
             col = col.child(self.pg_providers(window, cx));
             col = col.child(self.pg_models_search(window, cx));
+            col = col.child(self.pg_create(window, cx));
         }
         // Models and keys, Learning and Departments draw their own editors; the cards they replace are left out
         if !searching && self.connected {

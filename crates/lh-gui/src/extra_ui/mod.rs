@@ -4,6 +4,7 @@
 
 mod activity;
 mod channels;
+mod create_panel;
 mod data;
 mod hooks;
 mod models_search;
@@ -105,6 +106,7 @@ impl App {
                 self.pg_fetch("prov-proposals", "/v1/providers/proposals");
                 self.pg_fetch("models-installed", "/v1/models/installed");
                 self.pg_fetch("models-downloads", "/v1/models/downloads");
+                self.pg_fetch("create-jobs", "/v1/create/jobs");
                 // the core asks each provider for its models (short timeout, no key sent here); the reply sets the dots
                 self.backend.send(Cmd::Call { tag: "pg:prov-tests".into(), method: "POST".into(), path: "/v1/providers/test-all".into(), body: None });
             }
