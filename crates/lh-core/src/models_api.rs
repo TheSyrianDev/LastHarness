@@ -24,6 +24,7 @@ pub fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/models/installed", get(installed))
         .route("/v1/models/download", post(start_download))
         .route("/v1/models/downloads", get(list_downloads))
+        .route("/v1/models/run", post(run_model))
 }
 
 #[derive(Deserialize)]
@@ -108,7 +109,7 @@ async fn installed() -> Json<Value> {
         Ok(list) => {
             let rows: Vec<Value> = list
                 .iter()
-                .map(|m| json!({ "id": m.id, "file": m.file, "size_bytes": m.size_bytes, "kind": m.kind, "ctx_max": m.ctx_max }))
+                .map(|m| json!({ "id": m.id, "file": m.file, "size_bytes": m.size_bytes, "kind": m.kind, "ctx_max": m.ctx_max, "registered": router_config_has(&m.file) }))
                 .collect();
             Json(json!({ "models": rows, "message": shown }))
         }
@@ -210,4 +211,43 @@ async fn start_download(Json(_b): Json<DownloadBody>) -> Result<Json<Value>, Api
 
 async fn list_downloads() -> Json<Value> {
     Json(json!({ "downloads": *jobs().lock().unwrap() }))
+}
+
+/// Router files live in the Rig folder (`~/AI/Rig/router`). Missing HOME means no router.
+fn rig_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("AI/Rig"))
+}
+
+fn router_config_has(file: &str) -> bool {
+    rig_dir()
+        .and_then(|r| std::fs::read_to_string(r.join("router/config.yaml")).ok())
+        .map(|c| crate::model_run::is_registered(&c, file))
+        .unwrap_or(false)
+}
+
+#[derive(Deserialize)]
+struct RunBody {
+    folder: String,
+    file: String,
+}
+
+/// Register a downloaded GGUF with llama-swap: the steps in `model_run::run` (lock, backup, matrix, config,
+/// validate, restart, list). Runs on a blocking thread because it restarts a service and waits.
+async fn run_model(Json(b): Json<RunBody>) -> Result<Json<Value>, ApiError> {
+    let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if !plain(&b.folder) || !plain(&b.file) || !b.file.ends_with(".gguf") {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "folder and file must be plain names, file a .gguf".into()));
+    }
+    let rig = rig_dir().ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, "no home folder is set".into()))?;
+    let lock = std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".machine-busy")).unwrap_or_default();
+    let ctx = 32768;
+    let id = crate::model_run::default_id(&b.file);
+    let plan = crate::model_run::RunPlan { id, folder: b.folder.clone(), file: b.file.clone(), ctx };
+    let res = tokio::task::spawn_blocking(move || crate::model_run::run(&rig, &lock, &plan, &crate::model_run::SystemSteps))
+        .await
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    match res {
+        Ok(rep) => Ok(Json(json!({ "id": rep.id, "backup": rep.backup.display().to_string(), "listed": true }))),
+        Err(e) => Err(ApiError(StatusCode::CONFLICT, e)),
+    }
 }

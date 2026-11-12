@@ -30,6 +30,10 @@ pub struct InstalledRow {
     pub file: String,
     pub size: String,
     pub kind: String,
+    /// True when llama-swap already serves this file (listed in the router config).
+    pub registered: bool,
+    /// Folder under `~/AI/Models` (the parent of the file), for the Run step.
+    pub folder: String,
 }
 
 /// Group headings, in the order the core ranks them (fits first).
@@ -95,6 +99,13 @@ pub fn installed(v: &Value) -> Vec<InstalledRow> {
                     file: m["file"].as_str().unwrap_or("").to_string(),
                     size: gb(m["size_bytes"].as_u64().unwrap_or(0)),
                     kind: m["kind"].as_str().unwrap_or("text").to_string(),
+                    registered: m["registered"].as_bool().unwrap_or(false),
+                    folder: {
+                        let f = m["file"].as_str().unwrap_or("");
+                        let mut parts = f.rsplit('/');
+                        parts.next();
+                        parts.next().unwrap_or("").to_string()
+                    },
                 })
                 .collect()
         })
@@ -208,7 +219,27 @@ impl App {
                 }
                 for m in installed(&v) {
                     let meta = format!("{} · {} · {}", m.kind, if m.size.is_empty() { "size unknown".into() } else { m.size.clone() }, m.file);
-                    col = col.child(div().flex().flex_col().pl_2().child(div().text_sm().text_color(self.pal.text).child(m.id)).child(self.pg_muted(meta)));
+                    let file_name = m.file.rsplit('/').next().unwrap_or("").to_string();
+                    let text = div().flex_1().flex_col().child(div().text_sm().text_color(self.pal.text).child(m.id.clone())).child(self.pg_muted(meta));
+                    let action = if m.registered {
+                        let id = m.id.clone();
+                        self.button(format!("use-{}", m.id), "Use in chat", Kind::Ghost, cx, move |a, _, cx| {
+                            let body = serde_json::json!({ "model": id });
+                            a.backend.send(Cmd::Call { tag: "pg-act:models:use".into(), method: "POST".into(), path: "/v1/providers/main/default-model".into(), body: Some(body) });
+                            cx.notify();
+                        })
+                    } else if m.folder.is_empty() {
+                        div().into_any_element()
+                    } else {
+                        let (folder, file) = (m.folder.clone(), file_name);
+                        self.button(format!("run-{}", m.id), "Run", Kind::Ghost, cx, move |a, _, cx| {
+                            let body = serde_json::json!({ "folder": folder, "file": file });
+                            a.backend.send(Cmd::Call { tag: "pg-act:models:run".into(), method: "POST".into(), path: "/v1/models/run".into(), body: Some(body) });
+                            a.pg_fetch("models-installed", "/v1/models/installed");
+                            cx.notify();
+                        })
+                    };
+                    col = col.child(div().flex().w_full().items_center().gap_3().pl_2().child(text).child(action));
                 }
             }
         }
