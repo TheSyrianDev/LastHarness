@@ -58,8 +58,39 @@ fn shown(r: &Registry) -> Value {
     json!({"default": d, "providers": r.list().iter().map(|e| e.public(e.id == d)).collect::<Vec<_>>()})
 }
 
+/// Local model servers listed when they answer on loopback: (port, name). They are not saved; add one to keep it.
+pub const LOCAL_ENDPOINTS: [(u16, &str); 2] = [(9292, "llama-swap"), (8398, "LastEngine")];
+
+/// The ports among `ports` on 127.0.0.1 that accept a connection within 300 ms.
+pub async fn reachable_ports(ports: &[u16]) -> Vec<u16> {
+    let mut found = Vec::new();
+    for &port in ports {
+        let up = tokio::time::timeout(std::time::Duration::from_millis(300), tokio::net::TcpStream::connect(("127.0.0.1", port))).await;
+        if matches!(up, Ok(Ok(_))) {
+            found.push(port);
+        }
+    }
+    found
+}
+
 async fn list<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<Value> {
-    Json(shown(&registry(&st)))
+    let r = registry(&st);
+    let mut v = shown(&r);
+    let known: Vec<String> = r.list().iter().map(|e| e.url.clone()).collect();
+    let ports: Vec<u16> = LOCAL_ENDPOINTS.iter().map(|e| e.0).collect();
+    for port in reachable_ports(&ports).await {
+        let url = format!("http://127.0.0.1:{port}/v1");
+        // a saved provider already at this port is listed once, as saved
+        if known.iter().any(|u| u.contains(&format!(":{port}"))) {
+            continue;
+        }
+        let name = LOCAL_ENDPOINTS.iter().find(|e| e.0 == port).map(|e| e.1).unwrap_or("local");
+        let row = json!({"id": format!("detected-{port}"), "name": name, "preset": null, "url": url, "api": "openai", "trust": "local", "local": true, "detected": true, "key_saved": false, "default": false, "models": [], "enabled": true, "disabled_models": [], "default_model": null});
+        if let Some(list) = v["providers"].as_array_mut() {
+            list.push(row);
+        }
+    }
+    Json(v)
 }
 
 #[derive(Deserialize)]
@@ -206,4 +237,22 @@ async fn default_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, v
     let e = r.set_default_model(&id, b.model.as_deref()).map_err(bad)?;
     let _ = st.settings.store.log("provider_default_model", "providers", "user", &json!({"id": id, "model": b.model}));
     Ok(Json(json!({"provider": e.public(r.default_id() == e.id)})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reachable_ports;
+
+    #[tokio::test]
+    async fn loopback_port_is_detected_only_when_something_listens() {
+        // a fake server on a free loopback port answers; a port with nothing on it does not
+        let fake = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let up = fake.local_addr().unwrap().port();
+        let down = {
+            let t = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            t.local_addr().unwrap().port()
+        };
+        assert_eq!(reachable_ports(&[up, down]).await, vec![up]);
+        assert!(reachable_ports(&[]).await.is_empty());
+    }
 }

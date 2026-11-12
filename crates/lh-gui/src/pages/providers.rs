@@ -261,6 +261,32 @@ pub fn default_words(list: &[Provider]) -> Option<String> {
     Some(format!("{} ({name})", p.default_model.as_deref().unwrap_or("")))
 }
 
+/// The key box as sent: a `$NAME` (or a bare environment name, which this box accepts) is read from the
+/// environment now, at test or save time. Any other text is the key itself. An error names the variable only,
+/// never its value, and the value is not kept anywhere in the app.
+pub fn resolve_key(typed: &str, env: impl Fn(&str) -> Option<String>) -> Result<String, String> {
+    let t = typed.trim();
+    let is_env_name = |n: &str| n.len() >= 2 && n.starts_with(|c: char| c.is_ascii_uppercase() || c == '_') && n.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+    let name = match t.strip_prefix('$') {
+        Some(rest) if is_env_name(rest) => rest,
+        Some(_) => return Err("Type the variable name after the $, for example $OPENAI_API_KEY.".into()),
+        None if is_env_name(t) => t,
+        None => return Ok(t.to_string()),
+    };
+    match env(name) {
+        Some(v) if !v.trim().is_empty() => Ok(v.trim().to_string()),
+        _ => Err(format!("{name} is not set in the environment. Set it, or type the key itself.")),
+    }
+}
+
+/// The model count under a provider's name, short: "3 models" or "1 model".
+pub fn short_models(p: &Provider) -> String {
+    match p.models.len() {
+        1 => "1 model".to_string(),
+        n => format!("{n} models"),
+    }
+}
+
 /// The approve body: the key only when one was typed.
 pub fn approve_body(key: &str) -> Value {
     let k = key.trim();
@@ -335,6 +361,33 @@ mod tests {
         assert_eq!(p[1].default_model.as_deref(), Some("a"));
         assert_eq!(light(&p[1], Some(true)), (Light::Off, "Off"));
         assert_eq!(light(&prov(true, &[], None), Some(true)).0, Light::Ready);
+    }
+
+    #[test]
+    fn key_box_resolves_env_names_and_never_echoes() {
+        let env = |n: &str| match n {
+            "OPENAI_API_KEY" => Some("sk-secret-123".to_string()),
+            "EMPTY_ONE" => Some("  ".to_string()),
+            _ => None,
+        };
+        // a literal key passes through unchanged
+        assert_eq!(resolve_key(" sk-typed-1 ", env).unwrap(), "sk-typed-1");
+        assert_eq!(resolve_key("", env).unwrap(), "");
+        // $NAME and a bare env name both read the environment
+        assert_eq!(resolve_key("$OPENAI_API_KEY", env).unwrap(), "sk-secret-123");
+        assert_eq!(resolve_key(" OPENAI_API_KEY ", env).unwrap(), "sk-secret-123");
+        // unset or blank variables are an error that names the variable, not a value
+        let e = resolve_key("$MISSING_KEY", env).unwrap_err();
+        assert!(e.contains("MISSING_KEY") && !e.contains("sk-"));
+        assert!(resolve_key("EMPTY_ONE", env).is_err());
+        assert!(resolve_key("$lower", env).is_err());
+        assert_eq!(resolve_key("sk-x", |_| panic!("not an env name")).unwrap(), "sk-x");
+    }
+
+    #[test]
+    fn short_model_count() {
+        let l = providers(&json!({"providers": [{"id": "a", "models": ["x"]}, {"id": "b", "models": ["x", "y", "z"]}, {"id": "c"}]}));
+        assert_eq!((short_models(&l[0]).as_str(), short_models(&l[1]).as_str(), short_models(&l[2]).as_str()), ("1 model", "3 models", "0 models"));
     }
 
     #[test]

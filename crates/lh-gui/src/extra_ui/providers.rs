@@ -125,6 +125,20 @@ impl App {
         let label = if p.name.is_empty() { p.id.clone() } else { p.name.clone() };
         let hover_bg = self.pal.button;
         let tint = self.pal.accent.opacity(0.1);
+        // no key yet for a remote service: the button opens the key step; otherwise it selects the provider
+        let signin = !p.local && !p.key_saved;
+        let (btn_label, btn_id) = if signin { ("Sign in", format!("pg-prov-signin-{}", p.id)) } else { ("Manage", format!("pg-prov-manage-{}", p.id)) };
+        let (bid, key_open) = (id.clone(), format!("prov-key:{}", p.id));
+        let button = self.button(btn_id, btn_label, Kind::Normal, cx, move |a, _, cx| {
+            a.pg.prov_sel = Some(bid.clone());
+            a.pg.open.remove("prov-form");
+            if signin {
+                a.pg.open.insert(key_open.clone());
+            }
+            cx.notify();
+        });
+        let muted = self.pal.muted;
+        let endpoint = format!("{}  ·  {}", p.url, m::short_models(p));
         div()
             .id(SharedString::from(format!("pg-prov-row-{}", p.id)))
             .role(Role::Button)
@@ -146,7 +160,8 @@ impl App {
                 cx.notify();
             }))
             .child(div().text_color(color).child(light.glyph()))
-            .child(div().flex_1().min_w_0().overflow_hidden().child(label))
+            .child(div().flex_1().min_w_0().overflow_hidden().child(div().child(label)).child(div().text_xs().text_color(muted).overflow_hidden().child(endpoint)))
+            .child(button)
             .into_any_element()
     }
 
@@ -299,6 +314,14 @@ impl App {
         let save = self.button(format!("pg-prov-save-{id}"), "Save", Kind::Primary, cx, move |a, _, cx| {
             let (name, url) = (a.pg_text(&format!("prov.edit.name.{save_id}"), cx), a.pg_text(&format!("prov.edit.url.{save_id}"), cx));
             let key = if a.pg.open.contains(&format!("prov-key:{save_id}")) { a.pg_text(&format!("prov.edit.key.{save_id}"), cx) } else { String::new() };
+            let key = match m::resolve_key(&key, |n| std::env::var(n).ok()) {
+                Ok(k) => k,
+                Err(e) => {
+                    a.pg_note_set("providers", true, e);
+                    cx.notify();
+                    return;
+                }
+            };
             let api = a.pg.prov_api.get(&save_id).cloned().unwrap_or_default();
             match m::edit_body(&name, &url, &key, &api) {
                 Ok(body) => {
@@ -431,7 +454,14 @@ impl App {
                         Some(p) => p.url.clone(),
                         None => a.pg_text("prov.url", cx),
                     };
-                    let key = a.pg_text("prov.key", cx);
+                    let key = match m::resolve_key(&a.pg_text("prov.key", cx), |n| std::env::var(n).ok()) {
+                        Ok(k) => k,
+                        Err(e) => {
+                            a.pg_note_set("providers", true, e);
+                            cx.notify();
+                            return;
+                        }
+                    };
                     a.pg_act("providers", "prov-test:form", "POST", "/v1/provider/test", Some(m::test_body(&url, &key, None)), cx);
                 });
                 rows.push(test);
@@ -480,7 +510,15 @@ impl App {
                     let presets = a.prov_presets();
                     let chosen = a.pg.prov_preset.clone();
                     let key_method = a.pg.prov_method == "key";
-                    let (url, name, key) = (a.pg_text("prov.url", cx), a.pg_text("prov.name", cx), a.pg_text("prov.key", cx));
+                    let (url, name) = (a.pg_text("prov.url", cx), a.pg_text("prov.name", cx));
+                    let key = match m::resolve_key(&a.pg_text("prov.key", cx), |n| std::env::var(n).ok()) {
+                        Ok(k) => k,
+                        Err(e) => {
+                            a.pg_note_set("providers", true, e);
+                            cx.notify();
+                            return;
+                        }
+                    };
                     let preset = (key_method && !chosen.is_empty()).then_some(chosen.as_str());
                     match m::add_body(preset, &url, &name, &key, &presets) {
                         Ok(body) => {
