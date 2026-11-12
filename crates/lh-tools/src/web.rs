@@ -132,9 +132,30 @@ pub async fn fetch(cfg: &WebConfig, url: &str) -> Result<String, ToolError> {
     Err(fail("too many redirects"))
 }
 
+/// The SearXNG address tried when none is configured.
+pub const LOCAL_SEARXNG: &str = "http://127.0.0.1:8888";
+
+/// Returns `LOCAL_SEARXNG` when something accepts a connection there within 300 ms, else `None`.
+pub async fn detect_local_searxng() -> Option<String> {
+    detect_at("127.0.0.1:8888").await
+}
+
+/// Same check for any `host:port`; the answer is the base URL when the port accepts a connection.
+pub async fn detect_at(addr: &str) -> Option<String> {
+    let addr: SocketAddr = addr.parse().ok()?;
+    let base = format!("http://{addr}");
+    tokio::task::spawn_blocking(move || std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(300)).ok().map(|_| base))
+        .await
+        .ok()
+        .flatten()
+}
+
 pub async fn search(cfg: &WebConfig, query: &str, max: usize) -> Result<String, ToolError> {
     outbound_ok(query, true)?;
-    let base = cfg.searxng_url.as_deref().ok_or_else(|| fail("web search is not set up. Set a SearXNG address in the settings."))?;
+    let base = match cfg.searxng_url.clone() {
+        Some(b) => b,
+        None => detect_local_searxng().await.ok_or_else(|| fail(format!("web search needs SearXNG. Nothing answers at {LOCAL_SEARXNG}. Start SearXNG there or set a SearXNG address in the settings.")))?,
+    };
     let mut url = reqwest::Url::parse(&format!("{}/search", base.trim_end_matches('/'))).map_err(|e| fail(format!("the SearXNG address is not valid: {e}")))?;
     url.query_pairs_mut().append_pair("q", query).append_pair("format", "json");
     let v: Value = reqwest::Client::builder()
@@ -309,6 +330,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn searxng_is_found_only_when_its_port_answers() {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let open = l.local_addr().unwrap().to_string();
+        assert!(detect_at(&open).await.is_some());
+        let closed = {
+            let t = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            t.local_addr().unwrap().to_string()
+        };
+        assert!(detect_at(&closed).await.is_none());
+        assert!(LOCAL_SEARXNG.ends_with(":8888"));
+    }
+
+    #[tokio::test]
     async fn search_uses_searxng_and_explains_problems() {
         let body = r#"{"results":[{"title":"Rust","url":"https://rust-lang.org","content":"A language."},{"title":"Two","url":"https://two.example","content":""}]}"#;
         let url = serve(vec![http("200 OK", "application/json", body)]).await;
@@ -316,7 +350,6 @@ mod tests {
         let r = search(&cfg, "rust", 5).await.unwrap();
         assert!(r.starts_with("1. Rust\n   https://rust-lang.org\n   A language.\n2. Two"), "{r}");
         assert_eq!(search(&cfg, "x", 1).await.unwrap().lines().count(), 3);
-        assert!(search(&WebConfig::default(), "x", 1).await.unwrap_err().to_string().contains("not set up"));
         let html = serve(vec![http("200 OK", "text/html", "<html>no json</html>")]).await;
         assert!(search(&WebConfig { searxng_url: Some(html), ..Default::default() }, "x", 1).await.unwrap_err().to_string().contains("JSON"));
         let empty = serve(vec![http("200 OK", "application/json", r#"{"results":[]}"#)]).await;
