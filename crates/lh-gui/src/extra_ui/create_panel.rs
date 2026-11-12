@@ -29,6 +29,11 @@ pub fn state_label(state: &str) -> &'static str {
     }
 }
 
+/// The still image for each job row, in the same order as `job_rows` (empty when a job has none).
+pub fn job_posters(v: &Value) -> Vec<String> {
+    v["jobs"].as_array().map(|a| a.iter().rev().map(|j| j["poster"].as_str().unwrap_or("").to_string()).collect()).unwrap_or_default()
+}
+
 /// Rows for the jobs list: (prompt, state label, detail). Detail is the first file or the error text.
 pub fn job_rows(v: &Value) -> Vec<(String, &'static str, String)> {
     v["jobs"]
@@ -92,10 +97,15 @@ impl App {
             None => col = col.child(self.pg_note_line("No jobs yet.")),
             Some(Err(e)) => col = col.child(self.pg_error_line("The jobs", &e)),
             Some(Ok(v)) => {
-                for (prompt, state, detail) in job_rows(&v) {
+                let posters = job_posters(&v);
+                for (i, (prompt, state, detail)) in job_rows(&v).into_iter().enumerate() {
                     let mut row = div().flex().flex_col().pl_2().child(div().text_sm().text_color(pal.text).child(prompt)).child(self.pg_muted(state));
                     if !detail.is_empty() {
                         row = row.child(self.pg_muted(detail));
+                    }
+                    if let Some(p) = posters.get(i).filter(|p| !p.is_empty()) {
+                        // the result shown inline: the image, or the first frame of the video
+                        row = row.child(img(std::path::PathBuf::from(p)).w(px(320.)).h(px(180.)).object_fit(ObjectFit::Contain));
                     }
                     col = col.child(row);
                 }
@@ -107,7 +117,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::{job_request, job_rows, state_label};
+    use super::{job_posters, job_request, job_rows, state_label};
     use serde_json::{json, Value};
 
     #[test]
@@ -125,6 +135,15 @@ mod tests {
         assert_eq!(state_label("done"), "Done");
         assert!(state_label("running").starts_with("Generating"));
         assert_eq!(state_label("weird"), "Unknown");
+    }
+
+    #[test]
+    fn posters_follow_the_row_order() {
+        let v = json!({ "jobs": [
+            { "prompt": "old", "state": "failed", "message": "x", "files": [], "poster": null },
+            { "prompt": "new", "state": "done", "message": "", "files": ["/a.mp4"], "poster": "/a.poster.png" }
+        ]});
+        assert_eq!(job_posters(&v), vec!["/a.poster.png".to_string(), String::new()]);
     }
 
     #[test]
