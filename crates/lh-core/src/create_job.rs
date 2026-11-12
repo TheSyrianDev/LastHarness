@@ -197,9 +197,12 @@ pub fn mem_available() -> Option<u64> {
     Some(kb * 1024)
 }
 
-/// Steps of one image job, in contract order: lock, unload llama-swap, RAM check, run, free, unlock.
+/// Longest a job may run before we give up and free VRAM (a 17-frame Wan video takes about 3 minutes).
+pub const MAX_WAIT_SECS: u64 = 900;
+
+/// Steps of one job (image or video), in contract order: lock, unload llama-swap, RAM check, run, free, unlock.
 /// Returns the copied file paths. The lock file gets one line from us, removed only if still ours.
-pub fn run_image_job(lock: &std::path::Path, workflow: &Value, ram_needed: u64, http: &ComfyHttp, out_dir: &std::path::Path, label: &str) -> Result<Vec<std::path::PathBuf>, String> {
+pub fn run_image_job(lock: &std::path::Path, workflow: &Value, output_node: &str, ram_needed: u64, http: &ComfyHttp, out_dir: &std::path::Path, label: &str) -> Result<Vec<std::path::PathBuf>, String> {
     let busy = std::fs::read_to_string(lock).map(|t| !t.trim().is_empty()).unwrap_or(false);
     if busy {
         return Err("the machine is busy (another session holds the lock)".into());
@@ -217,9 +220,13 @@ pub fn run_image_job(lock: &std::path::Path, workflow: &Value, ram_needed: u64, 
             _ => {}
         }
         let id = http.submit(workflow, "lastharness-create")?;
+        let started = std::time::Instant::now();
         let outputs = loop {
             std::thread::sleep(std::time::Duration::from_secs(2));
-            match parse_history(&http.history(&id)?, &id, "10")? {
+            if started.elapsed() > std::time::Duration::from_secs(MAX_WAIT_SECS) {
+                return Err(format!("ComfyUI did not finish within {MAX_WAIT_SECS} s"));
+            }
+            match parse_history(&http.history(&id)?, &id, output_node)? {
                 Done::Pending => continue,
                 Done::Failed { message } => return Err(format!("ComfyUI failed: {message}")),
                 Done::Success { outputs } => break outputs,
@@ -256,7 +263,7 @@ mod job_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let lock = dir.join(".machine-busy");
         std::fs::write(&lock, "lastengine-74 busy\n").unwrap();
-        let err = run_image_job(&lock, &json!({}), 1, &ComfyHttp { base: "http://127.0.0.1:1".into() }, &dir, "t").unwrap_err();
+        let err = run_image_job(&lock, &json!({}), "10", 1, &ComfyHttp { base: "http://127.0.0.1:1".into() }, &dir, "t").unwrap_err();
         assert!(err.contains("busy"));
         assert_eq!(std::fs::read_to_string(&lock).unwrap(), "lastengine-74 busy\n");
         let _ = std::fs::remove_dir_all(&dir);

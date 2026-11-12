@@ -44,42 +44,60 @@ fn default_steps() -> u32 {
     8
 }
 
-/// Z-Image needs about 6.7 GB free RAM (contract, Memory section).
+/// Z-Image needs about 6.7 GB free RAM, Wan about 8.5 GB (contract, Memory section).
 const ZIMAGE_RAM: u64 = 6_700_000_000;
+const WAN_RAM: u64 = 8_500_000_000;
 
-pub fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
-    Router::new().route("/v1/create/image", post(start_image)).route("/v1/create/jobs", get(list_jobs))
+#[derive(Deserialize)]
+pub struct VideoBody {
+    pub prompt: String,
+    #[serde(default = "default_frames")]
+    pub frames: u32,
+    #[serde(default = "default_steps_video")]
+    pub steps: u32,
 }
 
-async fn start_image(Json(b): Json<ImageBody>) -> Result<Json<Value>, ApiError> {
-    let prompt = b.prompt.trim().to_string();
-    if prompt.is_empty() || prompt.len() > 2000 {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "write a prompt of 1 to 2000 characters".into()));
-    }
-    if !(256..=1536).contains(&b.width) || !(256..=1536).contains(&b.height) || b.width % 8 != 0 || b.height % 8 != 0 {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "width and height are 256 to 1536 in steps of 8".into()));
-    }
-    if !(1..=30).contains(&b.steps) {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "steps are 1 to 30".into()));
-    }
+fn default_frames() -> u32 {
+    17
+}
+fn default_steps_video() -> u32 {
+    20
+}
+
+pub fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
+    Router::new()
+        .route("/v1/create/image", post(start_image))
+        .route("/v1/create/video", post(start_video))
+        .route("/v1/create/jobs", get(list_jobs))
+}
+
+fn workflow_template(file: &str) -> Result<Value, ApiError> {
     let home = std::env::var_os("HOME").ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, "no home folder is set".into()))?;
-    let rig = std::path::PathBuf::from(&home).join("AI/Rig/comfyui/workflows/z-image-turbo-gguf.json");
-    let template: Value = std::fs::read_to_string(&rig)
+    let path = std::path::PathBuf::from(home).join("AI/Rig/comfyui/workflows").join(file);
+    std::fs::read_to_string(&path)
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
-        .ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, "cannot read the Z-Image workflow".into()))?;
-    let seed = create_job::fresh_seed(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(1));
-    let workflow = create_job::image_workflow(&template, &prompt, seed, b.width, b.height, b.steps, 1.0, "lastharness/zimage").map_err(|e| ApiError(StatusCode::BAD_REQUEST, e))?;
-    let id = {
-        let mut list = jobs().lock().unwrap();
-        let id = list.len() as u64 + 1;
-        list.push(CreateJob { id, prompt: prompt.clone(), state: "running".into(), files: vec![], message: String::new() });
-        id
-    };
+        .ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("cannot read the workflow {file}")))
+}
+
+fn new_job(prompt: &str) -> u64 {
+    let mut list = jobs().lock().unwrap();
+    let id = list.len() as u64 + 1;
+    list.push(CreateJob { id, prompt: prompt.to_string(), state: "running".into(), files: vec![], message: String::new() });
+    id
+}
+
+fn seed_now() -> u64 {
+    create_job::fresh_seed(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(1))
+}
+
+/// Run a filled workflow on a thread and record the result in the job list.
+fn spawn_job(id: u64, workflow: Value, output_node: &'static str, ram: u64, label: &'static str) {
+    let Some(home) = std::env::var_os("HOME") else { return };
     let lock = std::path::PathBuf::from(&home).join("AI/.machine-busy");
     let out = create_job::output_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     std::thread::spawn(move || {
-        let res = create_job::run_image_job(&lock, &workflow, ZIMAGE_RAM, &ComfyHttp::local(), &out, "image");
+        let res = create_job::run_image_job(&lock, &workflow, output_node, ram, &ComfyHttp::local(), &out, label);
         if let Some(j) = jobs().lock().unwrap().iter_mut().find(|j| j.id == id) {
             match res {
                 Ok(files) => {
@@ -93,6 +111,43 @@ async fn start_image(Json(b): Json<ImageBody>) -> Result<Json<Value>, ApiError> 
             }
         }
     });
+}
+
+async fn start_video(Json(b): Json<VideoBody>) -> Result<Json<Value>, ApiError> {
+    let prompt = b.prompt.trim().to_string();
+    if prompt.is_empty() || prompt.len() > 2000 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "write a prompt of 1 to 2000 characters".into()));
+    }
+    if b.frames % 4 != 1 || !(5..=49).contains(&b.frames) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "frames are 5 to 49 and must be 4n+1 (17, 21, 25 ...)".into()));
+    }
+    if !(1..=30).contains(&b.steps) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "steps are 1 to 30".into()));
+    }
+    let template = workflow_template("wan22-ti2v-5b-gguf.json")?;
+    let workflow = create_job::video_workflow(&template, &prompt, "blurry, low quality, watermark", seed_now(), 832, 480, b.frames, b.steps, 5.0, "lastharness/wan22")
+        .map_err(|e| ApiError(StatusCode::BAD_REQUEST, e))?;
+    let id = new_job(&prompt);
+    spawn_job(id, workflow, "12", WAN_RAM, "video");
+    Ok(Json(json!({ "id": id, "state": "running" })))
+}
+
+async fn start_image(Json(b): Json<ImageBody>) -> Result<Json<Value>, ApiError> {
+    let prompt = b.prompt.trim().to_string();
+    if prompt.is_empty() || prompt.len() > 2000 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "write a prompt of 1 to 2000 characters".into()));
+    }
+    if !(256..=1536).contains(&b.width) || !(256..=1536).contains(&b.height) || b.width % 8 != 0 || b.height % 8 != 0 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "width and height are 256 to 1536 in steps of 8".into()));
+    }
+    if !(1..=30).contains(&b.steps) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "steps are 1 to 30".into()));
+    }
+    let template = workflow_template("z-image-turbo-gguf.json")?;
+    let workflow = create_job::image_workflow(&template, &prompt, seed_now(), b.width, b.height, b.steps, 1.0, "lastharness/zimage")
+        .map_err(|e| ApiError(StatusCode::BAD_REQUEST, e))?;
+    let id = new_job(&prompt);
+    spawn_job(id, workflow, "10", ZIMAGE_RAM, "image");
     Ok(Json(json!({ "id": id, "state": "running" })))
 }
 
