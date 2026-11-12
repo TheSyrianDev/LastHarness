@@ -461,7 +461,7 @@ impl App {
         .detach();
         let mut chats = Chats::default();
         chats.new_chat(&prefs.model);
-        App {
+        let mut app = App {
             cfg,
             backend,
             connected: false,
@@ -559,7 +559,17 @@ impl App {
             settings_search,
             settings_nav_focus: cx.focus_handle(),
             sp: Default::default(),
+        };
+        // Debug only, for screenshots: LASTHARNESS_VIEW=providers or providers-add opens the Models page on start.
+        match std::env::var("LASTHARNESS_VIEW").as_deref() {
+            Ok("providers") => app.settings_open = true,
+            Ok("providers-add") => {
+                app.settings_open = true;
+                app.pg.open.insert("prov-form".into());
+            }
+            _ => {}
         }
+        app
     }
 
     pub fn layout(&self) -> &Layout {
