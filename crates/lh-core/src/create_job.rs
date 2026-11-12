@@ -78,7 +78,20 @@ pub fn parse_history(history: &Value, prompt_id: &str, output_node: &str) -> Res
 
 /// Seed for a new request: never a repeat, so ComfyUI's cache is not hit.
 pub fn fresh_seed(nanos: u128) -> u64 {
-    (nanos as u64) ^ 0x9E37_79B9_7F4A_7C15
+    // a 31-bit seed: the 64-bit seeds of earlier runs gave colour noise on Wan (reference uses seed 1)
+    let x = (nanos as u64) ^ 0x9E37_79B9_7F4A_7C15;
+    (x % 0x7FFF_FFFE) + 1
+}
+
+#[cfg(test)]
+mod seed_tests {
+    #[test]
+    fn fresh_seed_is_small_and_never_zero() {
+        for n in [0u128, 1, u64::MAX as u128, 9714302917628910720u128] {
+            let s = super::fresh_seed(n);
+            assert!((1..=0x7FFF_FFFE).contains(&s), "{s}");
+        }
+    }
 }
 
 /// Minimal HTTP to the ComfyUI service through `curl`, so the core needs no new HTTP dependency.
