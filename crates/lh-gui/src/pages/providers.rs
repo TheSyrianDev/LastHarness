@@ -230,6 +230,37 @@ pub fn add_body(preset: Option<&str>, url: &str, name: &str, key: &str, presets:
     Ok(Value::Object(b))
 }
 
+/// What the add flow's test says: "Found N models." on success, else the core's message.
+pub fn found_words(ok: bool, models: &[String], message: &str) -> String {
+    if !ok {
+        return message.to_string();
+    }
+    match models.len() {
+        0 => "Reached the server, but it lists no models yet.".to_string(),
+        1 => "Found 1 model.".to_string(),
+        n => format!("Found {n} models."),
+    }
+}
+
+/// The models the default-model picker may offer: enabled providers that passed a test, with the model on.
+/// Each item is (provider id, provider name, model).
+pub fn pickable(list: &[Provider], tested: &std::collections::HashMap<String, bool>) -> Vec<(String, String, String)> {
+    list.iter()
+        .filter(|p| p.enabled && tested.get(&p.id) == Some(&true))
+        .flat_map(|p| {
+            let name = if p.name.is_empty() { p.id.clone() } else { p.name.clone() };
+            p.models.iter().filter(|m| p.model_on(m)).map(move |m| (p.id.clone(), name.clone(), m.clone())).collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// The default model as a person reads it: "model (Provider)". `None` when no default model is set.
+pub fn default_words(list: &[Provider]) -> Option<String> {
+    let p = list.iter().find(|p| p.default && p.default_model.is_some()).or_else(|| list.iter().find(|p| p.default_model.is_some()))?;
+    let name = if p.name.is_empty() { p.id.clone() } else { p.name.clone() };
+    Some(format!("{} ({name})", p.default_model.as_deref().unwrap_or("")))
+}
+
 /// The approve body: the key only when one was typed.
 pub fn approve_body(key: &str) -> Value {
     let k = key.trim();
@@ -335,5 +366,21 @@ mod tests {
         assert_eq!(test_body("http://h:1/v1", "", Some(" ")), json!({"url": "http://h:1/v1"}));
         assert_eq!(approve_body("  "), json!({}));
         assert_eq!(approve_body("k"), json!({"key": "k"}));
+    }
+
+    #[test]
+    fn add_flow_words_and_picker() {
+        assert_eq!(found_words(true, &["a".into(), "b".into()], "x"), "Found 2 models.");
+        assert_eq!(found_words(true, &["a".into()], "x"), "Found 1 model.");
+        assert_eq!(found_words(false, &[], "Could not reach it."), "Could not reach it.");
+        let l = providers(&json!({"providers": [
+            {"id": "loc", "name": "Local", "enabled": true, "models": ["m1", "m2"], "disabled_models": ["m2"], "default": true, "default_model": "m1"},
+            {"id": "any", "name": "Any", "enabled": true, "models": ["x"]},
+            {"id": "off", "name": "Off", "enabled": false, "models": ["y"]}
+        ]}));
+        let tested = std::collections::HashMap::from([("loc".to_string(), true), ("off".to_string(), true)]);
+        assert_eq!(pickable(&l, &tested), vec![("loc".to_string(), "Local".to_string(), "m1".to_string())]);
+        assert_eq!(default_words(&l).as_deref(), Some("m1 (Local)"));
+        assert_eq!(default_words(&providers(&json!({"providers": [{"id": "a"}]}))), None);
     }
 }

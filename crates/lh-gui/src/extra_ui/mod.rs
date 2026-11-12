@@ -53,6 +53,16 @@ pub struct PgState {
     pub prov_test: HashMap<String, bool>,
     /// Providers whose name and address boxes were filled from the core since the last save.
     pub prov_filled: HashSet<String>,
+    /// Add-provider flow: 1 choose, 2 connect, 3 models. Only read while the "prov-form" section is open.
+    pub prov_step: u8,
+    /// "key" (a known service, from a preset) or "custom" (any OpenAI-compatible address); empty until chosen.
+    pub prov_method: String,
+    /// The last test of the add form: (reached, message, models found).
+    pub prov_form_found: Option<(bool, String, Vec<String>)>,
+    /// Models unticked in step 3. Turned off once the provider is added.
+    pub prov_form_off: HashSet<String>,
+    /// Set by Save until the add reply comes back: (models to turn off, whether the form test passed).
+    pub prov_pending: Option<(Vec<String>, bool)>,
     pub import: Option<model::data::Preview>,
     pub replace: HashSet<String>,
     pub replace_style: bool,
@@ -189,7 +199,23 @@ impl App {
             "ch-enable" => format!("{arg} is switched on."),
             "ch-disable" => format!("{arg} is switched off."),
             "ch-remove" => format!("Removed {arg}."),
-            "prov-add" => format!("Added {arg}."),
+            "prov-add" => {
+                // the add flow's choices: the unticked models go off, and a passed test counts for the new provider
+                if let Some((off, tested)) = self.pg.prov_pending.take() {
+                    if let Some(id) = v["added"]["id"].as_str().map(str::to_string) {
+                        if tested {
+                            self.pg.prov_test.insert(id.clone(), true);
+                        }
+                        for model in off {
+                            let body = model::providers::toggle_body(&model, false);
+                            self.backend.send(Cmd::Call { tag: format!("pg-act:providers:prov-model:{id}"), method: "POST".into(), path: format!("/v1/providers/{id}/models/toggle"), body: Some(body) });
+                        }
+                    }
+                }
+                format!("Added {arg}.")
+            }
+            "prov-model" => String::new(),
+            "prov-default-model" => format!("Default model is now {arg}."),
             "prov-default" => format!("{arg} is now the default."),
             "prov-remove" => {
                 self.pg.prov_test.remove(arg);
@@ -203,10 +229,17 @@ impl App {
                 format!("Saved {arg}.")
             }
             "prov-test" => {
-                if arg != "form" {
+                if arg == "form" {
+                    let models: Vec<String> = v["models"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+                    let ok = v["ok"] == true;
+                    let words = model::providers::found_words(ok, &models, &model::s(v, "message"));
+                    self.pg.prov_form_found = Some((ok, words.clone(), models));
+                    self.pg.prov_form_off.clear();
+                    words
+                } else {
                     self.pg.prov_test.insert(arg.to_string(), v["ok"] == true);
+                    model::s(v, "message")
                 }
-                model::s(v, "message")
             }
             "prov-models" => model::s(v, "message"),
             "dev-open" => format!("Pairing is open for {} minutes. On the other device, open this computer's address and press Pair. It shows a PIN: type it below.", v["open_for_minutes"]),

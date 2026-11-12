@@ -33,7 +33,13 @@ impl App {
     pub fn pg_providers(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         self.pg_opened(Category::Models);
         let mut col = div().flex().flex_col().gap_2().pt_2();
-        col = col.child(self.pg_title("Providers")).child(self.pg_muted("Model services this app can use. The default answers when a role does not name one. A key is typed here only, kept in the core, and never shown again."));
+        let add_top = self.button("pg-prov-add-top", "+ Add provider", Kind::Primary, cx, |a, _, cx| {
+            prov_form_close(a);
+            a.pg.open.insert("prov-form".into());
+            cx.notify();
+        });
+        col = col.child(div().flex().flex_wrap().items_center().justify_between().gap_2().child(self.pg_title("Providers")).child(add_top));
+        col = col.child(self.pg_muted("Model services this app can use. The default answers when a role does not name one. A key is typed here only, kept in the core, and never shown again."));
         if let Some(n) = self.pg_note_for("providers") {
             col = col.child(n);
         }
@@ -59,7 +65,6 @@ impl App {
             let selected = !adding && sel.as_deref() == Some(p.id.as_str());
             left = left.child(self.prov_row(p, selected, cx));
         }
-        left = left.child(self.prov_add_row(adding, cx));
 
         let right = if adding {
             div().flex_1().min_w(px(280.)).min_w_0().child(self.registry_form(&presets, window, cx)).into_any_element()
@@ -69,7 +74,38 @@ impl App {
             div().flex_1().min_w(px(280.)).min_w_0().child(self.pg_note_line("Pick a provider on the left, or add one.")).into_any_element()
         };
         col = col.child(div().flex().flex_wrap().gap_3().items_start().child(left).child(right));
+        col = col.child(self.prov_default_row(&list, cx));
         col.child(div().flex().child(self.pg_refresh(Category::Models, cx))).into_any_element()
+    }
+
+    /// The default model line: its words and a Change button that opens a picker of tested providers' models.
+    fn prov_default_row(&mut self, list: &[m::Provider], cx: &mut Context<Self>) -> AnyElement {
+        let pal = self.pal.clone();
+        let open = self.pg.open.contains("prov-default-picker");
+        let words = m::default_words(list).unwrap_or_else(|| "none set".to_string());
+        let mut row = div().flex().flex_wrap().items_center().justify_between().gap_2().pt_2().border_t_1().border_color(pal.border).child(div().text_sm().text_color(pal.text).child(format!("Default model: {words}"))).child(self.button("pg-prov-default-change", if open { "Close" } else { "Change" }, Kind::Normal, cx, |a, _, cx| {
+            if !a.pg.open.remove("prov-default-picker") {
+                a.pg.open.insert("prov-default-picker".into());
+            }
+            cx.notify();
+        }));
+        if open {
+            let items = m::pickable(list, &self.pg.prov_test);
+            let mut pick = div().flex().flex_col().gap_1().p_2().rounded(pal.inner).bg(pal.sunken);
+            if items.is_empty() {
+                pick = pick.child(self.pg_muted("Only providers that passed a test are listed. Test one first."));
+            }
+            for (pid, pname, model_name) in items {
+                let (dp, dm) = (pid.clone(), model_name.clone());
+                pick = pick.child(self.button(format!("pg-prov-dpick-{pid}-{model_name}"), format!("{model_name} ({pname})"), Kind::Normal, cx, move |a, _, cx| {
+                    a.pg.open.remove("prov-default-picker");
+                    a.pg_act("providers", &format!("prov-default-model:{dp}"), "POST", format!("/v1/providers/{dp}/default-model"), Some(m::default_model_body(Some(&dm))), cx);
+                    a.pg_act("providers", &format!("prov-default:{dp}"), "POST", format!("/v1/providers/{dp}/default"), None, cx);
+                }));
+            }
+            row = row.child(div().w_full().child(pick));
+        }
+        row.into_any_element()
     }
 
     fn light_color(&self, l: m::Light) -> Hsla {
@@ -111,33 +147,6 @@ impl App {
             }))
             .child(div().text_color(color).child(light.glyph()))
             .child(div().flex_1().min_w_0().overflow_hidden().child(label))
-            .into_any_element()
-    }
-
-    /// The "+ Add" row at the bottom of the list. It opens the add flow in the right pane.
-    fn prov_add_row(&mut self, adding: bool, cx: &mut Context<Self>) -> AnyElement {
-        let hover_bg = self.pal.button;
-        let accent = self.pal.accent;
-        div()
-            .id("pg-prov-add")
-            .role(Role::Button)
-            .aria_label("Add a provider")
-            .flex()
-            .items_center()
-            .px_2()
-            .py_1p5()
-            .rounded(self.pal.inner)
-            .cursor_pointer()
-            .text_sm()
-            .text_color(accent)
-            .bg(if adding { self.pal.accent.opacity(0.1) } else { hsla(0., 0., 0., 0.) })
-            .hover(move |s| s.bg(hover_bg))
-            .on_click(cx.listener(|a, _, _, cx| {
-                a.pg.prov_preset = String::new();
-                a.pg.open.insert("prov-form".into());
-                cx.notify();
-            }))
-            .child("+ Add")
             .into_any_element()
     }
 
@@ -357,74 +366,152 @@ impl App {
         self.pg_list("prov-presets").and_then(|r| r.ok()).map(|v| m::presets(&v)).unwrap_or_default()
     }
 
-    /// The add flow, in the right pane: a preset or an address, a name, a key, then Add, Test or Cancel.
+    /// The add flow, in the right pane. Step 1 picks how to connect, step 2 names it and tests it, step 3 picks
+    /// the models to keep and saves. Only a passed test lets the flow reach step 3.
     fn registry_form(&mut self, presets: &[m::Preset], window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let step = self.pg.prov_step.clamp(1, 3);
+        let method = self.pg.prov_method.clone();
         let chosen = self.pg.prov_preset.clone();
-        let mut chips = div().flex().flex_wrap().gap_1();
-        for p in presets.iter().filter(|p| p.supported) {
-            let id = p.id.clone();
-            chips = chips.child(self.button(format!("pg-prov-preset-{}", p.id), p.name.clone(), if p.id == chosen { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| {
-                a.pg.prov_preset = id.clone();
-                cx.notify();
-            }));
-        }
-        chips = chips.child(self.button("pg-prov-preset-custom", "Another address", if chosen.is_empty() { Kind::Primary } else { Kind::Normal }, cx, |a, _, cx| {
-            a.pg.prov_preset = String::new();
-            cx.notify();
-        }));
-        let mut rows = vec![self.pg_title("Add a provider"), chips.into_any_element()];
-        if let Some(p) = presets.iter().find(|p| p.id == chosen) {
-            let mut line = p.url.clone();
-            if !p.note.is_empty() {
-                line = format!("{line}. {}", p.note);
-            }
-            rows.push(self.pg_muted(line));
-        } else {
-            rows.push(self.xp_field("prov.url", "Address", "http://localhost:8080/v1", window, cx));
-        }
-        rows.push(self.xp_field("prov.name", "Name (optional)", "", window, cx));
-        let key_label = match presets.iter().find(|p| p.id == chosen) {
-            Some(p) if p.key_required => "Key (needed)",
-            Some(_) => "Key (leave empty if none is needed)",
-            None => "Key (leave empty if none is needed)",
-        };
-        rows.push(self.xp_secret("prov.key", key_label, window, cx));
-        let save = self.button("pg-prov-save", "Add", Kind::Primary, cx, |a, _, cx| {
-            let presets = a.prov_presets();
-            let chosen = a.pg.prov_preset.clone();
-            let (url, name, key) = (a.pg_text("prov.url", cx), a.pg_text("prov.name", cx), a.pg_text("prov.key", cx));
-            let preset = (!chosen.is_empty()).then_some(chosen.as_str());
-            match m::add_body(preset, &url, &name, &key, &presets) {
-                Ok(body) => {
-                    let label = if name.trim().is_empty() { preset.unwrap_or(url.trim()).to_string() } else { name.trim().to_string() };
-                    a.pg_clear(&["prov.url", "prov.name", "prov.key"]);
-                    a.pg.open.remove("prov-form");
-                    a.pg_act("providers", &format!("prov-add:{label}"), "POST", "/v1/providers", Some(body), cx);
-                }
-                Err(e) => {
-                    a.pg_note_set("providers", true, e);
-                    cx.notify();
-                }
-            }
-        });
-        let test = self.button("pg-prov-test-form", "Test", Kind::Normal, cx, |a, _, cx| {
-            let presets = a.prov_presets();
-            let chosen = a.pg.prov_preset.clone();
-            let url = match presets.iter().find(|p| p.id == chosen) {
-                Some(p) => p.url.clone(),
-                None => a.pg_text("prov.url", cx),
-            };
-            let key = a.pg_text("prov.key", cx);
-            a.pg_act("providers", "prov-test:form", "POST", "/v1/provider/test", Some(m::test_body(&url, &key, None)), cx);
-        });
+        let mut rows = vec![self.pg_title("Add a provider"), self.pg_muted(format!("Step {step} of 3"))];
         let cancel = self.button("pg-prov-cancel", "Cancel", Kind::Ghost, cx, |a, _, cx| {
-            a.pg_clear(&["prov.url", "prov.name", "prov.key"]);
-            a.pg.open.remove("prov-form");
+            prov_form_close(a);
             cx.notify();
         });
-        rows.push(div().flex().gap_1().child(save).child(test).child(cancel).into_any_element());
+        match step {
+            1 => {
+                rows.push(self.pg_muted("How do you connect?"));
+                let mut opts = div().flex().flex_col().gap_1();
+                for (val, label) in [("key", "API key (a known service)"), ("custom", "Custom endpoint (OpenAI-compatible)")] {
+                    let on = method == val;
+                    let glyph = if on { "●" } else { "○" };
+                    opts = opts.child(self.button(format!("pg-prov-method-{val}"), format!("{glyph}  {label}"), if on { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| {
+                        a.pg.prov_method = val.to_string();
+                        cx.notify();
+                    }));
+                }
+                rows.push(opts.into_any_element());
+                let next = self.button("pg-prov-next", "Next", Kind::Primary, cx, |a, _, cx| {
+                    if !a.pg.prov_method.is_empty() {
+                        a.pg.prov_step = 2;
+                    }
+                    cx.notify();
+                });
+                rows.push(div().flex().gap_1().child(next).child(cancel).into_any_element());
+            }
+            2 => {
+                if method == "key" {
+                    let mut chips = div().flex().flex_wrap().gap_1();
+                    for p in presets.iter().filter(|p| p.supported) {
+                        let id = p.id.clone();
+                        chips = chips.child(self.button(format!("pg-prov-preset-{}", p.id), p.name.clone(), if p.id == chosen { Kind::Primary } else { Kind::Normal }, cx, move |a, _, cx| {
+                            a.pg.prov_preset = id.clone();
+                            a.pg.prov_form_found = None;
+                            cx.notify();
+                        }));
+                    }
+                    rows.push(chips.into_any_element());
+                }
+                let preset = presets.iter().find(|p| p.id == chosen && method == "key");
+                match preset {
+                    Some(p) => {
+                        let mut line = p.url.clone();
+                        if !p.note.is_empty() {
+                            line = format!("{line}. {}", p.note);
+                        }
+                        rows.push(self.pg_muted(line));
+                    }
+                    None => rows.push(self.xp_field("prov.url", "Base URL", "http://localhost:8080/v1", window, cx)),
+                }
+                rows.push(self.xp_field("prov.name", "Name", "", window, cx));
+                rows.push(self.xp_secret("prov.key", "API key (type the key, or the name of an environment variable)", window, cx));
+                let test = self.button("pg-prov-test-form", "Test connection", Kind::Normal, cx, |a, _, cx| {
+                    let presets = a.prov_presets();
+                    let chosen = a.pg.prov_preset.clone();
+                    let url = match presets.iter().find(|p| p.id == chosen && a.pg.prov_method == "key") {
+                        Some(p) => p.url.clone(),
+                        None => a.pg_text("prov.url", cx),
+                    };
+                    let key = a.pg_text("prov.key", cx);
+                    a.pg_act("providers", "prov-test:form", "POST", "/v1/provider/test", Some(m::test_body(&url, &key, None)), cx);
+                });
+                rows.push(test);
+                if let Some((_, words, _)) = &self.pg.prov_form_found {
+                    rows.push(self.pg_muted(words.clone()));
+                }
+                let back = self.button("pg-prov-back", "Back", Kind::Ghost, cx, |a, _, cx| {
+                    a.pg.prov_step = 1;
+                    cx.notify();
+                });
+                let next = self.button("pg-prov-next", "Next", Kind::Primary, cx, |a, _, cx| {
+                    if a.pg.prov_form_found.as_ref().is_some_and(|f| f.0) {
+                        a.pg.prov_step = 3;
+                    } else {
+                        a.pg_note_set("providers", true, "Test the connection first. Next opens once it finds models.");
+                    }
+                    cx.notify();
+                });
+                rows.push(div().flex().gap_1().child(back).child(next).child(cancel).into_any_element());
+            }
+            _ => {
+                let (models, off) = match &self.pg.prov_form_found {
+                    Some((_, _, models)) => (models.clone(), self.pg.prov_form_off.clone()),
+                    None => (Vec::new(), Default::default()),
+                };
+                rows.push(self.pg_muted("Untick a model to leave it out. Models are on by default."));
+                if models.is_empty() {
+                    rows.push(self.pg_muted("The server lists no models. Save to add the provider anyway."));
+                }
+                for name in models {
+                    let on = !off.contains(&name);
+                    let glyph = if on { "☑" } else { "☐" };
+                    let nm = name.clone();
+                    rows.push(self.button(format!("pg-prov-off-{name}"), format!("{glyph}  {name}"), Kind::Ghost, cx, move |a, _, cx| {
+                        if !a.pg.prov_form_off.remove(&nm) {
+                            a.pg.prov_form_off.insert(nm.clone());
+                        }
+                        cx.notify();
+                    }));
+                }
+                let back = self.button("pg-prov-back", "Back", Kind::Ghost, cx, |a, _, cx| {
+                    a.pg.prov_step = 2;
+                    cx.notify();
+                });
+                let save = self.button("pg-prov-save", "Save", Kind::Primary, cx, |a, _, cx| {
+                    let presets = a.prov_presets();
+                    let chosen = a.pg.prov_preset.clone();
+                    let key_method = a.pg.prov_method == "key";
+                    let (url, name, key) = (a.pg_text("prov.url", cx), a.pg_text("prov.name", cx), a.pg_text("prov.key", cx));
+                    let preset = (key_method && !chosen.is_empty()).then_some(chosen.as_str());
+                    match m::add_body(preset, &url, &name, &key, &presets) {
+                        Ok(body) => {
+                            let label = if name.trim().is_empty() { preset.unwrap_or(url.trim()).to_string() } else { name.trim().to_string() };
+                            let off: Vec<String> = a.pg.prov_form_off.iter().cloned().collect();
+                            a.pg.prov_pending = Some((off, true));
+                            prov_form_close(a);
+                            a.pg_act("providers", &format!("prov-add:{label}"), "POST", "/v1/providers", Some(body), cx);
+                        }
+                        Err(e) => {
+                            a.pg_note_set("providers", true, e);
+                            cx.notify();
+                        }
+                    }
+                });
+                rows.push(div().flex().gap_1().child(back).child(save).child(cancel).into_any_element());
+            }
+        }
         self.xp_card(rows).into_any_element()
     }
+}
+
+/// Close the add flow and forget its typed boxes and its test.
+fn prov_form_close(a: &mut App) {
+    a.pg_clear(&["prov.url", "prov.name", "prov.key"]);
+    a.pg.open.remove("prov-form");
+    a.pg.prov_step = 1;
+    a.pg.prov_method.clear();
+    a.pg.prov_preset.clear();
+    a.pg.prov_form_found = None;
+    a.pg.prov_form_off.clear();
 }
 
 /// The preset a proposal names, looked up again when Approve is pressed.
