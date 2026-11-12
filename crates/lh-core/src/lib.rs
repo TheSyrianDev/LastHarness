@@ -41,6 +41,7 @@ mod mcp_api;
 mod memory_api;
 mod memory_notes;
 pub mod provider_api;
+pub mod models_catalog;
 mod session;
 pub mod web;
 mod settings_api;

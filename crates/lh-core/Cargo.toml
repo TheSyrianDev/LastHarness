@@ -38,6 +38,11 @@ p256 = { version = "0.13", features = ["ecdsa", "jwk"] }
 sha2 = "0.10"
 base64 = "0.22"
 hmac = "0.12"
+# Optional Hub adapter (see models_catalog.rs). Off by default.
+hfd-core = { path = "/home/omar/Projects/hf-dl/crates/hfd-core", optional = true }
+
+[features]
+hf-catalog = ["dep:hfd-core"]
 
 [dev-dependencies]
 p256 = { version = "0.13", features = ["ecdsa", "jwk", "std"] }
