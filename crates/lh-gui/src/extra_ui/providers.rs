@@ -138,7 +138,7 @@ impl App {
             cx.notify();
         });
         let muted = self.pal.muted;
-        let endpoint = format!("{}  ·  {}", p.url, m::short_models(p));
+        let endpoint = if p.detected { format!("Detected  ·  {}", p.url) } else { format!("{}  ·  {}", p.url, m::short_models(p)) };
         div()
             .id(SharedString::from(format!("pg-prov-row-{}", p.id)))
             .role(Role::Button)
@@ -190,6 +190,10 @@ impl App {
         );
         let n = id.clone();
         head = head.child(self.button(format!("pg-prov-test-{id}"), "Test", Kind::Normal, cx, move |a, _, cx| a.pg_act("providers", &format!("prov-test:{n}"), "POST", format!("/v1/providers/{n}/test"), Some(json!({})), cx)));
+        if p.detected {
+            // found on this computer, not saved: Test only, no menu, no edit, remove or make-default
+            return div().flex().flex_col().gap_3().p_3().rounded(pal.inner).bg(pal.sunken).text_color(pal.text).min_w_0().child(head).child(self.pg_muted("Found running on this computer. It is not saved, so it cannot be changed here. Add it as a provider to keep it.")).into_any_element();
+        }
         let menu_key = format!("prov-menu:{id}");
         let menu_open = self.pg.open.contains(&menu_key);
         let mk = menu_key.clone();
@@ -368,8 +372,16 @@ impl App {
                 cx.notify();
                 return;
             }
+            let body = match m::approve_key(&key, |n| std::env::var(n).ok()) {
+                Ok(b) => b,
+                Err(e) => {
+                    a.pg_note_set("providers", true, &e);
+                    cx.notify();
+                    return;
+                }
+            };
             a.pg_clear(&[format!("prov.pkey.{a_id}").as_str()]);
-            a.pg_act("providers", &format!("prov-approve:{a_id}"), "POST", format!("/v1/providers/proposals/{a_id}/approve"), Some(m::approve_body(&key)), cx);
+            a.pg_act("providers", &format!("prov-approve:{a_id}"), "POST", format!("/v1/providers/proposals/{a_id}/approve"), Some(body), cx);
         });
         let reject = self.button(format!("pg-prov-no-{id}"), "Reject", Kind::Ghost, cx, move |a, _, cx| {
             a.pg_clear(&[format!("prov.pkey.{r_id}").as_str()]);

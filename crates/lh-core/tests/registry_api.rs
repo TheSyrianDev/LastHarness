@@ -148,7 +148,7 @@ async fn the_model_lists_selects_and_proposes_but_only_the_user_registers() {
     assert!(all.contains("box:m2"), "{all}");
     // nothing registered by the proposal
     let (_, l) = s.call("GET", "/v1/providers", None).await;
-    assert_eq!(l["providers"].as_array().unwrap().len(), 1);
+    assert_eq!(saved_count(&l), 1);
     let (_, pr) = s.call("GET", "/v1/providers/proposals", None).await;
     assert_eq!(pr["proposals"].as_array().unwrap().len(), 1);
     assert!(!pr.to_string().contains("sk-leak-attempt"));
@@ -182,6 +182,11 @@ async fn fake_models() -> String {
     format!("http://127.0.0.1:{port}/v1")
 }
 
+/// Saved providers only: a local server found on this computer is listed with `detected: true` and is not saved.
+fn saved_count(l: &Value) -> usize {
+    l["providers"].as_array().unwrap().iter().filter(|p| p["detected"] != true).count()
+}
+
 #[tokio::test]
 async fn cloud_preset_without_a_key_is_refused_by_the_api() {
     let s = start(vec![], true);
@@ -189,7 +194,7 @@ async fn cloud_preset_without_a_key_is_refused_by_the_api() {
     assert_eq!(c, 400, "{b}");
     assert!(b.to_string().contains("OpenRouter needs a key."), "{b}");
     let (_, l) = s.call("GET", "/v1/providers", None).await;
-    assert_eq!(l["providers"].as_array().unwrap().len(), 0);
+    assert_eq!(saved_count(&l), 0);
 }
 
 #[tokio::test]

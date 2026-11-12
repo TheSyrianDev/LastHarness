@@ -53,6 +53,14 @@ fn no_device(via: Option<Extension<crate::web::Via>>) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Detected local servers have ids like `detected-9292`. They are not saved, so they cannot be changed or removed.
+fn refuse_detected(id: &str) -> Result<(), ApiError> {
+    if id.starts_with("detected-") {
+        return Err(ApiError(StatusCode::CONFLICT, format!("{id} is a local server found on this computer, not a saved provider. Add it first to change it.")));
+    }
+    Ok(())
+}
+
 fn shown(r: &Registry) -> Value {
     let d = r.default_id();
     json!({"default": d, "providers": r.list().iter().map(|e| e.public(e.id == d)).collect::<Vec<_>>()})
@@ -110,6 +118,7 @@ async fn add<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option
 
 async fn remove<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     no_device(via)?;
+    refuse_detected(&id)?;
     registry(&st).remove(&id).map_err(bad)?;
     let _ = st.settings.store.log("provider_removed", "providers", "user", &json!({"id": id}));
     Ok(Json(json!({"removed": id})))
@@ -117,6 +126,7 @@ async fn remove<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Opt
 
 async fn make_default<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     no_device(via)?;
+    refuse_detected(&id)?;
     registry(&st).set_default(&id).map_err(bad)?;
     let _ = st.settings.store.log("provider_default", "providers", "user", &json!({"id": id}));
     Ok(Json(json!({"default": id})))
@@ -166,6 +176,7 @@ struct EditBody {
 
 async fn edit<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>, Json(b): Json<EditBody>) -> Result<Json<Value>, ApiError> {
     no_device(via)?;
+    refuse_detected(&id)?;
     let key = match (b.remove_key, b.key.filter(|k| !k.trim().is_empty())) {
         (true, _) => KeyChange::Remove,
         (false, Some(k)) => KeyChange::Replace(k),
@@ -219,6 +230,7 @@ struct ToggleBody {
 
 async fn toggle_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>, Json(b): Json<ToggleBody>) -> Result<Json<Value>, ApiError> {
     no_device(via)?;
+    refuse_detected(&id)?;
     let r = registry(&st);
     let e = r.set_model_enabled(&id, &b.model, b.enabled).map_err(bad)?;
     let _ = st.settings.store.log("provider_model_toggled", "providers", "user", &json!({"id": id, "model": b.model, "enabled": b.enabled}));
@@ -233,6 +245,7 @@ struct DefaultModelBody {
 
 async fn default_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, via: Option<Extension<crate::web::Via>>, Path(id): Path<String>, Json(b): Json<DefaultModelBody>) -> Result<Json<Value>, ApiError> {
     no_device(via)?;
+    refuse_detected(&id)?;
     let r = registry(&st);
     let e = r.set_default_model(&id, b.model.as_deref()).map_err(bad)?;
     let _ = st.settings.store.log("provider_default_model", "providers", "user", &json!({"id": id, "model": b.model}));
@@ -241,7 +254,16 @@ async fn default_model<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, v
 
 #[cfg(test)]
 mod tests {
-    use super::reachable_ports;
+    use super::{refuse_detected, reachable_ports};
+
+    #[test]
+    fn detected_ids_refuse_changes_with_a_clear_error() {
+        assert!(refuse_detected("detected-9292").is_err());
+        assert!(refuse_detected("detected-8398").is_err());
+        assert!(refuse_detected("p-1").is_ok());
+        let e = refuse_detected("detected-9292").unwrap_err();
+        assert!(e.1.contains("found on this computer") && e.1.contains("Add it first"));
+    }
 
     #[tokio::test]
     async fn loopback_port_is_detected_only_when_something_listens() {

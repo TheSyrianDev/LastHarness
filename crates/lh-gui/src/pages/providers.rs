@@ -13,6 +13,8 @@ pub struct Provider {
     pub default: bool,
     pub key_saved: bool,
     pub local: bool,
+    /// Found running on this computer by the core, not saved. Read-only in the app.
+    pub detected: bool,
     /// "openai", "anthropic", or empty when the core did not say.
     pub api: String,
     pub models: Vec<String>,
@@ -48,7 +50,7 @@ pub fn providers(v: &Value) -> Vec<Provider> {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|p| Provider { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), default: p["default"] == true, key_saved: p["key_saved"] == true, local: p["local"] == true, api: s(p, "api"), models: strings(&p["models"]), enabled: p["enabled"] != false, disabled_models: strings(&p["disabled_models"]), default_model: p["default_model"].as_str().map(str::to_string) })
+        .map(|p| Provider { id: s(p, "id"), name: s(p, "name"), url: s(p, "url"), default: p["default"] == true, key_saved: p["key_saved"] == true, local: p["local"] == true, detected: p["detected"] == true, api: s(p, "api"), models: strings(&p["models"]), enabled: p["enabled"] != false, disabled_models: strings(&p["disabled_models"]), default_model: p["default_model"].as_str().map(str::to_string) })
         .collect()
 }
 
@@ -287,6 +289,13 @@ pub fn short_models(p: &Provider) -> String {
     }
 }
 
+/// The approve body for a typed key box: the key is resolved first, the same way as on add and edit,
+/// so `$NAME` or a bare environment name is read from the environment and the raw text is never echoed.
+pub fn approve_key(typed: &str, env: impl Fn(&str) -> Option<String>) -> Result<Value, String> {
+    let key = resolve_key(typed, env)?;
+    Ok(approve_body(&key))
+}
+
 /// The approve body: the key only when one was typed.
 pub fn approve_body(key: &str) -> Value {
     let k = key.trim();
@@ -346,7 +355,7 @@ mod tests {
     }
 
     fn prov(enabled: bool, disabled: &[&str], default_model: Option<&str>) -> Provider {
-        Provider { id: "x".into(), name: "X".into(), url: "u".into(), default: false, key_saved: true, local: false, api: "openai".into(), models: vec!["a".into(), "b".into()], enabled, disabled_models: disabled.iter().map(|s| s.to_string()).collect(), default_model: default_model.map(str::to_string) }
+        Provider { id: "x".into(), name: "X".into(), url: "u".into(), default: false, key_saved: true, local: false, detected: false, api: "openai".into(), models: vec!["a".into(), "b".into()], enabled, disabled_models: disabled.iter().map(|s| s.to_string()).collect(), default_model: default_model.map(str::to_string) }
     }
 
     #[test]
@@ -419,6 +428,17 @@ mod tests {
         assert_eq!(test_body("http://h:1/v1", "", Some(" ")), json!({"url": "http://h:1/v1"}));
         assert_eq!(approve_body("  "), json!({}));
         assert_eq!(approve_body("k"), json!({"key": "k"}));
+    }
+
+    #[test]
+    fn approve_resolves_env_names_and_never_echoes_a_missing_one() {
+        let env = |n: &str| (n == "OPENAI_API_KEY").then(|| " sk-env-9 ".to_string());
+        assert_eq!(approve_key("$OPENAI_API_KEY", env).unwrap(), json!({"key": "sk-env-9"}));
+        assert_eq!(approve_key(" OPENAI_API_KEY ", env).unwrap(), json!({"key": "sk-env-9"}));
+        assert_eq!(approve_key("sk-typed", env).unwrap(), json!({"key": "sk-typed"}));
+        assert_eq!(approve_key("  ", env).unwrap(), json!({}));
+        let e = approve_key("$MISSING_KEY", env).unwrap_err();
+        assert!(e.contains("MISSING_KEY") && !e.contains("sk-"));
     }
 
     #[test]
