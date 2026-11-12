@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use axum::extract::Query;
-use axum::routing::get;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use lh_tools::Model;
 use serde::Deserialize;
@@ -14,10 +15,15 @@ use serde_json::{json, Value};
 use crate::models_catalog;
 #[cfg(feature = "hf-catalog")]
 use crate::models_catalog::FitHit;
-use crate::AppState;
+use crate::{ApiError, AppState};
+use std::sync::{Mutex, OnceLock};
 
 pub fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
-    Router::new().route("/v1/models/search", get(search)).route("/v1/models/installed", get(installed))
+    Router::new()
+        .route("/v1/models/search", get(search))
+        .route("/v1/models/installed", get(installed))
+        .route("/v1/models/download", post(start_download))
+        .route("/v1/models/downloads", get(list_downloads))
 }
 
 #[derive(Deserialize)]
@@ -106,4 +112,100 @@ async fn installed() -> Json<Value> {
         }
         Err(e) => Json(json!({ "models": [], "message": if path.exists() { e.to_string() } else { shown } })),
     }
+}
+
+/// One file download started from the Models page. Kept in memory for this run of the core.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Job {
+    pub id: u64,
+    pub repo: String,
+    pub file: String,
+    pub dest: String,
+    /// `running`, `done`, `cancelled` or `failed`.
+    pub state: String,
+    pub downloaded: u64,
+    pub total: u64,
+    pub message: String,
+}
+
+fn jobs() -> &'static Mutex<Vec<Job>> {
+    static JOBS: OnceLock<Mutex<Vec<Job>>> = OnceLock::new();
+    JOBS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+#[derive(Deserialize)]
+struct DownloadBody {
+    repo: String,
+    file: String,
+}
+
+/// A safe Hub repo id (`owner/name`) and a plain GGUF file path inside it. No `..`, no absolute path.
+fn valid_target(repo: &str, file: &str) -> bool {
+    let ok_char = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.');
+    let parts: Vec<&str> = repo.split('/').collect();
+    let repo_ok = parts.len() == 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(ok_char) && !p.starts_with('.'));
+    let file_ok = file.ends_with(".gguf") && !file.starts_with('/') && !file.split('/').any(|seg| seg.is_empty() || seg == "..") && file.chars().all(|c| ok_char(c) || c == '/');
+    repo_ok && file_ok
+}
+
+/// Where a repo's files go: `~/AI/Models/<repo name in lowercase>/`.
+fn dest_dir(repo: &str) -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    let name = repo.rsplit('/').next()?.to_lowercase();
+    Some(std::path::PathBuf::from(home).join("AI/Models").join(name))
+}
+
+#[cfg(feature = "hf-catalog")]
+async fn start_download(Json(b): Json<DownloadBody>) -> Result<Json<Value>, ApiError> {
+    if !valid_target(&b.repo, &b.file) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "that is not a GGUF file in a Hub repo".into()));
+    }
+    let dir = dest_dir(&b.repo).ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, "no home folder is set".into()))?;
+    let id = {
+        let mut list = jobs().lock().unwrap();
+        let id = list.len() as u64 + 1;
+        list.push(Job { id, repo: b.repo.clone(), file: b.file.clone(), dest: dir.display().to_string(), state: "running".into(), downloaded: 0, total: 0, message: String::new() });
+        id
+    };
+    let (repo, file) = (b.repo.clone(), b.file.clone());
+    std::thread::spawn(move || {
+        let update = move |f: &dyn Fn(&mut Job)| {
+            if let Some(j) = jobs().lock().unwrap().iter_mut().find(|j| j.id == id) {
+                f(j);
+            }
+        };
+        let _ = std::fs::create_dir_all(&dir);
+        let sink: hfd_core::EventSink = std::sync::Arc::new(move |ev: hfd_core::Event| {
+            if let hfd_core::Event::Progress { downloaded, total, .. } = ev {
+                update(&|j: &mut Job| {
+                    j.downloaded = downloaded;
+                    j.total = total;
+                });
+            }
+        });
+        let cancel = hfd_core::CancelToken::new();
+        let res = models_catalog::download_file(&repo, &file, &dir, &cancel, sink);
+        if let Some(j) = jobs().lock().unwrap().iter_mut().find(|j| j.id == id) {
+            match res {
+                Ok(()) => {
+                    j.state = "done".into();
+                    j.downloaded = j.total;
+                }
+                Err(e) => {
+                    j.state = "failed".into();
+                    j.message = e.to_string();
+                }
+            }
+        }
+    });
+    Ok(Json(json!({ "id": id, "state": "running" })))
+}
+
+#[cfg(not(feature = "hf-catalog"))]
+async fn start_download(Json(_b): Json<DownloadBody>) -> Result<Json<Value>, ApiError> {
+    Err(ApiError(StatusCode::NOT_IMPLEMENTED, "downloads are not in this build (it needs the hf-catalog feature)".into()))
+}
+
+async fn list_downloads() -> Json<Value> {
+    Json(json!({ "downloads": *jobs().lock().unwrap() }))
 }

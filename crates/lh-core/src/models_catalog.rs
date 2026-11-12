@@ -446,6 +446,8 @@ pub struct FitHit {
     pub fit: Fit,
     pub best_quant: Option<String>,
     pub best_bytes: u64,
+    /// Repo paths of the files in the best quant (all shards), for download.
+    pub best_files: Vec<String>,
 }
 
 /// Search hits grouped by fit. Order inside a group keeps the Hub order.
@@ -473,22 +475,22 @@ pub fn group_hits_by_fit(source: &dyn CatalogSource, query: &str, free_ram: u64,
     for hit in source.search(query, true)? {
         let files = source.files(&hit.repo)?;
         // groups come biggest first; prefer the best fit, then the bigger quant
-        let mut best: Option<(Fit, String, u64)> = None;
+        let mut best: Option<(Fit, String, u64, Vec<String>)> = None;
         for g in group_by_quant(&files) {
             let f = fit_for(g.total_bytes, free_ram, free_vram);
             let better = match &best {
                 None => true,
-                Some((bf, _, bb)) => rank(f) < rank(*bf) || (rank(f) == rank(*bf) && g.total_bytes > *bb),
+                Some((bf, _, bb, _)) => rank(f) < rank(*bf) || (rank(f) == rank(*bf) && g.total_bytes > *bb),
             };
             if better {
-                best = Some((f, g.quant.clone(), g.total_bytes));
+                best = Some((f, g.quant.clone(), g.total_bytes, g.files.iter().map(|x| x.path.clone()).collect()));
             }
         }
-        let (fit, best_quant, best_bytes) = match best {
-            Some((f, q, b)) => (f, Some(q), b),
-            None => (Fit::Unknown, None, 0),
+        let (fit, best_quant, best_bytes, best_files) = match best {
+            Some((f, q, b, paths)) => (f, Some(q), b, paths),
+            None => (Fit::Unknown, None, 0, Vec::new()),
         };
-        let item = FitHit { repo: hit.repo, name: hit.name, downloads: hit.downloads, fit, best_quant, best_bytes };
+        let item = FitHit { repo: hit.repo, name: hit.name, downloads: hit.downloads, fit, best_quant, best_bytes, best_files };
         match fit {
             Fit::Fits => out.fits.push(item),
             Fit::Tight => out.tight.push(item),
@@ -497,6 +499,25 @@ pub fn group_hits_by_fit(source: &dyn CatalogSource, query: &str, free_ram: u64,
         }
     }
     Ok(out)
+}
+
+/// Download one repo file into `local_dir` (flat, as its basename) with hfd-core. Finished pieces are kept,
+/// so a second call resumes an interrupted file from its `.hfd.state`. `sink` gets progress events.
+#[cfg(feature = "hf-catalog")]
+pub fn download_file(repo: &str, path: &str, local_dir: &std::path::Path, cancel: &hfd_core::CancelToken, sink: hfd_core::EventSink) -> Result<(), CatalogError> {
+    let config = hfd_core::Config::from_env();
+    let token = hfd_core::auth::resolve_token(None, &config);
+    let hub = hfd_core::HubClient::new(config.clone(), token).map_err(hf_err)?;
+    let options = hfd_core::DownloadOptions {
+        cache_dir: config.cache_dir.clone(),
+        local_dir: Some(local_dir.to_path_buf()),
+        flat: true,
+        ..Default::default()
+    };
+    let downloader = hfd_core::Downloader::new(hub, options);
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| CatalogError::Message(e.to_string()))?;
+    let repo_ref = hfd_core::RepoRef::new(hfd_core::RepoType::Model, repo);
+    rt.block_on(downloader.download_file_cancellable(&repo_ref, path, "main", &sink, cancel)).map(|_| ()).map_err(hf_err)
 }
 
 /// One model listed in the local registry (`~/AI/Rig/registry/models.json`).

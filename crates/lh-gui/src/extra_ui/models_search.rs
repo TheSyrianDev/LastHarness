@@ -8,11 +8,14 @@ use serde_json::Value;
 
 use crate::app::App;
 use crate::ui::Kind;
+use lh_gui::api::Cmd;
 
 /// One repo row in a fit group.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchRow {
     pub repo: String,
+    /// Repo paths of the best quant's files (all shards).
+    pub files: Vec<String>,
     pub quant: String,
     pub size: String,
     pub downloads: u64,
@@ -65,6 +68,7 @@ pub fn groups(v: &Value) -> Vec<(&'static str, Vec<SearchRow>)> {
                     a.iter()
                         .map(|h| SearchRow {
                             repo: h["repo"].as_str().unwrap_or("").to_string(),
+                            files: h["best_files"].as_array().map(|f| f.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default(),
                             quant: h["best_quant"].as_str().unwrap_or("no GGUF quant found").to_string(),
                             size: gb(h["best_bytes"].as_u64().unwrap_or(0)),
                             downloads: h["downloads"].as_u64().unwrap_or(0),
@@ -138,12 +142,41 @@ impl App {
                     col = col.child(div().pt_2().text_sm().text_color(self.pal.text).child(format!("{label} ({})", rows.len())));
                     for r in rows {
                         let meta = format!("{} · {} · {} downloads", r.quant, if r.size.is_empty() { "size unknown".into() } else { r.size.clone() }, r.downloads);
-                        col = col.child(div().flex().flex_col().pl_2().child(div().text_sm().text_color(self.pal.text).child(r.repo)).child(self.pg_muted(meta)));
+                        let (repo, files) = (r.repo.clone(), r.files.clone());
+                        let dl = self.button(format!("dl-{}", r.repo), "Download", Kind::Ghost, cx, move |a, _, cx| {
+                            for f in &files {
+                                let body = serde_json::json!({ "repo": repo, "file": f });
+                                a.backend.send(Cmd::Call { tag: "pg-act:models:download".into(), method: "POST".into(), path: "/v1/models/download".into(), body: Some(body) });
+                            }
+                            a.pg_fetch("models-downloads", "/v1/models/downloads");
+                            cx.notify();
+                        });
+                        let row = div().flex().items_center().gap_2().child(div().flex_1().flex_col().child(div().text_sm().text_color(self.pal.text).child(r.repo)).child(self.pg_muted(meta)));
+                        col = col.child(div().flex().pl_2().child(row).child(if r.files.is_empty() { div().into_any_element() } else { dl }));
                     }
                 }
             }
         }
 
+        col = col.child(div().pt_4().text_sm().text_color(self.pal.text).child("Downloads"));
+        match self.pg_list("models-downloads") {
+            None => col = col.child(self.pg_note_line("No downloads yet.")),
+            Some(Err(e)) => col = col.child(self.pg_error_line("The downloads", &e)),
+            Some(Ok(v)) => {
+                let rows = v["downloads"].as_array().cloned().unwrap_or_default();
+                if rows.is_empty() {
+                    col = col.child(self.pg_note_line("No downloads yet."));
+                }
+                for d in rows {
+                    let state = d["state"].as_str().unwrap_or("");
+                    let (done, total) = (d["downloaded"].as_u64().unwrap_or(0), d["total"].as_u64().unwrap_or(0));
+                    let pct = if total > 0 { format!("{}%", done * 100 / total) } else { String::new() };
+                    let msg = d["message"].as_str().unwrap_or("");
+                    let line = format!("{} · {} {} {} {}", d["file"].as_str().unwrap_or(""), state, pct, gb(done), msg);
+                    col = col.child(self.pg_muted(line));
+                }
+            }
+        }
         col = col.child(div().pt_4().text_sm().text_color(self.pal.text).child("Installed on this computer"));
         match self.pg_list("models-installed") {
             None => col = col.child(self.pg_note_line("Loading…")),

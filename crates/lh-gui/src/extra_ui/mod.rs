@@ -104,6 +104,7 @@ impl App {
                 self.pg_fetch("prov-presets", "/v1/providers/presets");
                 self.pg_fetch("prov-proposals", "/v1/providers/proposals");
                 self.pg_fetch("models-installed", "/v1/models/installed");
+                self.pg_fetch("models-downloads", "/v1/models/downloads");
                 // the core asks each provider for its models (short timeout, no key sent here); the reply sets the dots
                 self.backend.send(Cmd::Call { tag: "pg:prov-tests".into(), method: "POST".into(), path: "/v1/providers/test-all".into(), body: None });
             }
