@@ -1576,6 +1576,19 @@ impl Render for App {
         if let Some(t) = self.pending_input.take() {
             self.composer.update(cx, |s, cx| s.set_value(t, window, cx));
         }
+        // Debug only, for the live chat test: LASTHARNESS_CHAT_TEST=<model id> picks that model on a draft chat and
+        // sends one fixed message, once, after the model list has the id.
+        if let Ok(id) = std::env::var("LASTHARNESS_CHAT_TEST") {
+            static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !DONE.load(std::sync::atomic::Ordering::Relaxed) && self.models.has(&id) && self.chats.current().is_some() {
+                DONE.store(true, std::sync::atomic::Ordering::Relaxed);
+                if let Some(c) = self.chats.current_mut() {
+                    c.model = id.clone();
+                }
+                self.composer.update(cx, |s, cx| s.set_value("In one short sentence, what is 2 + 2?", window, cx));
+                self.send(window, cx);
+            }
+        }
         let asking = self.asking(cx);
         let total: f32 = window.viewport_size().width.into();
         // the sidebar has words; when it is hidden (Ctrl+B or a narrow window) the icon rail takes its place
