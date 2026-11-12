@@ -102,6 +102,14 @@ impl App {
             None => {
                 let s = cx.new(|cx| InputState::new(window, cx));
                 self.pg.inputs.insert("models-search".into(), s.clone());
+                // Debug only, for screenshots: LASTHARNESS_MODELS_QUERY pre-fills the box and runs the search once.
+                if let Ok(q) = std::env::var("LASTHARNESS_MODELS_QUERY") {
+                    let q = q.trim().to_string();
+                    if !q.is_empty() {
+                        s.update(cx, |i, cx| i.set_value(q.clone(), window, cx));
+                        self.pg_fetch("models-search", format!("/v1/models/search?q={}", encode(&q)));
+                    }
+                }
                 s
             }
         };

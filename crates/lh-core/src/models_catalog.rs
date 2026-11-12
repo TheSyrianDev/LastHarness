@@ -287,12 +287,14 @@ fn quant_of(path: &str) -> String {
         .to_uppercase()
 }
 
+/// A quant tag: `Q4_K_M`, `Q8_0`, `IQ3_XS`, `MXFP4`, `BF16`, `F16`, `F32`. A model name such as `Qwen3` is not one.
 fn looks_like_quant(tok: &str) -> bool {
     let up = tok.to_uppercase();
-    let known = ["Q", "IQ", "BF16", "F16", "F32", "MXFP"]
-        .iter()
-        .any(|p| up.starts_with(p) && up.len() > p.len());
-    known && up.chars().any(|c| c.is_ascii_digit())
+    if matches!(up.as_str(), "BF16" | "F16" | "F32") {
+        return true;
+    }
+    let after = |p: &str| up.strip_prefix(p).and_then(|r| r.chars().next()).is_some_and(|c| c.is_ascii_digit());
+    after("Q") || after("IQ") || after("MXFP")
 }
 
 fn bits_for(quant: &str) -> Option<f32> {
@@ -561,6 +563,13 @@ mod tests {
         assert_eq!(groups[1].quant, "Q8_0");
         assert_eq!(groups[1].total_bytes, 2500);
         assert_eq!(groups[1].shards, 1);
+    }
+
+    #[test]
+    fn model_name_is_not_taken_for_quant() {
+        assert_eq!(quant_of("Qwen3-4B-Q8_0.gguf"), "Q8_0");
+        assert_eq!(quant_of("Qwen3-4B-Instruct-2507-BF16.gguf"), "BF16");
+        assert_eq!(quant_of("Qwen3-4B.gguf"), "UNKNOWN");
     }
 
     #[test]
