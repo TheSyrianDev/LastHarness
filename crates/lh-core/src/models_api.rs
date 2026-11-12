@@ -51,6 +51,7 @@ fn hit_json(h: &FitHit) -> Value {
         "fit": h.fit.label(),
         "best_quant": h.best_quant,
         "best_bytes": h.best_bytes,
+        "best_files": h.best_files,
     })
 }
 
