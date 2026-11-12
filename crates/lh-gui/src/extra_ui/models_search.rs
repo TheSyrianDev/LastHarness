@@ -170,8 +170,9 @@ impl App {
                                 }
                             }
                         }
-                        let row = div().flex().items_start().gap_3().child(left).child(div().flex_none().child(if r.files.is_empty() { div().into_any_element() } else { dl }));
-                        col = col.child(div().flex().pl_2().child(row));
+                        let right = div().w(px(132.0)).flex_none().flex().justify_end().child(if r.files.is_empty() { div().into_any_element() } else { dl });
+                        let row = div().flex().w_full().items_start().gap_3().child(left.w_full()).child(right);
+                        col = col.child(div().flex().w_full().pl_2().child(row));
                     }
                 }
             }
