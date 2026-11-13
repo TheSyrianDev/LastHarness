@@ -13,6 +13,8 @@ pub enum When {
     Every(i64),
     /// Each day at this local time (hour, minute).
     Daily(u32, u32),
+    /// Monday to Friday at this local time (hour, minute).
+    Weekdays(u32, u32),
 }
 
 impl When {
@@ -20,6 +22,10 @@ impl When {
     pub fn parse(s: &str) -> std::result::Result<When, String> {
         let s = s.trim().to_lowercase();
         let bad = || format!("\"{s}\" is not a time I understand. Write for example \"every 30m\", \"every 2h\", \"every 1d\" or \"daily 08:00\".");
+        if let Some(rest) = s.strip_prefix("every weekday at ") {
+            let (h, m) = clock(rest).ok_or_else(bad)?;
+            return Ok(When::Weekdays(h, m));
+        }
         if let Some(rest) = s.strip_prefix("every ") {
             let rest = rest.trim();
             let (num, unit) = rest.split_at(rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len()));
@@ -36,11 +42,7 @@ impl When {
             return Ok(When::Every(secs));
         }
         if let Some(rest) = s.strip_prefix("daily ") {
-            let (h, m) = rest.trim().split_once(':').ok_or_else(bad)?;
-            let (h, m): (u32, u32) = (h.parse().map_err(|_| bad())?, m.parse().map_err(|_| bad())?);
-            if h > 23 || m > 59 {
-                return Err(bad());
-            }
+            let (h, m) = clock(rest).ok_or_else(bad)?;
             return Ok(When::Daily(h, m));
         }
         Err(bad())
@@ -52,6 +54,7 @@ impl When {
             When::Every(s) if s % 3600 == 0 => format!("every {}h", s / 3600),
             When::Every(s) => format!("every {}m", s / 60),
             When::Daily(h, m) => format!("daily {h:02}:{m:02}"),
+            When::Weekdays(h, m) => format!("every weekday at {h:02}:{m:02}"),
         }
     }
 
@@ -68,8 +71,29 @@ impl When {
                 }
                 t - local_offset
             }
+            When::Weekdays(h, m) => {
+                let local = now + local_offset;
+                let mut day = local - local.rem_euclid(86400);
+                loop {
+                    // 1970-01-01 was a Thursday; Monday is 0, so Saturday and Sunday are 5 and 6.
+                    let weekday = (day.div_euclid(86400) + 3).rem_euclid(7);
+                    let t = day + (*h as i64) * 3600 + (*m as i64) * 60;
+                    if weekday < 5 && t > local {
+                        return t - local_offset;
+                    }
+                    day += 86400;
+                }
+            }
         }
     }
+}
+
+/// Read "09:30" or "9" as (hour, minute). None when out of range.
+fn clock(s: &str) -> Option<(u32, u32)> {
+    let s = s.trim();
+    let (h, m) = s.split_once(':').unwrap_or((s, "0"));
+    let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    (h <= 23 && m <= 59).then_some((h, m))
 }
 
 /// The machine's offset from UTC in seconds now, from `date +%z`. 0 when it cannot be read.
@@ -199,6 +223,19 @@ mod tests {
         for t in ["every 30m", "every 2h", "every 1d", "daily 08:05"] {
             assert_eq!(When::parse(t).unwrap().text(), t);
         }
+    }
+
+    #[test]
+    fn weekday_phrases_skip_the_weekend() {
+        assert_eq!(When::parse("every weekday at 9"), Ok(When::Weekdays(9, 0)));
+        assert_eq!(When::parse("every weekday at 09:30"), Ok(When::Weekdays(9, 30)));
+        assert!(When::parse("every weekday at 25").is_err());
+        // Thu 1970-01-01 00:00 UTC is day 0. Friday 09:00 (day 1) is 9h later; a 10:00 Friday run from Friday 09:00 is 1h.
+        let fri_9 = 86400 + 9 * 3600;
+        assert_eq!(When::Weekdays(10, 0).next_after(fri_9, 0), fri_9 + 3600);
+        // Friday 10:00 is past, so the next run is Monday 1970-01-05 (day 4) at 10:00.
+        let fri_11 = 86400 + 11 * 3600;
+        assert_eq!(When::Weekdays(10, 0).next_after(fri_11, 0), 4 * 86400 + 10 * 3600);
     }
 
     #[test]
