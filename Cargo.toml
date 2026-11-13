@@ -35,3 +35,9 @@ gpui-pre-windows = { path = "third_party/gpui-pre-windows" }
 [profile.dev]
 # Line tables only: enough for backtraces, much less debug info to write and link.
 debug = "line-tables-only"
+# No incremental cache: it grows to tens of GB in target/ and our rebuilds are full-package anyway.
+incremental = false
+
+# Dependencies get no debug info at all; only our own crates keep line tables.
+[profile.dev.package."*"]
+debug = false
