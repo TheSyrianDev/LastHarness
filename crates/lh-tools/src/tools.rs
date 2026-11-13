@@ -140,8 +140,8 @@ impl Tool {
                 json!({"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}),
             ),
             Tool::Edit => (
-                "Replace exact text in a file. old_string must match once, unless replace_all is true.",
-                json!({"type":"object","properties":{"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["path","old_string","new_string"]}),
+                "Replace exact text in a file. old_string must match once, unless replace_all is true. Or pass start and end as LINE#TAG anchors (e.g. \"12#a3f\") to replace those lines by number; a stale anchor is refused.",
+                json!({"type":"object","properties":{"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"},"start":{"type":"string"},"end":{"type":"string"}},"required":["path","new_string"]}),
             ),
             Tool::Grep => (
                 "Search file contents with a regular expression. Returns path:line:text by default.",
@@ -273,9 +273,13 @@ impl Tool {
             Tool::Edit => {
                 let Action::Write(p) = self.action(args, root)? else { unreachable!() };
                 let s = |k: &str| args[k].as_str().ok_or_else(|| ToolError::Args(format!("`{k}` must be a string")));
-                let (old, new) = (s("old_string")?, s("new_string")?);
+                let new = s("new_string")?;
                 let text = tokio::fs::read_to_string(&p).await.map_err(|e| ToolError::Failed(format!("cannot read {}: {e}", p.display())))?;
-                let out = edit_text(&text, old, new, args["replace_all"].as_bool().unwrap_or(false))?;
+                let out = if let Some(start) = args["start"].as_str() {
+                    edit_lines(&text, start, args["end"].as_str().unwrap_or(start), new)?
+                } else {
+                    edit_text(&text, s("old_string")?, new, args["replace_all"].as_bool().unwrap_or(false))?
+                };
                 write_atomic(&p, root, &out).await
             }
             Tool::Grep | Tool::Glob => {
@@ -386,6 +390,53 @@ async fn write_atomic(p: &Path, root: &Path, content: &str) -> Result<ToolOutput
         return Err(ToolError::Failed(e.to_string()));
     }
     Ok(ToolOutput { text: format!("wrote {} bytes to {}", content.len(), p.strip_prefix(root).unwrap_or(&p).display()), undo })
+}
+
+/// Short content tag for one line: FNV-1a over the line with trailing spaces removed, three hex digits.
+pub fn line_tag(line: &str) -> String {
+    let mut h: u32 = 0x811c_9dc5;
+    for b in line.trim_end().bytes() {
+        h = (h ^ b as u32).wrapping_mul(0x0100_0193);
+    }
+    format!("{:03x}", h & 0xfff)
+}
+
+/// Parse `LINE#TAG` (1-based line number, tag from `line_tag`).
+fn parse_anchor(a: &str) -> Result<(usize, &str), ToolError> {
+    let bad = || ToolError::Args(format!("anchor `{a}` must look like 12#a3f"));
+    let (n, tag) = a.split_once('#').ok_or_else(bad)?;
+    let n: usize = n.trim().parse().map_err(|_| bad())?;
+    if n == 0 {
+        return Err(bad());
+    }
+    Ok((n, tag.trim()))
+}
+
+/// Replace lines `start..=end` (anchors) with `new`. Each anchor's tag must match the line it names,
+/// so an edit against a stale view is refused and the file is left as it was.
+pub fn edit_lines(text: &str, start: &str, end: &str, new: &str) -> Result<String, ToolError> {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let (a, atag) = parse_anchor(start)?;
+    let (b, btag) = parse_anchor(end)?;
+    if a > b {
+        return Err(ToolError::Args("`start` is after `end`".into()));
+    }
+    for (n, tag) in [(a, atag), (b, btag)] {
+        let Some(line) = lines.get(n - 1) else {
+            return Err(ToolError::Failed(format!("line {n} is past the end of the file ({} lines)", lines.len())));
+        };
+        if line_tag(line.trim_end_matches(['\n', '\r'])) != tag {
+            return Err(ToolError::Failed(format!("line {n} changed since it was read (anchor {n}#{tag} is stale). Read the file again")));
+        }
+    }
+    let mut out = String::with_capacity(text.len() + new.len());
+    out.extend(lines[..a - 1].iter().copied());
+    out.push_str(new);
+    if !new.is_empty() && !new.ends_with('\n') {
+        out.push('\n');
+    }
+    out.extend(lines[b..].iter().copied());
+    Ok(out)
 }
 
 /// Replace `old` with `new` in `text`. `old` must be found, and found once unless `all`.
@@ -811,6 +862,20 @@ mod tests {
         assert!(e.contains("not an ordinary file"), "{e}");
     }
 
+    #[test]
+    fn anchored_edit_replaces_lines_and_refuses_stale_anchors() {
+        let text = "alpha\nbeta\ngamma\n";
+        let (t2, t3) = (line_tag("beta"), line_tag("gamma"));
+        assert_eq!(edit_lines(text, &format!("2#{t2}"), &format!("2#{t2}"), "BETA\n").unwrap(), "alpha\nBETA\ngamma\n");
+        assert_eq!(edit_lines(text, &format!("2#{t2}"), &format!("3#{t3}"), "one").unwrap(), "alpha\none\n");
+        let stale = edit_lines(text, "2#000", "2#000", "x").unwrap_err().to_string();
+        assert!(stale.contains("stale"), "{stale}");
+        assert!(edit_lines(text, "9#000", "9#000", "x").is_err());
+        assert!(edit_lines(text, "bad", "bad", "x").is_err());
+        // trailing spaces do not change the tag
+        assert_eq!(line_tag("beta   "), line_tag("beta"));
+    }
+
     #[tokio::test]
     async fn edit_requires_an_exact_unique_match_and_preserves_undo() {
         let d = tempfile::tempdir().unwrap();
@@ -933,4 +998,5 @@ impl RawArg for tokio::process::Command {
     fn raw_arg_windows(&mut self, s: &str) -> &mut Self {
         self.arg(s)
     }
+
 }
