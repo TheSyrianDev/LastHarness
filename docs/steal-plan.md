@@ -74,3 +74,10 @@ Status: PROPOSAL. Not approved by Omar yet. Planning only, no code. Each item li
 - Is the order above right, in particular items 1 and 2 first?
 - Does the Hermes-style memory fit with the approval rules already in `.grill/`?
 - Which messaging channels come first after item 4?
+
+## Omar's answers (recorded 2026-11-13)
+
+- Order approved as written: NOW 1-4, NEXT 5-8, LATER.
+- Memory writes need Omar's approval, per the .grill rules.
+- Telegram comes first among messaging channels (item 5).
+- Coding of the plan has not started. Hermes additions come from the CEO.
