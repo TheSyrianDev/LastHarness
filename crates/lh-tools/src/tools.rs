@@ -883,7 +883,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_anchors_round_trip_into_edit_and_stale_ones_are_refused() {
+    async fn read_then_edit_round_trip_uses_the_anchor_from_read() {
         let d = tempfile::tempdir().unwrap();
         let set = ToolSet::new([Tool::ReadFile, Tool::Edit]);
         std::fs::write(d.path().join("a.txt"), "alpha\nbeta\ngamma\n").unwrap();
@@ -893,13 +893,28 @@ mod tests {
         assert!(line2.ends_with("| beta"), "{line2}");
         Tool::Edit.run(&json!({"path":"a.txt","start":anchor,"end":anchor,"new_string":"BETA"}), d.path(), &set).await.unwrap();
         assert_eq!(std::fs::read_to_string(d.path().join("a.txt")).unwrap(), "alpha\nBETA\ngamma\n");
-        // the same anchor is stale now: the line text it named has changed
-        let stale = Tool::Edit.run(&json!({"path":"a.txt","start":anchor,"end":anchor,"new_string":"x"}), d.path(), &set).await.unwrap_err();
-        assert!(stale.to_string().contains("stale"), "{stale}");
+    }
+
+    #[tokio::test]
+    async fn stale_anchor_is_refused_and_file_is_untouched() {
+        let d = tempfile::tempdir().unwrap();
+        let set = ToolSet::new([Tool::ReadFile, Tool::Edit]);
+        std::fs::write(d.path().join("a.txt"), "alpha\nBETA\ngamma\n").unwrap();
+        let stale = format!("2#{}", line_tag("beta"));
+        let err = Tool::Edit.run(&json!({"path":"a.txt","start":stale,"end":stale,"new_string":"x"}), d.path(), &set).await.unwrap_err();
+        assert!(err.to_string().contains("stale"), "{err}");
         assert_eq!(std::fs::read_to_string(d.path().join("a.txt")).unwrap(), "alpha\nBETA\ngamma\n");
-        // anchors: false gives plain lines
+    }
+
+    #[tokio::test]
+    async fn anchors_false_gives_plain_lines() {
+        let d = tempfile::tempdir().unwrap();
+        let set = ToolSet::new([Tool::ReadFile]);
+        std::fs::write(d.path().join("a.txt"), "alpha\nbeta\n").unwrap();
         let plain = Tool::ReadFile.run(&json!({"path":"a.txt","anchors":false}), d.path(), &set).await.unwrap().text;
-        assert!(plain.starts_with("alpha\n"), "{plain}");
+        assert_eq!(plain, "alpha\nbeta\n");
+        let anchored = Tool::ReadFile.run(&json!({"path":"a.txt"}), d.path(), &set).await.unwrap().text;
+        assert!(anchored.starts_with("1#"), "{anchored}");
     }
 
     #[tokio::test]
