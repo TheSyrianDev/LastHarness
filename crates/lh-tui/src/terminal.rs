@@ -45,6 +45,8 @@ enum Msg {
     Event(ServerEvent),
     End,
     Review(Result<Vec<Suggestion>, String>),
+    /// A slash command's answer, shown as a notice.
+    Notice(String),
     /// The chat tree, opened or refreshed.
     Tree(Result<lh_client::tree::ChatTree, String>),
     /// A line of feedback for the tree screen (or the chat when it is closed).
@@ -393,6 +395,7 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                 Msg::Review(Err(e)) => app.entries.push(crate::app::Entry::Error(e)),
                 Msg::Tree(Ok(t)) => match app.tree.as_mut() { Some(open) => open.replace_tree(t), None => app.tree = Some(crate::tree_ui::TreeScreen::new(t)) },
                 Msg::Tree(Err(e)) => app.entries.push(crate::app::Entry::Error(e)),
+                Msg::Notice(text) => app.entries.push(crate::app::Entry::Notice(text)),
                 Msg::TreeNote(r) => {
                     let text = r.unwrap_or_else(|e| format!("error: {e}"));
                     match app.tree.as_mut() { Some(open) => open.note = text, None => app.entries.push(crate::app::Entry::Notice(text)) }
@@ -496,6 +499,20 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                     KeyCode::Enter if !app.busy && (app.input.trim().starts_with("/attach") || app.input.trim().starts_with("/detach")) => {
                         let line = std::mem::take(&mut app.input);
                         app.attach_command(&line);
+                    }
+                    KeyCode::Enter if !app.busy && matches!(lh_client::slash::parse(&app.input), Some(Ok(_)) | Some(Err(_))) => {
+                        let line = std::mem::take(&mut app.input);
+                        match lh_client::slash::parse(&line) {
+                            Some(Ok(cmd)) => {
+                                let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
+                                tokio::spawn(async move {
+                                    let note = lh_client::slash::run(&c, &s, cmd).await.unwrap_or_else(|e| e);
+                                    let _ = tx.send(Msg::Notice(note));
+                                });
+                            }
+                            Some(Err(e)) => app.entries.push(crate::app::Entry::Notice(e)),
+                            None => {}
+                        }
                     }
                     KeyCode::Enter if !app.busy && app.input.trim() == "/review" => {
                         app.input.clear();

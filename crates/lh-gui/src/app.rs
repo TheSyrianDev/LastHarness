@@ -1047,6 +1047,11 @@ impl App {
         }
         self.banner = None;
         self.composer.update(cx, |s, cx| s.set_value("", window, cx));
+        if let Some(Ok(cmd)) = lh_client::slash::parse(&text) {
+            let key = c.key;
+            let session = c.session.clone();
+            return self.backend.send(Cmd::Slash { chat: key, session, cmd });
+        }
         let (key, session, model) = (c.key, c.session.clone(), self.models.id_for(&c.model));
         // the model the core last had for this session, as an id; unknown after a restart (then nothing is switched)
         let session_model = c.session.as_ref().and_then(|_| self.core_models.get(&key)).filter(|m| !m.is_empty()).map(|m| self.models.id_for(m));
@@ -1214,6 +1219,11 @@ impl App {
                 }
                 self.persist();
                 self.refresh_tree();
+            }
+            Ev::Notice { chat, text } => {
+                if let Some(c) = self.chats.by_key(chat) {
+                    c.blocks.push(Block::Notice(text));
+                }
             }
             Ev::Failed { chat, message } => {
                 if chat == 0 {

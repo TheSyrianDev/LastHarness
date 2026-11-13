@@ -2,6 +2,7 @@
 
 pub mod attach;
 pub mod qr;
+pub mod slash;
 pub mod tree;
 
 use std::collections::VecDeque;

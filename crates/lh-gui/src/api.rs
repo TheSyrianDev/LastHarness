@@ -58,6 +58,8 @@ pub enum Cmd {
     Refresh,
     Send { chat: u64, session: Option<String>, session_model: Option<String>, model: String, text: String, files: Vec<lh_client::attach::Staged>, start: SessionStart },
     Stop { chat: u64, session: Option<String> },
+    /// A chat slash command (`/usage`, `/insights`, `/rollback`, `/budget`), answered as a notice in `chat`.
+    Slash { chat: u64, session: Option<String>, cmd: lh_client::slash::Slash },
     Answer { session: String, ask: String, yes: bool },
     Delete { chat: u64, id: Option<String>, stored: bool },
     LoadHistory { chat: u64, id: String },
@@ -85,6 +87,8 @@ pub enum Ev {
     /// The stream for this chat is over, however it ended.
     StreamEnded { chat: u64 },
     Failed { chat: u64, message: String },
+    /// The answer to a slash command, shown in the chat as a notice.
+    Notice { chat: u64, text: String },
     Deleted { chat: u64 },
     History { chat: u64, messages: Vec<(String, String)>, context_tokens: u64 },
     ResumeWarning { chat: u64, warning: Value, model: String },
@@ -226,6 +230,16 @@ async fn run(cfg: Config, mut rx: mpsc::UnboundedReceiver<Cmd>, out: Out) {
                     });
                 }
                 out.send(Ev::StreamEnded { chat });
+            }
+            Cmd::Slash { chat, session, cmd } => {
+                let (c, o) = (client.clone(), out.clone());
+                tokio::spawn(async move {
+                    let text = match session {
+                        Some(s) => lh_client::slash::run(&c, &s, cmd).await.unwrap_or_else(|e| e),
+                        None => "Start a chat first, then use this command.".to_string(),
+                    };
+                    o.send(Ev::Notice { chat, text });
+                });
             }
             Cmd::Answer { session, ask, yes } => {
                 let c = client.clone();
