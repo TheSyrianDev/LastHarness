@@ -17,6 +17,8 @@ pub struct CreateJob {
     pub prompt: String,
     /// `running`, `done` or `failed`.
     pub state: String,
+    /// 0 while running (live step progress is not reported by ComfyUI here), 100 when done.
+    pub progress: u8,
     pub files: Vec<String>,
     /// A still image of the result for the page: the image itself, or the first frame of a video.
     pub poster: Option<String>,
@@ -71,6 +73,7 @@ pub fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
         .route("/v1/create/image", post(start_image))
         .route("/v1/create/video", post(start_video))
         .route("/v1/create/jobs", get(list_jobs))
+        .route("/v1/create/jobs/{id}", get(get_job))
 }
 
 fn workflow_template(file: &str) -> Result<Value, ApiError> {
@@ -85,7 +88,7 @@ fn workflow_template(file: &str) -> Result<Value, ApiError> {
 fn new_job(prompt: &str) -> u64 {
     let mut list = jobs().lock().unwrap();
     let id = list.len() as u64 + 1;
-    list.push(CreateJob { id, prompt: prompt.to_string(), state: "running".into(), files: vec![], poster: None, message: String::new() });
+    list.push(CreateJob { id, prompt: prompt.to_string(), state: "running".into(), progress: 0, files: vec![], poster: None, message: String::new() });
     id
 }
 
@@ -104,6 +107,7 @@ fn spawn_job(id: u64, workflow: Value, output_node: &'static str, ram: u64, labe
             match res {
                 Ok(files) => {
                     j.state = "done".into();
+                    j.progress = 100;
                     j.files = files.iter().map(|p| p.display().to_string()).collect();
                     j.poster = files.first().and_then(|f| create_job::poster_for(f, "ffmpeg")).map(|p| p.display().to_string());
                 }
@@ -121,9 +125,7 @@ async fn start_video(Json(b): Json<VideoBody>) -> Result<Json<Value>, ApiError> 
     if prompt.is_empty() || prompt.len() > 2000 {
         return Err(ApiError(StatusCode::BAD_REQUEST, "write a prompt of 1 to 2000 characters".into()));
     }
-    if b.frames % 4 != 1 || !(5..=49).contains(&b.frames) {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "frames are 5 to 49 and must be 4n+1 (17, 21, 25 ...)".into()));
-    }
+    check_frames(b.frames).map_err(|m| ApiError(StatusCode::BAD_REQUEST, m))?;
     if !(1..=30).contains(&b.steps) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "steps are 1 to 30".into()));
     }
@@ -158,13 +160,46 @@ async fn list_jobs() -> Json<Value> {
     Json(json!({ "jobs": *jobs().lock().unwrap() }))
 }
 
+async fn get_job(axum::extract::Path(id): axum::extract::Path<u64>) -> Result<Json<Value>, ApiError> {
+    let list = jobs().lock().unwrap();
+    let j = list.iter().find(|j| j.id == id).ok_or(ApiError(StatusCode::NOT_FOUND, format!("no create job {id}")))?;
+    Ok(Json(json!({ "id": j.id, "state": j.state, "progress": j.progress, "outputs": j.files, "message": j.message })))
+}
+
+/// The contract allows 4n+1 frame counts from 5 to 49. Above 49 would not fit the 4 GB card.
+fn check_frames(frames: u32) -> Result<(), String> {
+    if frames % 4 != 1 || !(5..=49).contains(&frames) {
+        return Err("frames are 5 to 49 and must be 4n+1 (17, 21, 25 ...)".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn job_list_starts_empty_and_serializes() {
-        let v = serde_json::to_value(CreateJob { id: 1, prompt: "p".into(), state: "running".into(), files: vec![], poster: None, message: String::new() }).unwrap();
+        let v = serde_json::to_value(CreateJob { id: 1, prompt: "p".into(), state: "running".into(), progress: 0, files: vec![], poster: None, message: String::new() }).unwrap();
         assert_eq!(v["state"], "running");
+        assert_eq!(v["progress"], 0);
+    }
+
+    #[test]
+    fn frames_must_be_4n_plus_1_and_at_most_49() {
+        assert!(check_frames(17).is_ok());
+        assert!(check_frames(49).is_ok());
+        assert!(check_frames(16).is_err());
+        assert!(check_frames(53).is_err(), "above the 49 cap is refused");
+        assert!(check_frames(3).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_job_is_found_by_id_and_unknown_ids_are_404() {
+        let id = new_job("a fox");
+        let Json(v) = get_job(axum::extract::Path(id)).await.ok().unwrap();
+        assert_eq!(v["state"], "running");
+        assert_eq!(v["progress"], 0);
+        assert!(get_job(axum::extract::Path(u64::MAX)).await.is_err());
     }
 }
