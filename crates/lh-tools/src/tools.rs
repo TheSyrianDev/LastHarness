@@ -972,6 +972,23 @@ mod tests {
         assert!(e.contains("not an ordinary file"), "{e}");
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn two_concurrent_edits_to_one_file_lose_no_write() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("shared.txt"), "alpha\nbeta\n").unwrap();
+        let set = ToolSet::new([Tool::Edit]);
+        let (root, s1, s2) = (d.path().to_path_buf(), set.clone(), set.clone());
+        let a = tokio::spawn({ let root = root.clone(); async move { Tool::Edit.run(&json!({"path": "shared.txt", "old_string": "alpha", "new_string": "ALPHA"}), &root, &s1).await } });
+        let b = tokio::spawn({ let root = root.clone(); async move { Tool::Edit.run(&json!({"path": "shared.txt", "old_string": "beta", "new_string": "BETA"}), &root, &s2).await } });
+        let (ra, rb) = (a.await.unwrap(), b.await.unwrap());
+        let text = std::fs::read_to_string(d.path().join("shared.txt")).unwrap();
+        // every edit that reports success must be in the file; a refused one must not have written
+        assert!(ra.is_ok() || rb.is_ok(), "at least one edit goes through: {ra:?} {rb:?}");
+        assert_eq!(text.contains("ALPHA"), ra.is_ok(), "{text}");
+        assert_eq!(text.contains("BETA"), rb.is_ok(), "{text}");
+        assert!(!d.path().join("shared.txt.lh-lock").exists(), "the lock is released");
+    }
+
     #[test]
     fn anchored_edit_replaces_lines_and_refuses_stale_anchors() {
         let text = "alpha\nbeta\ngamma\n";
