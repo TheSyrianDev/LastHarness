@@ -45,7 +45,7 @@ pub fn safe_relative(path: &str) -> Option<&Path> {
 }
 
 /// The unstaged and staged changes in `folder` as one diff, or None when it is not a git work tree.
-fn git_diff(folder: &Path) -> Option<String> {
+pub fn git_diff(folder: &Path) -> Option<String> {
     let out = std::process::Command::new("git").arg("-C").arg(folder).args(["diff", "HEAD"]).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
 }

@@ -549,7 +549,24 @@ async fn conversations<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Q
 
 /// The end-of-session review. The question is the last turn of the conversation as it stands, with
 /// the same tools listed, so a server with prefix caching reads the long part from its cache.
-async fn review<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+/// What the review reads. `auto` (the default) reviews the project's uncommitted git diff when there is one,
+/// and the conversation otherwise. `transcript` always reads the conversation.
+#[derive(Deserialize, Default)]
+struct ReviewBody {
+    #[serde(default)]
+    source: ReviewSource,
+}
+
+#[derive(Deserialize, Default, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+enum ReviewSource {
+    #[default]
+    Auto,
+    Transcript,
+}
+
+async fn review<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>, body: Option<Json<ReviewBody>>) -> Result<Json<Value>, ApiError> {
+    let source = body.map(|b| b.0.source).unwrap_or_default();
     let r = rt(&st)?;
     let s = st.session(&id)?;
     if s.incognito {
@@ -558,15 +575,20 @@ async fn review<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
     if !s.try_start() {
         return Err(ApiError(StatusCode::CONFLICT, "a turn is running in this session".into()));
     }
-    let result = review_inner(&st, r, &s, &id).await;
+    let result = review_inner(&st, r, &s, &id, source).await;
     s.finish_turn();
     result
 }
 
-async fn review_inner<M: Model + 'static>(st: &Arc<AppState<M>>, r: &MemoryRuntime, s: &Arc<crate::session::Session>, id: &str) -> Result<Json<Value>, ApiError> {
+async fn review_inner<M: Model + 'static>(st: &Arc<AppState<M>>, r: &MemoryRuntime, s: &Arc<crate::session::Session>, id: &str, source: ReviewSource) -> Result<Json<Value>, ApiError> {
     let dest = s.dest.clone().unwrap_or_else(|| r.destination(None));
     let mut req = s.req.lock().await.clone();
-    if !req.messages.iter().any(|m| m.role == lh_provider::Role::User) {
+    // the project's uncommitted changes, when the auto source has them
+    let diff = match (source, s.parts.folder.as_deref()) {
+        (ReviewSource::Auto, Some(f)) => lh_tools::project_files::git_diff(std::path::Path::new(f)).filter(|d| !d.trim().is_empty()),
+        _ => None,
+    };
+    if diff.is_none() && !req.messages.iter().any(|m| m.role == lh_provider::Role::User) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "nothing was said yet".into()));
     }
     // existing notes the model may see, so it can propose updates; sensitive ones stay out for cloud models
@@ -579,6 +601,14 @@ async fn review_inner<M: Model + 'static>(st: &Arc<AppState<M>>, r: &MemoryRunti
     for p in &known {
         prompt.push_str(&format!("- [{}] {}: {}\n", p.id, p.title, if p.gist.is_empty() { excerpt(&p.body, 100) } else { p.gist.clone() }));
     }
+    let reviewed = if let Some(d) = &diff {
+        prompt.push_str("\n\nThe material to review is this git diff of the project, not the conversation. Suggest notes only for what it shows about the user or the project:\n```diff\n");
+        prompt.push_str(&d.chars().take(lh_tools::project_files::REFERENCE_MAX).collect::<String>());
+        prompt.push_str("\n```\n");
+        "diff"
+    } else {
+        "transcript"
+    };
     req.messages.push(Message::user(prompt));
     req.max_tokens = Some(req.max_tokens.unwrap_or(4096).max(4096)); // a thinking model may use much of it before it answers
     let meter = st.settings.spend.for_session(id);
@@ -632,9 +662,9 @@ async fn review_inner<M: Model + 'static>(st: &Arc<AppState<M>>, r: &MemoryRunti
             added.push(pid);
         }
     }
-    let _ = st.settings.store.log("memory_review", id, "assistant", &json!({"suggestions": added.len(), "skipped": skipped}));
+    let _ = st.settings.store.log("memory_review", id, "assistant", &json!({"suggestions": added.len(), "skipped": skipped, "source": reviewed}));
     let list: Vec<Value> = r.memory.list_proposals(Some("pending")).map_err(err)?.iter().filter(|p| added.contains(&p.id)).map(proposal_json).collect();
-    Ok(Json(json!({"proposals": list, "skipped": skipped})))
+    Ok(Json(json!({"proposals": list, "skipped": skipped, "source": reviewed})))
 }
 
 /// Used by the session code: notes already carried by a conversation.

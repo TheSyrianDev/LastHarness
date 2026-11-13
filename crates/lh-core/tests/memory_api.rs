@@ -363,3 +363,62 @@ async fn undoing_an_assistant_write_archives_an_add_and_restores_the_earlier_tex
     let a = s.json(s.post(&format!("/v1/memory/writes/{add}/undo"), json!({}))).await;
     assert_eq!(a["archived"], true, "{a}");
 }
+
+/// A git repo in `dir` with one committed file, then `edit` applied to it (or not).
+fn repo_with_edit(dir: &std::path::Path, edit: bool) {
+    let git = |args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(dir).args(args).status().unwrap().success());
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "t@example.com"]);
+    git(&["config", "user.name", "t"]);
+    std::fs::write(dir.join("notes.txt"), "old line\n").unwrap();
+    git(&["add", "notes.txt"]);
+    git(&["commit", "-q", "-m", "init"]);
+    if edit {
+        std::fs::write(dir.join("notes.txt"), "new line about the release\n").unwrap();
+    }
+}
+
+#[tokio::test]
+async fn the_review_reads_the_git_diff_when_there_is_one_and_the_chat_otherwise() {
+    let d = tempfile::tempdir().unwrap();
+    let proj = d.path().join("proj");
+    std::fs::create_dir(&proj).unwrap();
+    repo_with_edit(&proj, true);
+    let s = start_at(d.path(), vec![text("ok"), text("[]")], Trust::Local, true);
+    let id = s.session(json!({"project_dir": proj.to_str().unwrap()})).await;
+    s.turn(&id, "hello there").await;
+    let r = s.json(s.post(&format!("/v1/sessions/{id}/review"), json!({}))).await;
+    assert_eq!(r["source"], "diff", "{r}");
+    let sent = format!("{:?}", s.seen.lock().unwrap().last().unwrap().messages);
+    assert!(sent.contains("new line about the release") && sent.contains("old line"), "the diff was sent: {sent}");
+}
+
+#[tokio::test]
+async fn the_review_falls_back_to_the_chat_when_the_diff_is_empty() {
+    let d = tempfile::tempdir().unwrap();
+    let proj = d.path().join("proj");
+    std::fs::create_dir(&proj).unwrap();
+    repo_with_edit(&proj, false);
+    let s = start_at(d.path(), vec![text("ok"), text("[]")], Trust::Local, true);
+    let id = s.session(json!({"project_dir": proj.to_str().unwrap()})).await;
+    s.turn(&id, "hello there").await;
+    let r = s.json(s.post(&format!("/v1/sessions/{id}/review"), json!({"source": "auto"}))).await;
+    assert_eq!(r["source"], "transcript", "{r}");
+    let sent = format!("{:?}", s.seen.lock().unwrap().last().unwrap().messages);
+    assert!(sent.contains("hello there") && !sent.contains("```diff"), "{sent}");
+}
+
+#[tokio::test]
+async fn the_review_transcript_source_is_forced_even_with_a_diff() {
+    let d = tempfile::tempdir().unwrap();
+    let proj = d.path().join("proj");
+    std::fs::create_dir(&proj).unwrap();
+    repo_with_edit(&proj, true);
+    let s = start_at(d.path(), vec![text("ok"), text("[]")], Trust::Local, true);
+    let id = s.session(json!({"project_dir": proj.to_str().unwrap()})).await;
+    s.turn(&id, "hello there").await;
+    let r = s.json(s.post(&format!("/v1/sessions/{id}/review"), json!({"source": "transcript"}))).await;
+    assert_eq!(r["source"], "transcript", "{r}");
+    let sent = format!("{:?}", s.seen.lock().unwrap().last().unwrap().messages);
+    assert!(sent.contains("hello there") && !sent.contains("```diff"), "{sent}");
+}

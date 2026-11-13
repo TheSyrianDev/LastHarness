@@ -514,11 +514,12 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                             None => {}
                         }
                     }
-                    KeyCode::Enter if !app.busy && app.input.trim() == "/review" => {
+                    KeyCode::Enter if !app.busy && matches!(app.input.trim(), "/review" | "/review transcript") => {
+                        let source = if app.input.trim() == "/review transcript" { "transcript" } else { "auto" };
                         app.input.clear();
                         let (c, s, tx) = (client.clone(), session.clone(), tx.clone());
                         tokio::spawn(async move {
-                            let r = c.call("POST", &format!("/v1/sessions/{s}/review"), Some(serde_json::json!({}))).await
+                            let r = c.call("POST", &format!("/v1/sessions/{s}/review"), Some(serde_json::json!({"source": source}))).await
                                 .map(|v| v["proposals"].as_array().map(|a| a.iter().map(Suggestion::from_json).collect()).unwrap_or_default());
                             let _ = tx.send(Msg::Review(r));
                         });

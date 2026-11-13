@@ -18,19 +18,22 @@ pub enum Slash {
     Attach(String),
     /// `/detach <n>`: the screen removes a staged file. The text is what follows the command.
     Detach(String),
-    /// `/review`: the screen asks the core for end-of-session suggestions.
+    /// `/review`: the screen asks the core for end-of-session suggestions, from the project's git diff when
+    /// there is one, else from the conversation.
     Review,
+    /// `/review transcript`: as `Review`, but always from the conversation.
+    ReviewTranscript,
 }
 
 impl Slash {
     /// True for commands the screen handles itself (staging files, showing suggestions). The core never sees them.
     pub fn is_screen(&self) -> bool {
-        matches!(self, Slash::Attach(_) | Slash::Detach(_) | Slash::Review)
+        matches!(self, Slash::Attach(_) | Slash::Detach(_) | Slash::Review | Slash::ReviewTranscript)
     }
 }
 
 /// The one-line list `/help` shows. Keep it in step with `parse`.
-pub const HELP: &str = "Commands: /usage (tokens used in this chat), /insights (what the core has learned), /rollback [N] (undo the last changes), /budget <tokens>|off (token limit for this chat), /help (this list). /attach [path] adds a file, /detach <n> removes one, /review asks for suggestions.";
+pub const HELP: &str = "Commands: /usage (tokens used in this chat), /insights (what the core has learned), /rollback [N] (undo the last changes), /budget <tokens>|off (token limit for this chat), /help (this list). /attach [path] adds a file, /detach <n> removes one, /review asks for suggestions (from the git diff, or the chat when there is none), /review transcript forces the chat.";
 
 /// Parse a chat line. `/budget` takes a token count or `off`; anything else after the command is an error text.
 pub fn parse(line: &str) -> Option<Result<Slash, String>> {
@@ -43,6 +46,7 @@ pub fn parse(line: &str) -> Option<Result<Slash, String>> {
         "/attach" => Some(Ok(Slash::Attach(rest.to_string()))),
         "/detach" => Some(Ok(Slash::Detach(rest.to_string()))),
         "/review" if rest.is_empty() => Some(Ok(Slash::Review)),
+        "/review" if rest == "transcript" => Some(Ok(Slash::ReviewTranscript)),
         "/rollback" => Some(Ok(Slash::Rollback(t.to_string()))),
         "/budget" => Some(match rest {
             "off" => Ok(Slash::Budget(None)),
@@ -57,7 +61,7 @@ pub async fn run(c: &Client, session: &str, cmd: Slash) -> Result<String, String
     let text = |v: Value| v["text"].as_str().or(v["message"].as_str()).unwrap_or("done").to_string();
     match cmd {
         Slash::Help => Ok(HELP.to_string()),
-        Slash::Attach(_) | Slash::Detach(_) | Slash::Review => Err(format!("{} is handled by the screen, not the core", cmd_name(&cmd))),
+        Slash::Attach(_) | Slash::Detach(_) | Slash::Review | Slash::ReviewTranscript => Err(format!("{} is handled by the screen, not the core", cmd_name(&cmd))),
         Slash::Usage => c.call("GET", &format!("/v1/sessions/{session}/usage"), None).await.map(text).map_err(|e| e.to_string()),
         Slash::Insights => c.call("GET", "/v1/insights", None).await.map(text).map_err(|e| e.to_string()),
         Slash::Rollback(cmd) => c.call("POST", &format!("/v1/sessions/{session}/rollback"), Some(json!({ "command": cmd }))).await.map(text).map_err(|e| e.to_string()),
@@ -76,6 +80,7 @@ fn cmd_name(cmd: &Slash) -> &'static str {
     match cmd {
         Slash::Attach(_) => "/attach",
         Slash::Detach(_) => "/detach",
+        Slash::ReviewTranscript => "/review transcript",
         _ => "/review",
     }
 }
@@ -113,7 +118,8 @@ mod tests {
         assert_eq!(parse("/detach"), Some(Ok(Slash::Detach(String::new()))));
         assert_eq!(parse("/review"), Some(Ok(Slash::Review)));
         assert_eq!(parse("/review now"), None);
-        for c in [Slash::Attach(String::new()), Slash::Detach("1".into()), Slash::Review] {
+        assert_eq!(parse("/review transcript"), Some(Ok(Slash::ReviewTranscript)));
+        for c in [Slash::Attach(String::new()), Slash::Detach("1".into()), Slash::Review, Slash::ReviewTranscript] {
             assert!(c.is_screen());
         }
         for c in [Slash::Usage, Slash::Insights, Slash::Help, Slash::Rollback("/rollback".into()), Slash::Budget(None)] {
