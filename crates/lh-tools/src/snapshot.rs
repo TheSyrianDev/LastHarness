@@ -61,11 +61,12 @@ fn current_turn(root: &Path) -> u64 {
 }
 
 /// Start a new turn. Prunes snapshots of turns older than the newest `KEEP_TURNS`.
-/// Also writes a `.gitignore` inside the snapshot folder so it stays out of version control.
+/// Also writes `.lastharness/.gitignore` (ignores the whole folder) so it stays out of version control.
 pub fn begin_turn(root: &Path) -> std::io::Result<u64> {
     let d = dir(root);
     std::fs::create_dir_all(&d)?;
-    std::fs::write(d.join(".gitignore"), "*\n")?;
+    // ignore the whole .lastharness folder in git, not just the snapshots
+    std::fs::write(root.join(".lastharness").join(".gitignore"), "*\n")?;
     let turn = current_turn(root) + 1;
     std::fs::write(d.join("turn"), turn.to_string())?;
     let oldest_kept = turn.saturating_sub(KEEP_TURNS - 1);
@@ -234,7 +235,7 @@ mod tests {
         let kept: Vec<u64> = all(root).iter().map(|s| s.turn).collect();
         assert_eq!(kept.len() as u64, KEEP_TURNS);
         assert_eq!(*kept.first().unwrap(), 6);
-        assert!(dir(root).join(".gitignore").exists());
+        assert!(root.join(".lastharness").join(".gitignore").exists());
     }
 
     #[test]
