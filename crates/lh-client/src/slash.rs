@@ -1,5 +1,5 @@
 //! Chat slash commands that call the core and show the answer as a notice: `/usage`, `/insights`,
-//! `/rollback [N]`, `/budget <tokens>|off`. Same endpoints the GUI uses.
+//! `/rollback [N]`, `/budget <tokens>|off`, `/help`. Same endpoints the GUI uses.
 
 use serde_json::{json, Value};
 
@@ -12,7 +12,11 @@ pub enum Slash {
     Insights,
     Rollback(String),
     Budget(Option<u64>),
+    Help,
 }
+
+/// The one-line list `/help` shows. Keep it in step with `parse`.
+pub const HELP: &str = "Commands: /usage (tokens used in this chat), /insights (what the core has learned), /rollback [N] (undo the last changes), /budget <tokens>|off (token limit for this chat), /help (this list). /attach and /detach add or remove files; /review asks for suggestions.";
 
 /// Parse a chat line. `/budget` takes a token count or `off`; anything else after the command is an error text.
 pub fn parse(line: &str) -> Option<Result<Slash, String>> {
@@ -21,6 +25,7 @@ pub fn parse(line: &str) -> Option<Result<Slash, String>> {
     match cmd {
         "/usage" => Some(Ok(Slash::Usage)),
         "/insights" => Some(Ok(Slash::Insights)),
+        "/help" if rest.is_empty() => Some(Ok(Slash::Help)),
         "/rollback" => Some(Ok(Slash::Rollback(t.to_string()))),
         "/budget" => Some(match rest {
             "off" => Ok(Slash::Budget(None)),
@@ -34,6 +39,7 @@ pub fn parse(line: &str) -> Option<Result<Slash, String>> {
 pub async fn run(c: &Client, session: &str, cmd: Slash) -> Result<String, String> {
     let text = |v: Value| v["text"].as_str().or(v["message"].as_str()).unwrap_or("done").to_string();
     match cmd {
+        Slash::Help => Ok(HELP.to_string()),
         Slash::Usage => c.call("GET", &format!("/v1/sessions/{session}/usage"), None).await.map(text).map_err(|e| e.to_string()),
         Slash::Insights => c.call("GET", "/v1/insights", None).await.map(text).map_err(|e| e.to_string()),
         Slash::Rollback(cmd) => c.call("POST", &format!("/v1/sessions/{session}/rollback"), Some(json!({ "command": cmd }))).await.map(text).map_err(|e| e.to_string()),
@@ -51,6 +57,15 @@ pub async fn run(c: &Client, session: &str, cmd: Slash) -> Result<String, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn help_is_local_and_lists_every_command() {
+        assert_eq!(parse("/help"), Some(Ok(Slash::Help)));
+        assert!(matches!(parse("/help me"), None));
+        for c in ["/usage", "/insights", "/rollback", "/budget", "/help", "/attach", "/review"] {
+            assert!(HELP.contains(c), "help misses {c}");
+        }
+    }
 
     #[test]
     fn parses_the_four_commands_and_rejects_bad_budgets() {
