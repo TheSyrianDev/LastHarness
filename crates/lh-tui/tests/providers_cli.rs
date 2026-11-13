@@ -66,7 +66,7 @@ fn args(s: &str) -> Vec<String> {
 async fn providers_are_listed_added_defaulted_and_removed_and_the_key_is_never_printed() {
     let (d, c, _) = core().await;
     let mut k = Typed(vec!["sk-or-TOPSECRET".into()], 0);
-    assert!(run(&c, &args("providers"), &mut k).await.unwrap().contains("No providers"));
+    // No "No providers" check here: the core also lists local servers it finds on this machine (detected-*), so the saved list is checked below instead.
     let out = run(&c, &args("/provider add openrouter"), &mut k).await.unwrap();
     assert_eq!(k.1, 1, "a preset that needs a key asks once");
     let out2 = run(&c, &args("provider add http://localhost:9292/v1 --name Box"), &mut Typed(vec![], 0)).await.unwrap();
