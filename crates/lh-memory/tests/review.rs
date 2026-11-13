@@ -82,3 +82,14 @@ fn repeats_and_things_already_known_are_not_suggested_twice() {
     assert!(m.add_proposal(prop(Kind::New, "Coffee", "Takes it black.", None)).unwrap().is_none(), "already a page");
     assert!(m.add_proposal(prop(Kind::New, "", "text", None)).is_err());
 }
+
+#[test]
+fn a_suggestion_is_not_applied_until_it_is_accepted() {
+    let (_d, m) = mem();
+    let before = m.list(None, State::Live).unwrap().len();
+    let id = m.add_proposal(prop(Kind::New, "Home city", "Lives in Berlin.", None)).unwrap().unwrap();
+    assert_eq!(m.list(None, State::Live).unwrap().len(), before, "pending suggestions change nothing");
+    assert_eq!(m.list_proposals(Some("pending")).unwrap().len(), 1);
+    m.reject_proposal(id).unwrap();
+    assert_eq!(m.list(None, State::Live).unwrap().len(), before, "a rejected suggestion changes nothing");
+}
