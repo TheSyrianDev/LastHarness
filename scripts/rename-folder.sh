@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Moves the checkout from the old folder name to the Last AI folder name.
 # Written for the CEO to run by hand. It does NOT run itself and does not change the system files.
-# Usage: scripts/rename-folder.sh /home/omar/Projects/LastAI
+# Usage: scripts/rename-folder.sh ~/Projects/LastAI
 set -euo pipefail
 old="$(cd "$(dirname "$0")/.." && pwd)"
 new="${1:?give the new folder path}"

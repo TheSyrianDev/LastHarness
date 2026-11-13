@@ -100,7 +100,7 @@ The browser page is served over HTTPS when `web.listen` is set (for example `lh 
 
 ## Release
 
-The 0.1.0-alpha release checklist is in `/home/omar/Projects/STATUS.md`. Nothing is pushed or tagged from it yet.
+The 0.1.0-alpha release checklist is in `STATUS.md` in the Projects folder above this repo. Nothing is pushed or tagged from it yet.
 
 ## Not built yet
 
