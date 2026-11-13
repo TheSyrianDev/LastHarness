@@ -81,3 +81,27 @@ Status: PROPOSAL. Not approved by Omar yet. Planning only, no code. Each item li
 - Memory writes need Omar's approval, per the .grill rules.
 - Telegram comes first among messaging channels (item 5).
 - Coding of the plan has not started. Hermes additions come from the CEO.
+
+## Additions from CEO relay (2026-11-13)
+
+Source status: these items come from the CEO relay, not from reading the sources. Marked UNVERIFIED until someone reads the code. Hermes items were partly checked in its README only (memory, skills, FTS5 search, agentskills.io); the rest is unverified.
+
+Order: hashline edits, context compression, snapshots and rollback, toolsets, memory, subagents, skills; then the small items; Telegram first for messaging. Coding waits for Omar's word ("don't start coding the plan yet").
+
+### NOW additions
+- Snapshots before file changes with `/rollback` (Hermes). Priority high. Size M. Where: `crates/lh-tools/src/runner.rs`, `crates/lh-tools/src/diff.rs`. Test: a write creates a snapshot; `/rollback` restores the file byte for byte. UNVERIFIED.
+- Toolsets per chat or channel (web, terminal, files, memory) (Hermes). Size M. Where: `crates/lh-tools/src/tools.rs`, `crates/lh-tools/src/perm.rs`. Test: a chat with only "files" cannot call terminal. UNVERIFIED.
+- Subagents with their own limited toolset and terminal, at most 3 running at once, as Department workers (Hermes). Size L. Where: `crates/lh-team/src`. Depends on toolsets. Test: a fourth subagent waits until one ends. UNVERIFIED.
+- Context compression trigger at 50% of the window (Hermes). Size S. Where: `crates/lh-core/src/session.rs`. Extends item 2. Test: a fixture at 49% does not compact; at 51% it does. UNVERIFIED.
+
+### Small items
+- Auto-load AGENTS.md, CLAUDE.md and .cursorrules (Hermes). Size S. Where: `crates/lh-core/src/session.rs` or the prompt assembly. Test: a folder with each file puts its text in the prompt. UNVERIFIED.
+- `@` references for file, folder, git diff and URL (Hermes). Size S-M. Where: `crates/lh-gui` input and `crates/lh-tools`. Test: each reference type expands to the expected text. UNVERIFIED.
+- `/usage` and `/insights` (Hermes). Size S. Where: `crates/lh-spend` (usage), `crates/lh-memory` (insights). Test: fixture spend log gives the expected totals. UNVERIFIED.
+
+### Ideas to consider later (from other agents)
+- Per-task token budgets, live plan checklist, one-line install (Mercury). Size M. Where: `crates/lh-core` (budget), `crates/lh-gui` (checklist). UNVERIFIED.
+- Last Engine one-click plug-in for Pi, Hermes and Codex (Magnitude). Size L. Depends on item 7 (outside agents). UNVERIFIED.
+
+## Open
+- Omar to confirm the order above before any coding.
