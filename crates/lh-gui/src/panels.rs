@@ -1534,7 +1534,7 @@ impl App {
     pub fn pop_out(&mut self, item: Content, cx: &mut Context<Self>) {
         let pal = self.pal.clone();
         let title = item.title.clone();
-        let opts = WindowOptions { titlebar: Some(TitlebarOptions { title: Some(title.into()), ..Default::default() }), window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(760.), px(640.)), cx))), app_id: Some("lastharness-gui".into()), ..Default::default() };
+        let opts = WindowOptions { titlebar: Some(TitlebarOptions { title: Some(title.into()), ..Default::default() }), window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(760.), px(640.)), cx))), app_id: Some("lastai-gui".into()), ..Default::default() };
         let _ = cx.open_window(opts, move |window, cx| {
             let view = cx.new(|_| PopOut { item, pal });
             cx.new(|cx| gpui_component::Root::new(view, window, cx))

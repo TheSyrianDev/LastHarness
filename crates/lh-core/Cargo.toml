@@ -8,6 +8,11 @@ license.workspace = true
 name = "lhd"
 path = "src/main.rs"
 
+# Last AI daemon name (lhd stays as an alias for one release)
+[[bin]]
+name = "lastaid"
+path = "src/main.rs"
+
 [dependencies]
 lh-provider = { path = "../lh-provider" }
 lh-tools = { path = "../lh-tools" }

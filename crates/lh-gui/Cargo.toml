@@ -12,6 +12,11 @@ path = "src/lib.rs"
 name = "lastharness-gui"
 path = "src/main.rs"
 
+# Last AI desktop name (lastharness-gui stays as an alias for one release)
+[[bin]]
+name = "lastai-gui"
+path = "src/main.rs"
+
 [features]
 # Omarchy desktop integration: the "Omarchy" theme entries (colors.toml), Hyprland look and window-rule hint.
 # On for local builds; the generic Linux, Windows and macOS releases build with --no-default-features.

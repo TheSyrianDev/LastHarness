@@ -165,7 +165,7 @@ struct Tray {
 
 impl ksni::Tray for Tray {
     fn id(&self) -> String {
-        "lastharness-gui".into()
+        "lastai-gui".into()
     }
     fn title(&self) -> String {
         "Last AI".into()

@@ -15,11 +15,18 @@ pub fn unit_path() -> PathBuf {
 
 /// Where the core program is: next to this program, or on the path.
 pub fn find_lhd() -> Option<PathBuf> {
-    let beside = std::env::current_exe().ok()?.with_file_name(format!("lhd{}", std::env::consts::EXE_SUFFIX));
-    if beside.is_file() {
-        return Some(beside);
+    let ext = std::env::consts::EXE_SUFFIX;
+    // Last AI name first, the old lhd name as fallback for one release.
+    for name in [format!("lastaid{ext}"), format!("lhd{ext}")] {
+        let beside = std::env::current_exe().ok()?.with_file_name(&name);
+        if beside.is_file() {
+            return Some(beside);
+        }
+        if let Some(found) = std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(&name)).find(|c| c.is_file())) {
+            return Some(found);
+        }
     }
-    std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(format!("lhd{}", std::env::consts::EXE_SUFFIX))).find(|c| c.is_file()))
+    None
 }
 
 pub fn unit_text(lhd: &Path) -> String {

@@ -9,7 +9,7 @@
 A local-first AI harness built around a team: departments, and the workers in them.</p>
 
 > [!WARNING]
-> **Alpha.** LastHarness is early software and is only used on one machine so far. Expect rough edges and breaking changes. LastHarness (the desktop app and the `lh` terminal app) is tested on Linux (Omarchy) and Windows (author-tested). The macOS build is early alpha: it starts in CI, but no one has used it day to day yet.
+> **Alpha.** Last AI is early software and is only used on one machine so far. Expect rough edges and breaking changes. Last AI (the desktop app and the `la` terminal app) is tested on Linux (Omarchy) and Windows (author-tested). The macOS build is early alpha: it starts in CI, but no one has used it day to day yet.
 
 <p align="center">
   <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml/badge.svg"></a>
@@ -17,7 +17,7 @@ A local-first AI harness built around a team: departments, and the workers in th
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-orange">
 </p>
 
-LastHarness is a local-first AI harness for one person's computer. A core program (`lhd`) holds the conversation, the team (departments and their workers), tools, memory and learning, and is model-agnostic, with no model lock-in. It works with any model or provider: local servers such as llama-swap, llama.cpp, Ollama and LM Studio, or any OpenAI-compatible or Anthropic-style cloud API (tested so far with llama.cpp through llama-swap). Front ends are thin clients of the core's local API: a terminal app, a browser page, and messaging channels.
+Last AI is a local-first AI harness for one person's computer. A core program (`lastaid`) holds the conversation, the team (departments and their workers), tools, memory and learning, and is model-agnostic, with no model lock-in. It works with any model or provider: local servers such as llama-swap, llama.cpp, Ollama and LM Studio, or any OpenAI-compatible or Anthropic-style cloud API (tested so far with llama.cpp through llama-swap). Front ends are thin clients of the core's local API: a terminal app, a browser page, and messaging channels.
 It remembers across sessions (notes you can read and edit as Markdown), learns your habits as rules you approve, and can hand bigger jobs to departments of role workers that plan, run and check the work.
 Sensitive notes and rules are used only with a model on this machine. Permissions are tiered: reads are free, writes ask once, and anything risky always asks.
 It runs on Linux and Windows; macOS is early alpha.
@@ -28,15 +28,15 @@ It runs on Linux and Windows; macOS is early alpha.
 cargo build --release
 ```
 
-This makes four programs in `target/release/`: `lhd` (the core), `lh` and `lastharness` (the same terminal client under two names) and `lastharness-gui` (the desktop app). The desktop app takes a few minutes to build the first time; `cargo build --release -p lh-core -p lh-tui` builds only the core and the terminal.
+This makes four programs in `target/release/`: `lastaid` (the core), `la` and `lastai` (the same terminal client under two names) and `lastai-gui` (the desktop app). The desktop app takes a few minutes to build the first time; `cargo build --release -p lh-core -p lh-tui` builds only the core and the terminal.
 
 ## First run
 
 ```
-target/release/lh setup        # twelve plain questions; Enter accepts each default
+target/release/la setup        # twelve plain questions; Enter accepts each default
 target/release/lhd             # start the core (it reads the settings file)
-target/release/lh              # chat
-target/release/lastharness-gui # or the desktop app (needs the core running)
+target/release/la              # chat
+target/release/lastai-gui # or the desktop app (needs the core running)
 ```
 
 The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastharness/themes/` (the six built-in ones, three families each in light and dark, are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat.
@@ -44,7 +44,7 @@ The desktop app finds the core and its token by itself (flags: `--base`, `--toke
 The Omarchy release (`LastHarness-<version>-omarchy-x86_64.tar.gz`, installed with its `install-omarchy.sh`) also offers the desktop's own look, and an "Omarchy (transparent)" look that is liquid glass in the Omarchy colours. The transparent look is as see-through as the Hyprland window rule for the app's window (class `lastharness-gui`) says; without a rule it stays opaque. Other builds (AppImage, Windows, macOS, or a source build with `--no-default-features`) leave the Omarchy looks out. To add one, put this line in `~/.config/hypr/hyprland.lua` (0.85 is how much of the window shows):
 
 ```lua
-o.window("lastharness-gui", { opacity = "0.85 override 0.85 override" })
+o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 ```
 
 To start the core at every login: `lh service preview`, then `lh service install` (a systemd user service; no sudo; closing the terminal never stops the core).
@@ -61,7 +61,7 @@ The Create block on the Models and keys page makes images (Z-Image Turbo) and sh
 
 ## Web search
 
-`web_search` uses a SearXNG instance. If the settings name none, LastHarness looks for one on `127.0.0.1:8888`. If nothing answers there, the tool says so and suggests starting SearXNG or setting its address.
+`web_search` uses a SearXNG instance. If the settings name none, Last AI looks for one on `127.0.0.1:8888`. If nothing answers there, the tool says so and suggests starting SearXNG or setting its address.
 
 ## Install and release build
 
@@ -73,8 +73,8 @@ The Create block on the Models and keys page makes images (Z-Image Turbo) and sh
 
 Every command has `help`, which works without the core running, for example `lh team help`.
 
-- `lhd` is the core. It listens on `127.0.0.1:7842` only. Settings come from `config.toml`; a command-line flag overrides the file. The token the clients need is written to `$XDG_RUNTIME_DIR/lastharness/token`.
-- `lh` and `lastharness` open the terminal chat. Options: `--url`, `--token-file`, `--model`, `--ask-all`, `--incognito`.
+- `lastaid` is the core. It listens on `127.0.0.1:7842` only. Settings come from `config.toml`; a command-line flag overrides the file. The token the clients need is written to `$XDG_RUNTIME_DIR/lastharness/token`.
+- `la` and `lastai` open the terminal chat. Options: `--url`, `--token-file`, `--model`, `--ask-all`, `--incognito`.
 - `lh setup`: first-run questions. `lh settings`: see and change every setting (`set`, `reset`).
 - `lh memory ...`: the notes the assistant keeps. `lh learn ...`: rules, style, skills and suggestions waiting for you.
 - `lh team ...`: roles, model types, departments, giving a goal to a department (`lh team run`), workers, away mode, plugin folders.

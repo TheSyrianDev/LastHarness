@@ -21,7 +21,7 @@ fn main() {
     let cfg = match config::Config::from_args(std::env::args().skip(1)) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("lastharness-gui: {e}");
+            eprintln!("lastai-gui: {e}");
             std::process::exit(2);
         }
     };
@@ -35,7 +35,7 @@ fn main() {
             window_background: WindowBackgroundAppearance::Transparent,
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(1180.), px(760.)), cx))),
             titlebar: Some(TitlebarOptions { title: Some("Last AI".into()), ..Default::default() }),
-            app_id: Some("lastharness-gui".into()),
+            app_id: Some("lastai-gui".into()),
             ..Default::default()
         };
         cx.open_window(opts, move |window, cx| {

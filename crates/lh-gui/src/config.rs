@@ -45,7 +45,7 @@ pub fn start_core_if_missing(base: &str, token_file: &std::path::Path) {
         return;
     }
     let Some(lhd) = crate::pages::service::find_lhd() else {
-        eprintln!("lastharness-gui: the core is not running and lhd was not found beside the app or on the path");
+        eprintln!("lastai-gui: the core is not running and lastaid was not found beside the app or on the path");
         return;
     };
     let mut c = std::process::Command::new(&lhd);
@@ -57,8 +57,8 @@ pub fn start_core_if_missing(base: &str, token_file: &std::path::Path) {
         c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console window beside the app
     }
     match c.spawn() {
-        Ok(_) => eprintln!("lastharness-gui: started {}", lhd.display()),
-        Err(e) => eprintln!("lastharness-gui: cannot start {}: {e}", lhd.display()),
+        Ok(_) => eprintln!("lastai-gui: started {}", lhd.display()),
+        Err(e) => eprintln!("lastai-gui: cannot start {}: {e}", lhd.display()),
     }
 }
 

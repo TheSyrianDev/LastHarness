@@ -153,14 +153,14 @@ fn surface_alpha_for(window: f32) -> f32 {
 }
 
 /// This app's window class on Wayland (the `app_id`), for the window rule that makes it see-through.
-pub const APP_CLASS: &str = "lastharness-gui";
+pub const APP_CLASS: &str = "lastai-gui";
 
 /// The name of the see-through variant of the Omarchy look.
 pub const TRANSPARENT: &str = "Omarchy (transparent)";
 
 /// The line to add to Hyprland's config for the transparent look, shown in Settings when no rule matches.
 /// In Omarchy's Lua config (`~/.config/hypr/hyprland.lua`); the number is how see-through the window is.
-pub const RULE_HINT: &str = "o.window(\"lastharness-gui\", { opacity = \"0.85 override 0.85 override\" })";
+pub const RULE_HINT: &str = "o.window(\"lastai-gui\", { opacity = \"0.85 override 0.85 override\" })";
 
 /// The Omarchy theme's foreground colour (the text in its bar and panels), from `colors.toml`. `None` when there is
 /// no theme, or it has no readable `foreground` key.

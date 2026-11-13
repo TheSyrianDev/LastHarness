@@ -8,6 +8,11 @@ license.workspace = true
 name = "lh"
 path = "src/main.rs"
 
+# Last AI short name (lh stays as an alias for one release)
+[[bin]]
+name = "la"
+path = "src/main.rs"
+
 # the same program under its long name
 [[bin]]
 name = "lastharness"

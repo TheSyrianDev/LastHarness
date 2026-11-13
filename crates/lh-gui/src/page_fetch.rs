@@ -18,7 +18,7 @@ pub fn fetch(url: &str) -> Fetched {
     let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return none };
     rt.block_on(async {
         let client = reqwest::Client::builder()
-            .user_agent(concat!("LastHarness/", env!("CARGO_PKG_VERSION"), " (desktop app; small in-chat apps)"))
+            .user_agent(concat!("Last AI/", env!("CARGO_PKG_VERSION"), " (desktop app; small in-chat apps)"))
             .timeout(Duration::from_secs(15))
             .redirect(reqwest::redirect::Policy::custom(|a| if a.previous().len() < 3 && fetch_allowed(a.url().as_str()) { a.follow() } else { a.stop() }))
             .build();

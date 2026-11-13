@@ -1,4 +1,4 @@
-//! `lhd`: the LastHarness core. Listens on loopback only.
+//! `lastaid`: the Last AI core. Listens on loopback only.
 //!
 //! lhd [--provider http://localhost:9292/v1] [--config PATH] [--key secret:NAME] [--listen 127.0.0.1:7842]
 //!     Settings come from the settings file (`lh setup` writes it); a flag beats the file.
