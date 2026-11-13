@@ -75,7 +75,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::stream::{self, Stream};
 use lh_provider::{ChatRequest, Event, FinishReason, Message, Role};
-use lh_tools::{compact_if_needed, default_tools, run_turn, CompactOptions, Answer, Mode, Model, Outcome, Permissions, TurnEnd, TurnEvent, TurnOptions};
+use lh_tools::{compact_if_needed, compact_threshold, default_tools, run_turn, CompactOptions, Answer, Mode, Model, Outcome, Permissions, TurnEnd, TurnEvent, TurnOptions};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
@@ -1017,7 +1017,7 @@ async fn start_turn<M: Model + 'static>(
             let known = s.known_tokens.load(Ordering::SeqCst);
             let threshold = match compact_at {
                 Some(n) => n,
-                None => model.capabilities(&work.model).await.context_tokens.map_or(24_000, |n| n / 4 * 3),
+                None => compact_threshold(model.capabilities(&work.model).await.context_tokens),
             };
             let copts = CompactOptions { threshold_tokens: threshold, keep_last_turns: 1 };
             match compact_if_needed(&*model, &meter, &mut work, (known > 0).then_some(known), &copts).await {

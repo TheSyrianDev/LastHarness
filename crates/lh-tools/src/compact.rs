@@ -47,6 +47,11 @@ pub const SUMMARY_MARKER: &str = "\n\n[Summary of the earlier conversation]\n";
 const ASK: &str = "Pause the task. Write a summary of this conversation so far, for yourself to continue from. Keep every fact, decision, file name, \
 command result and open question that matters for the next steps, and say what was being done last. Plain text, no tool calls, under 400 words.";
 
+/// Compaction starts at half the model's context window; without a known window, 24,000 tokens.
+pub fn compact_threshold(context_tokens: Option<u64>) -> u64 {
+    context_tokens.map_or(24_000, |n| n / 2)
+}
+
 /// Rough size of the request in tokens. Counts three bytes per token, so it errs high.
 pub fn estimate_tokens(req: &ChatRequest) -> u64 {
     let msgs: usize = req.messages.iter().map(|m| m.content.as_deref().map_or(0, str::len) + m.tool_calls.iter().map(|c| c.name.len() + c.arguments.len()).sum::<usize>()).sum();
@@ -211,5 +216,23 @@ mod tests {
             msg.content = msg.content.as_ref().map(|c| c.chars().take(5).collect());
         }
         assert!(compact_if_needed(&Summarizer::new("S"), &NoMeter, &mut r, Some(30_000), &opts(24_000)).await.unwrap().is_some());
+    }
+
+    #[test]
+    fn compaction_starts_at_half_the_window() {
+        assert_eq!(compact_threshold(Some(32_768)), 16_384);
+        assert_eq!(compact_threshold(None), 24_000);
+        // 49% of the window: no compaction; 51%: compaction (the estimate is what counts here)
+        let win = 10_000;
+        let req = |tokens: u64| {
+            let mut r = ChatRequest::default();
+            r.messages.push(Message::system("sys"));
+            r.messages.push(Message::user("old"));
+            r.messages.push(Message::user("new"));
+            r.messages[1].content = Some("x".repeat((tokens * 3) as usize));
+            r
+        };
+        assert!(estimate_tokens(&req(win * 49 / 100)) < compact_threshold(Some(win)));
+        assert!(estimate_tokens(&req(win * 51 / 100)) >= compact_threshold(Some(win)));
     }
 }
