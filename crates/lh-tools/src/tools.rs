@@ -284,6 +284,8 @@ impl Tool {
                 let Action::Write(p) = self.action(args, root)? else { unreachable!() };
                 let s = |k: &str| args[k].as_str().ok_or_else(|| ToolError::Args(format!("`{k}` must be a string")));
                 let new = s("new_string")?;
+                // held for the whole read-check-write, so two workers on one file cannot interleave
+                let _guard = FileLock::take(&p)?;
                 let text = tokio::fs::read_to_string(&p).await.map_err(|e| ToolError::Failed(format!("cannot read {}: {e}", p.display())))?;
                 let out = if let Some(start) = args["start"].as_str() {
                     edit_lines(&text, start, args["end"].as_str().unwrap_or(start), new)?
@@ -1188,6 +1190,15 @@ pub fn edit_file_transaction(path: &std::path::Path, edits: &[LineEdit]) -> Resu
 #[cfg(test)]
 mod file_lock_tests {
     use super::*;
+
+    #[test]
+    fn edit_tool_refuses_while_a_worker_holds_the_file() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("b.txt");
+        std::fs::write(&p, "x\n").unwrap();
+        let _held = FileLock::take(&p).unwrap();
+        assert!(FileLock::take(&p).is_err());
+    }
 
     #[test]
     fn a_second_worker_is_refused_and_the_lock_clears() {
