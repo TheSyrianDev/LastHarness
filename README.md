@@ -80,7 +80,7 @@ The Create block on the Models and keys page makes images (Z-Image Turbo) and sh
 Every command has `help`, which works without the core running, for example `lh team help`.
 
 - `lastaid` is the core. It listens on `127.0.0.1:7842` only. Settings come from `config.toml`; a command-line flag overrides the file. The token the clients need is written to `$XDG_RUNTIME_DIR/lastharness/token`.
-- `la` and `lastai` open the terminal chat. Options: `--url`, `--token-file`, `--model`, `--ask-all`, `--incognito`.
+- `la` and `lastai` open the terminal chat. Options: `--url`, `--token-file`, `--model`, `--ask-all`, `--incognito`. In the chat, `/review` asks for suggestions from the git diff (or from the chat when there is no diff), and `/review transcript` always uses the chat.
 - `lh setup`: first-run questions. `lh settings`: see and change every setting (`set`, `reset`).
 - `lh memory ...`: the notes the assistant keeps. `lh learn ...`: rules, style, skills and suggestions waiting for you.
 - `lh team ...`: roles, model types, departments, giving a goal to a department (`lh team run`), workers, away mode, plugin folders.
@@ -97,6 +97,10 @@ The browser page is served over HTTPS when `web.listen` is set (for example `lh 
 - Settings: `~/.config/lastharness/config.toml` (optional spending prices in `spend.toml` beside it).
 - Data: `~/.local/share/lastharness/`: `lh.db` (activity log, rules, indexes), `memory/` (your notes as Markdown), `skills/`, `team/` (roles and departments), `mcp.json`, `web/` (the browser door's certificate).
 - Token: `$XDG_RUNTIME_DIR/lastharness/token`.
+
+## Release
+
+The 0.1.0-alpha release checklist is in `/home/omar/Projects/STATUS.md`. Nothing is pushed or tagged from it yet.
 
 ## Not built yet
 
