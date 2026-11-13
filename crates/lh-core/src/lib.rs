@@ -703,7 +703,8 @@ async fn build_system<M: Model + 'static>(st: &AppState<M>, s: &Session, message
         date: &lh_tools::today(),
         guidelines: &p.guidelines,
     });
-    let Some(mut sys) = lh_learn::compose_system(Some(&base), &[&p.client_block, &p.learned_block, &p.about]) else { return };
+    let project = p.folder.as_deref().map(|f| lh_tools::project_files::project_instructions(std::path::Path::new(f))).unwrap_or_default();
+    let Some(mut sys) = lh_learn::compose_system(Some(&base), &[&p.client_block, &p.learned_block, &p.about, &project]) else { return };
     match messages.first_mut().filter(|m| m.role == lh_provider::Role::System) {
         Some(old) => {
             // a summary written by compaction belongs to the conversation, not to the base; keep it
@@ -1022,6 +1023,9 @@ async fn start_turn<M: Model + 'static>(
                         let _ = store.log("memory_sent", &id, "assistant", &json!({"with": "recall", "trust": format!("{:?}", rt.trust), "pages": pages, "withheld": rec.withheld}));
                     }
                 }
+            }
+            if let Some(f) = s.parts.folder.as_deref() {
+                user_text = lh_tools::project_files::expand_references(&user_text, std::path::Path::new(f));
             }
             work.messages.push(Message::user(user_text).with_attachments(files));
             let known = s.known_tokens.load(Ordering::SeqCst);

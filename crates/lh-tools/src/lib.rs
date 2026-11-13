@@ -19,6 +19,7 @@ pub use memory_tools::{MemoryHandle, PrivacyJudge};
 pub mod codemode;
 pub mod diff;
 pub mod hooks;
+pub mod project_files;
 pub mod lsp;
 pub use hooks::Hooks;
 pub use snapshot::{begin_turn, parse_command, rollback_changes, rollback_turns, RollbackCommand, KEEP_TURNS};
