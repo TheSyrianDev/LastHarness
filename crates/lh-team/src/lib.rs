@@ -8,6 +8,7 @@
 mod backend;
 mod control;
 mod dept;
+pub mod external;
 mod engine;
 mod error;
 mod plan;

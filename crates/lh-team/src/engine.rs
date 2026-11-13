@@ -119,6 +119,10 @@ pub trait Approver: Send + Sync {
     fn plan<'a>(&'a self, dept: &'a str, plan: &'a Plan) -> BoxFut<'a, PlanDecision>;
     /// `true` to go on after the milestone.
     fn checkin<'a>(&'a self, dept: &'a str, milestone: &'a str, summaries: &'a [String]) -> BoxFut<'a, bool>;
+    /// `true` when an outside CLI may change files for this department. Default: no.
+    fn write_ok<'a>(&'a self, _dept: &'a str, _what: &'a str) -> BoxFut<'a, bool> {
+        Box::pin(async { false })
+    }
 }
 
 pub struct AutoApprove;
