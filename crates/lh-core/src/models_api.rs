@@ -159,7 +159,8 @@ fn dest_dir(repo: &str) -> Option<std::path::PathBuf> {
 }
 
 #[cfg(feature = "hf-catalog")]
-async fn start_download(Json(b): Json<DownloadBody>) -> Result<Json<Value>, ApiError> {
+async fn start_download(via: Option<axum::Extension<crate::web::Via>>, Json(b): Json<DownloadBody>) -> Result<Json<Value>, ApiError> {
+    crate::registry_api::no_device(via)?;
     if !valid_target(&b.repo, &b.file) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "that is not a GGUF file in a Hub repo".into()));
     }
@@ -205,7 +206,8 @@ async fn start_download(Json(b): Json<DownloadBody>) -> Result<Json<Value>, ApiE
 }
 
 #[cfg(not(feature = "hf-catalog"))]
-async fn start_download(Json(_b): Json<DownloadBody>) -> Result<Json<Value>, ApiError> {
+async fn start_download(via: Option<axum::Extension<crate::web::Via>>, Json(_b): Json<DownloadBody>) -> Result<Json<Value>, ApiError> {
+    crate::registry_api::no_device(via)?;
     Err(ApiError(StatusCode::NOT_IMPLEMENTED, "downloads are not in this build (it needs the hf-catalog feature)".into()))
 }
 
@@ -233,7 +235,8 @@ struct RunBody {
 
 /// Register a downloaded GGUF with llama-swap: the steps in `model_run::run` (lock, backup, matrix, config,
 /// validate, restart, list). Runs on a blocking thread because it restarts a service and waits.
-async fn run_model(Json(b): Json<RunBody>) -> Result<Json<Value>, ApiError> {
+async fn run_model(via: Option<axum::Extension<crate::web::Via>>, Json(b): Json<RunBody>) -> Result<Json<Value>, ApiError> {
+    crate::registry_api::no_device(via)?;
     let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
     if !plain(&b.folder) || !plain(&b.file) || !b.file.ends_with(".gguf") {
         return Err(ApiError(StatusCode::BAD_REQUEST, "folder and file must be plain names, file a .gguf".into()));

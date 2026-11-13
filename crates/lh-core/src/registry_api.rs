@@ -47,7 +47,7 @@ fn bad(m: impl Into<String>) -> ApiError {
     ApiError(StatusCode::BAD_REQUEST, m.into())
 }
 
-fn no_device(via: Option<Extension<crate::web::Via>>) -> Result<(), ApiError> {
+pub(crate) fn no_device(via: Option<Extension<crate::web::Via>>) -> Result<(), ApiError> {
     if matches!(via.map(|v| v.0), Some(crate::web::Via::Device(_))) {
         return Err(ApiError(StatusCode::FORBIDDEN, "providers and their keys cannot be changed from a browser; use the app on the machine".into()));
     }
