@@ -305,3 +305,23 @@ async fn the_list_says_what_applies_when() {
     assert_eq!(r["new_chats_only"], json!(["web.searxng"]));
     assert!(std::fs::read_to_string(&s.cfg).unwrap().contains("searxng"));
 }
+
+/// `/rollback` undoes the last turn as a whole; `/rollback 1` undoes only the newest change.
+#[tokio::test]
+async fn the_rollback_command_undoes_a_turn_or_changes() {
+    let d = tempfile::tempdir().unwrap();
+    let proj = tempfile::tempdir().unwrap();
+    let s = start(d.path(), vec![write_call("c1", "a.txt"), text("one"), write_call("c2", "b.txt"), write_call("c3", "c.txt"), text("two")], false);
+    s.set(json!({"permissions.bypass": true})).await;
+    let id = s.session(json!({"model": "m", "project_dir": proj.path()})).await;
+    s.turn(&id, "write a", "yes").await;
+    s.turn(&id, "write b and c", "yes").await;
+    let bad = s.json(s.req(reqwest::Method::POST, &format!("/v1/sessions/{id}/rollback")).json(&json!({"command": "/rollback 0"}))).await;
+    assert!(bad.to_string().contains("usage"), "{bad}");
+    let r = s.json(s.req(reqwest::Method::POST, &format!("/v1/sessions/{id}/rollback")).json(&json!({"command": "/rollback 1"}))).await;
+    assert_eq!(r["restored"], json!(["c.txt"]), "{r}");
+    assert!(!proj.path().join("c.txt").exists() && proj.path().join("b.txt").exists());
+    let r = s.json(s.req(reqwest::Method::POST, &format!("/v1/sessions/{id}/rollback")).json(&json!({"command": "/rollback"}))).await;
+    assert_eq!(r["restored"].as_array().unwrap().len(), 1, "{r}");
+    assert!(!proj.path().join("b.txt").exists() && proj.path().join("a.txt").exists());
+}

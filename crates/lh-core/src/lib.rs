@@ -409,6 +409,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/sessions/{id}/answers/{ask}", post(answer::<M>))
         .route("/v1/sessions/{id}/cancel", post(cancel::<M>))
         .route("/v1/sessions/{id}/undo_turn", post(undo_turn::<M>))
+        .route("/v1/sessions/{id}/rollback", post(rollback_command::<M>))
         .route("/v1/status", get(status::<M>))
         .merge(memory_api::routes::<M>())
         .merge(learn_api::routes::<M>())
@@ -959,6 +960,8 @@ async fn start_turn<M: Model + 'static>(
         return Err(ApiError(StatusCode::CONFLICT, "a turn is already running in this session".into()));
     }
     s.turn_start.store(st.settings.store.last_seq().unwrap_or(0), Ordering::SeqCst);
+    // file changes in this turn share one snapshot group, so `/rollback` undoes the whole turn
+    let _ = lh_tools::begin_turn(s.perms.root());
     let (tx, rx) = mpsc::unbounded_channel::<(String, Value)>();
     let task = {
         let live = st.live();
@@ -1146,6 +1149,28 @@ async fn cancel<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
 
 /// Put back every file the last turn of this chat wrote. Files changed by someone else since are left alone and
 /// listed, so nothing the user did is lost.
+/// Chat command for file snapshots. Body `{"command": "/rollback"}` undoes the last turn, `/rollback N` the last N changes.
+async fn rollback_command<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>, Json(b): Json<Value>) -> Result<Json<Value>, ApiError> {
+    let s = st.session(&id)?;
+    let text = b["command"].as_str().unwrap_or_default();
+    let cmd = match lh_tools::parse_command(text) {
+        Some(Ok(c)) => c,
+        Some(Err(m)) => return Err(ApiError(StatusCode::BAD_REQUEST, m)),
+        None => return Err(ApiError(StatusCode::BAD_REQUEST, "not a rollback command".into())),
+    };
+    if !s.try_start() {
+        return Err(ApiError(StatusCode::CONFLICT, "a turn is running in this session".into()));
+    }
+    let root = s.perms.root().to_path_buf();
+    let r = match cmd {
+        lh_tools::RollbackCommand::Turn => lh_tools::rollback_turns(&root, 1),
+        lh_tools::RollbackCommand::Changes(n) => lh_tools::rollback_changes(&root, n),
+    };
+    s.finish_turn();
+    let files = r.map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({"restored": files})))
+}
+
 async fn undo_turn<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     let s = st.session(&id)?;
     if !s.try_start() {

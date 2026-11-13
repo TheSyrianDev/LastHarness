@@ -70,7 +70,7 @@ async fn reads_then_answers() {
     assert!(matches!(end, TurnEnd::Done(ref x) if x.text == "it says hello"));
     assert_eq!(started, ["read"], "the UI event uses the canonical name");
     assert_eq!(r.messages.iter().find(|m| !m.tool_calls.is_empty()).unwrap().tool_calls[0].name, "read_file", "the model's original call remains in conversation history");
-    assert_eq!(tool_results(&r), ["hello file"]);
+    assert_eq!(tool_results(&r), ["1#c17| hello file"]);
     assert_eq!(u.asked.load(Ordering::SeqCst), 0, "reads in the project do not ask");
     assert_eq!(r.messages.last().unwrap().content.as_deref(), Some("it says hello"));
 }
@@ -342,7 +342,7 @@ async fn a_codemode_script_calls_tools_under_the_same_rules() {
     let script = r#"const t = await tools.read({path: "a.txt"});
 let wrote = "yes";
 try { await tools.write({path: "b.txt", content: "x"}); } catch (e) { wrote = e.message; }
-return t.split("\n").filter(l => l.startsWith("g")).join(",") + " | " + wrote;"#;
+return t.split("\n").filter(l => l.includes("| g")).join(",") + " | " + wrote;"#;
     let args = serde_json::json!({ "script": script }).to_string();
     let model = Script::new(vec![tools_reply(vec![call("1", "codemode", &args)]), text_reply("done")]);
     let (u, mut r) = (user(Answer::No), req());
@@ -359,7 +359,7 @@ return t.split("\n").filter(l => l.startsWith("g")).join(",") + " | " + wrote;"#
     .unwrap();
     let out = &tool_results(&r)[0];
     assert!(out.starts_with("Script completed (2 tool calls)"), "{out}");
-    assert!(out.contains("gamma | The user said no"), "the filtered line, and the refused write as an error: {out}");
+    assert!(out.contains("| gamma | The user said no"), "the filtered line, and the refused write as an error: {out}");
     assert_eq!(u.asked.load(Ordering::SeqCst), 1, "the write inside the script asked like a direct one");
     assert!(!d.path().join("b.txt").exists());
     assert_eq!(events, ["1 codemode", "1.1 read", "1.2 write"], "each inner call is shown with canonical names");
@@ -507,7 +507,7 @@ async fn every_common_tool_is_callable_by_canonical_name_and_alias() {
     assert_eq!(started, ["read", "read", "write", "edit", "grep", "glob", "bash", "web_fetch", "web_search", "edit", "edit", "read", "bash", "write", "read", "edit"]);
     assert_eq!(ended, 16, "every call has a result event");
     let res = tool_results(&r);
-    assert_eq!(res[0], "two\nthree");
+    assert_eq!(res[0], "2#829| two\n3#3c3| three");
     assert_eq!(res[1], "a.txt");
     assert!(res[2].starts_with("wrote 10 bytes to b.txt"), "{}", res[2]);
     assert!(res[3].starts_with("wrote 11 bytes"), "{}", res[3]);
@@ -522,7 +522,7 @@ async fn every_common_tool_is_callable_by_canonical_name_and_alias() {
     assert!(res[11].contains("b.txt") && res[11].contains("src/"), "{}", res[11]);
     assert_eq!(res[12], "exit code 0\nold\n");
     assert!(res[13].starts_with("wrote 1 bytes to c.txt"));
-    assert_eq!(res[14], "x gamma");
+    assert_eq!(res[14], "1#3aa| x gamma");
     assert!(res[15].contains("not found"), "{}", res[15]);
     assert_eq!(std::fs::read_to_string(d.path().join("b.txt")).unwrap(), "x gamma");
 }

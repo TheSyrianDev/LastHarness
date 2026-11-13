@@ -21,7 +21,7 @@ pub mod diff;
 pub mod hooks;
 pub mod lsp;
 pub use hooks::Hooks;
-pub use snapshot::rollback;
+pub use snapshot::{begin_turn, parse_command, rollback_changes, rollback_turns, RollbackCommand, KEEP_TURNS};
 pub use compact::{compact_if_needed, compact_threshold, SUMMARY_MARKER, estimate_tokens, CompactError, CompactOptions, Compacted};
 pub use perm::{Action, Answer, AskRequest, Asker, Decision, LivePerms, Mode, Permissions, ShowDiff};
 pub use runner::{run_turn, Gate, Meter, MeterVerdict, Model, NoMeter, Outcome, TurnEnd, TurnEvent, TurnOptions};
