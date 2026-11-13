@@ -1,0 +1,26 @@
+# Maintainer: see the repository. Template for the 0.1.0-alpha release tarball.
+pkgname=lastharness
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Team-first local AI harness: departments and workers, local-first"
+arch=('x86_64')
+url="https://github.com/omarbarood/LastHarness"
+license=('custom')
+depends=('gtk3' 'fontconfig' 'vulkan-icd-loader')
+makedepends=('rust' 'cargo')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  cargo build --release --locked -p lh-core -p lh-tui -p lh-gui
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/lastaid "$pkgdir/usr/bin/lastaid"
+  install -Dm755 target/release/la "$pkgdir/usr/bin/la"
+  install -Dm755 target/release/lastai-gui "$pkgdir/usr/bin/lastai-gui"
+  install -Dm644 packaging/lastharness.desktop "$pkgdir/usr/share/applications/lastharness.desktop"
+  install -Dm644 packaging/lastharness.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/lastharness.png"
+}
