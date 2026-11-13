@@ -37,6 +37,17 @@ pub struct Summary {
     pub by_provider: Vec<(String, i64, i64)>,
 }
 
+/// Tokens and cost of one chat, from the spend log. Money is micro-USD.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChatUsage {
+    pub calls: i64,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub cost_micro_usd: i64,
+    /// Calls with no known price.
+    pub unpriced: i64,
+}
+
 /// Fewer bytes per token than English text really has, so the estimate errs high.
 const BYTES_PER_TOKEN: usize = 3;
 /// Used when the request sets no output limit.
@@ -99,6 +110,18 @@ impl SpendMeter {
         let (today, today_calls) = sum(day);
         let (this_month, month_calls) = sum(month);
         Summary { today, today_calls, this_month, month_calls, unpriced, by_provider }
+    }
+
+    /// What this chat has used, for the `/usage` command. Counts only rows of this chat's session.
+    pub fn chat_usage(&self) -> ChatUsage {
+        let row = |c: &lh_store::Connection| {
+            c.query_row(
+                "select count(*), coalesce(sum(prompt_tokens), 0), coalesce(sum(completion_tokens), 0), coalesce(sum(cost_micro_usd), 0), coalesce(sum(cost_micro_usd is null), 0) from spend where session = ?1",
+                [&self.session],
+                |r| Ok(ChatUsage { calls: r.get(0)?, prompt_tokens: r.get(1)?, completion_tokens: r.get(2)?, cost_micro_usd: r.get(3)?, unpriced: r.get(4)? }),
+            )
+        };
+        self.shared.store.with(row).unwrap_or_default()
     }
 
     /// Worst-case cost of this request in micro-USD, or `None` if the model has no known price.
@@ -212,6 +235,19 @@ mod tests {
     use super::*;
     use crate::{Mode, Price};
     use lh_provider::Message;
+
+    #[tokio::test]
+    async fn usage_counts_only_this_chat() {
+        let m = meter(gpt_cfg(Mode::None), false);
+        let other = m.for_session("s2");
+        m.after(&req("gpt-4o", 100), Some(Usage { prompt_tokens: 1000, completion_tokens: 500, cached_tokens: 0 })).await;
+        m.after(&req("gpt-4o", 100), Some(Usage { prompt_tokens: 1000, completion_tokens: 0, cached_tokens: 0 })).await;
+        other.after(&req("gpt-4o", 100), Some(Usage { prompt_tokens: 9999, completion_tokens: 9999, cached_tokens: 0 })).await;
+        let u = m.chat_usage();
+        assert_eq!((u.calls, u.prompt_tokens, u.completion_tokens), (2, 2000, 500));
+        assert!(u.cost_micro_usd > 0 && u.unpriced == 0);
+        assert_eq!(other.chat_usage().calls, 1);
+    }
 
     fn meter(cfg: Config, local: bool) -> SpendMeter {
         SpendMeter::new(Arc::new(Store::open_memory().unwrap()), cfg, "test", local).for_session("s1")

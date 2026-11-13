@@ -401,6 +401,8 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/activity", get(activity::<M>))
         .route("/v1/activity/{seq}/undo", post(undo::<M>))
         .route("/v1/spend", get(spend::<M>))
+        .route("/v1/insights", get(insights::<M>))
+        .route("/v1/sessions/{id}/usage", get(chat_usage::<M>))
         .route("/v1/events", get(app_events::<M>))
         .route("/v1/sessions", post(create_session::<M>))
         .route("/v1/sessions/{id}", get(get_session::<M>).delete(delete_session::<M>))
@@ -1246,6 +1248,18 @@ async fn spend<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<V
         "unpriced_calls": s.unpriced,
         "providers": s.by_provider.iter().map(|(p, c, n)| json!({"provider": p, "micro_usd": c, "calls": n, "text": lh_spend::dollars(*c)})).collect::<Vec<_>>(),
     }))
+}
+
+/// `/insights`: spend across chats, as plain text.
+async fn insights<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<Value> {
+    Json(json!({"text": lh_spend::insights_text(&st.settings.spend.summary())}))
+}
+
+/// `/usage`: tokens and cost of one chat.
+async fn chat_usage<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+    st.session(&id)?;
+    let u = st.settings.spend.for_session(id).chat_usage();
+    Ok(Json(json!({"calls": u.calls, "prompt_tokens": u.prompt_tokens, "completion_tokens": u.completion_tokens, "micro_usd": u.cost_micro_usd, "unpriced": u.unpriced, "text": lh_spend::usage_line(&u)})))
 }
 
 async fn undo<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(seq): Path<i64>) -> Result<Json<Value>, ApiError> {
