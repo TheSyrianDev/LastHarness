@@ -290,7 +290,7 @@ async fn every_remedy_the_lead_can_choose_does_what_it_says() {
         ("DO_IT_YOURSELF", Box::new(|j| assert_eq!((j[1].role.name.as_str(), j[1].model.as_str()), ("planner", "front-model")))),
         ("SUBAGENT", Box::new(|j| {
             assert_eq!(j[1].role.name, "subagent");
-            assert_eq!(j[1].role.tools, j[0].role.tools, "same tools as the worker that failed");
+            assert_eq!(j[1].role.tools, vec!["read_file".to_string(), "list_dir".to_string()], "subagents get read and list only, never shell or write");
             assert!(j[1].role.instructions.len() < 120, "a regular subagent gets a very short role line");
         })),
         ("HAND_OFF writer", Box::new(|j| assert_eq!(j[1].role.name, "writer"))),

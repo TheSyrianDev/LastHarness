@@ -169,8 +169,25 @@ pub enum DeptOutcome {
     Stopped { steps: Vec<StepSummary> },
 }
 
+/// Most subagents running at once, across all departments.
+pub const SUBAGENT_LIMIT: usize = 3;
+/// What a subagent may use: reading and web lookups only. No shell, no writes, no notes.
+pub const SUBAGENT_TOOLS: &[&str] = &["read_file", "list_dir", "web_fetch", "web_search"];
+
+/// The role a subagent runs as: the failed worker's model and sampling, the limited tools, the brief only.
+pub fn subagent_role(base: &Role) -> Role {
+    Role {
+        name: "subagent".into(),
+        description: "A helper handed one step.".into(),
+        instructions: "You are a helper handed one step. Do it carefully, then report plainly what you did.".into(),
+        tools: base.tools.iter().filter(|t| SUBAGENT_TOOLS.contains(&t.as_str())).cloned().collect(),
+        ..base.clone()
+    }
+}
+
 struct Inner<B> {
     backend: B,
+    subagents: tokio::sync::Semaphore,
     store: Arc<Store>,
     roles: Arc<RoleBook>,
     depts: Arc<DeptBook>,
@@ -220,7 +237,7 @@ enum Attempt {
 
 impl<B: Backend> Engine<B> {
     pub fn new(backend: B, store: Arc<Store>, roles: Arc<RoleBook>, depts: Arc<DeptBook>, registry: Arc<Registry>, events: Events, approver: Arc<dyn Approver>) -> Self {
-        Self { inner: Arc::new(Inner { backend, store, roles, depts, registry, events, approver }) }
+        Self { inner: Arc::new(Inner { backend, subagents: tokio::sync::Semaphore::new(SUBAGENT_LIMIT), store, roles, depts, registry, events, approver }) }
     }
 
     pub fn registry(&self) -> &Arc<Registry> {
@@ -493,7 +510,11 @@ impl<B: Backend> Engine<B> {
             attempt += 1;
             let wname = worker.name();
             let outcome = match &worker {
-                Worker::Role(role) => self.attempt_role(dept, role, step, &inputs, attempt, &over, fix.take(), ctx).await,
+                Worker::Role(role) => {
+                    // a subagent waits here while SUBAGENT_LIMIT others run
+                    let _slot = if role.name == "subagent" { Some(self.inner.subagents.acquire().await.expect("semaphore is never closed")) } else { None };
+                    self.attempt_role(dept, role, step, &inputs, attempt, &over, fix.take(), ctx).await
+                }
                 Worker::Dept(d) => {
                     let goal = format!("{}\n\n{}", step.brief, inputs.iter().map(|(t, r)| format!("From the step \"{t}\":\n{r}")).collect::<Vec<_>>().join("\n\n"));
                     match self.run_department(d.clone(), goal, RunCtx { project: ctx.project.clone(), depth: ctx.depth + 1 }).await {
@@ -566,7 +587,7 @@ impl<B: Backend> Engine<B> {
                         Worker::Role(r) => (**r).clone(),
                         Worker::Dept(_) => lead.clone(),
                     };
-                    worker = Worker::Role(Box::new(Role { name: "subagent".into(), description: "A helper handed one step.".into(), instructions: "You are a helper handed one step. Do it carefully, then report plainly what you did.".into(), ..base }));
+                    worker = Worker::Role(Box::new(subagent_role(&base)));
                 }
                 Remedy::HandOff(m) => match self.worker_for(&m) {
                     Ok(w) => worker = w,
@@ -610,5 +631,41 @@ impl<B: Backend> Engine<B> {
         self.inner.registry.set(&wid, status, None, None);
         self.log(&dept.name, &role.name, json!({"step": step.id, "attempt": attempt, "model": res.model, "outcome": status.as_str()}));
         out
+    }
+}
+
+#[cfg(test)]
+mod subagent_tests {
+    use super::*;
+
+    #[test]
+    fn subagent_gets_only_read_and_web_tools_and_keeps_the_model() {
+        let base = Role {
+            name: "dev".into(),
+            description: "Writes code.".into(),
+            target: crate::Target::Type("mid-tier".into()),
+            tools: vec!["read_file".into(), "run_command".into(), "write_file".into(), "web_search".into()],
+            memory: crate::MemorySlice::None,
+            sampling: crate::roles::RoleSampling::default(),
+            max_steps: 4,
+            thinking: None,
+            instructions: "Write code.".into(),
+        };
+        let s = subagent_role(&base);
+        assert_eq!(s.name, "subagent");
+        assert_eq!(s.tools, vec!["read_file".to_string(), "web_search".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn a_fourth_subagent_waits_until_one_ends() {
+        let sem = Arc::new(tokio::sync::Semaphore::new(SUBAGENT_LIMIT));
+        let mut held = vec![];
+        for _ in 0..SUBAGENT_LIMIT {
+            held.push(sem.clone().acquire_owned().await.unwrap());
+        }
+        let waiter = tokio::time::timeout(std::time::Duration::from_millis(50), sem.clone().acquire_owned()).await;
+        assert!(waiter.is_err(), "fourth subagent must wait");
+        held.pop();
+        assert!(tokio::time::timeout(std::time::Duration::from_secs(1), sem.clone().acquire_owned()).await.is_ok());
     }
 }
