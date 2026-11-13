@@ -263,12 +263,13 @@ async fn a_long_conversation_is_summarized_and_the_client_is_told() {
     let (mut r2, mut p2, mut seen2) = (s.post(&url, json!({"text":"second"})).send().await.unwrap(), SseParser::new(), vec![]);
     read_until(&mut r2, &mut p2, &mut seen2, |v| v["type"] == "done").await;
     assert_eq!(kinds(&seen2)[0], "compacted");
-    assert_eq!(seen2[0]["messages_summarized"], 2);
+    assert_eq!(seen2[0]["messages_summarized"], 1, "the first user message is kept verbatim, so only the answer is summarized");
     let h: Value = s.get(&format!("/v1/sessions/{id}")).send().await.unwrap().json().await.unwrap();
     let msgs = h["messages"].as_array().unwrap();
-    assert_eq!(msgs.len(), 3, "summary, the new question, the answer");
+    assert_eq!(msgs.len(), 4, "summary, the kept first question, the new question, the answer");
     assert!(msgs[0]["content"].as_str().unwrap().contains("SUMMARY OF TURN ONE"));
-    assert_eq!(msgs[1]["content"], "second");
+    assert_eq!(msgs[1]["content"], "first");
+    assert_eq!(msgs[2]["content"], "second");
 }
 
 #[tokio::test]
