@@ -24,6 +24,7 @@
 //! ```
 //! Every request needs `Authorization: Bearer <token>` and a loopback `Host` header.
 
+pub mod addons;
 pub mod auth;
 mod machine_lock;
 pub mod registry;
