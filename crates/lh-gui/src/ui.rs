@@ -17,7 +17,7 @@ use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::{mix, PanelExt};
 
-actions!(lastharness, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, ShowWork, ToggleMode, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette, JumpToLatest]);
+actions!(lastai, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, ShowWork, ToggleMode, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette, JumpToLatest]);
 
 /// The keys for every action; also how the app is driven without a mouse.
 pub fn bind_keys(cx: &mut gpui::App) {
@@ -1576,9 +1576,9 @@ impl Render for App {
         if let Some(t) = self.pending_input.take() {
             self.composer.update(cx, |s, cx| s.set_value(t, window, cx));
         }
-        // Debug only, for the live chat test: LASTHARNESS_CHAT_TEST=<model id> picks that model on a draft chat and
+        // Debug only, for the live chat test: LASTAI_CHAT_TEST=<model id> picks that model on a draft chat and
         // sends one fixed message, once, after the model list has the id.
-        if let Ok(id) = std::env::var("LASTHARNESS_CHAT_TEST") {
+        if let Some(id) = lh_config::appdir::env_os("LASTAI_CHAT_TEST", "LASTHARNESS_CHAT_TEST").and_then(|v| v.into_string().ok()) {
             static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
             if !DONE.load(std::sync::atomic::Ordering::Relaxed) && self.models.has(&id) && self.chats.current().is_some() {
                 DONE.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -1689,7 +1689,7 @@ impl Render for App {
         let arabic = lh_gui::fonts::arabic_font(&self.prefs.arabic_font, &theme_fonts.arabic, &self.fonts);
         root.text_style().font_fallbacks = arabic.map(|f| FontFallbacks::from_fonts(vec![f]));
         let root = root
-            .key_context(if asking { "LastHarness Asking" } else { "LastHarness" })
+            .key_context(if asking { "Last AI Asking" } else { "Last AI" })
             .on_mouse_move(cx.listener(|a, ev: &MouseMoveEvent, _, cx| {
                 // the auto-hidden rail shuts once the pointer moves clear of it
                 if a.rail_peek && f32::from(ev.position.x) > RAIL_WIDTH + 24. {

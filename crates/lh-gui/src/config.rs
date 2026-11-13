@@ -64,25 +64,22 @@ pub fn start_core_if_missing(base: &str, token_file: &std::path::Path) {
 
 /// Where `lhd` writes its token by default: the runtime folder if there is one, else the state folder.
 pub fn default_token_path() -> PathBuf {
-    if let Some(d) = std::env::var_os("XDG_RUNTIME_DIR") {
-        return PathBuf::from(d).join("lastharness").join("token");
-    }
-    PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state/lastharness/token")
+    lh_config::appdir::state_or_runtime_dir().join("token")
 }
 
-/// Has the person asked their desktop for less movement? `LASTHARNESS_REDUCE_MOTION=1` says so directly; else the
+/// Has the person asked their desktop for less movement? `LASTAI_REDUCE_MOTION=1` (old `LASTHARNESS_REDUCE_MOTION` still read) says so directly; else the
 /// desktop's own animation setting is read once (GNOME-family settings, which most desktops mirror).
 pub fn reduce_motion() -> bool {
     static CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *CACHE.get_or_init(|| {
-        let forced = std::env::var("LASTHARNESS_REDUCE_MOTION").ok();
+        let forced = lh_config::appdir::env_os("LASTAI_REDUCE_MOTION", "LASTHARNESS_REDUCE_MOTION").and_then(|v| v.into_string().ok());
         let gtk = std::env::var("GTK_ENABLE_ANIMATIONS").ok();
         let setting = std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", "enable-animations"]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
         reduce_from(forced.as_deref(), gtk.as_deref(), &setting)
     })
 }
 
-/// The decision itself: an explicit `LASTHARNESS_REDUCE_MOTION` wins, then `GTK_ENABLE_ANIMATIONS=0`, then the
+/// The decision itself: an explicit `LASTAI_REDUCE_MOTION` wins, then `GTK_ENABLE_ANIMATIONS=0`, then the
 /// desktop's `enable-animations` setting saying `false`.
 pub fn reduce_from(forced: Option<&str>, gtk: Option<&str>, setting: &str) -> bool {
     match forced {
@@ -139,6 +136,6 @@ mod tests {
         assert_eq!(c.themes, PathBuf::from("/th"));
         assert!(Config::from_args(args(&["--base"])).unwrap_err().contains("needs a value"));
         assert!(Config::from_args(args(&["--nope"])).unwrap_err().contains("unknown option"));
-        assert!(Config::from_args(args(&[])).unwrap().token_file.ends_with("lastharness/token"));
+        assert!(Config::from_args(args(&[])).unwrap().token_file.ends_with("token"));
     }
 }

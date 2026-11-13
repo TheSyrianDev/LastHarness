@@ -32,10 +32,7 @@ fn fail(msg: impl std::fmt::Display) -> ! {
 }
 
 fn default_token_path() -> PathBuf {
-    match std::env::var_os("XDG_RUNTIME_DIR") {
-        Some(d) => PathBuf::from(d).join("lastharness/token"),
-        None => PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state/lastharness/token"),
-    }
+    lh_config::appdir::state_or_runtime_dir().join("token")
 }
 
 /// What was said on a branch: (role, text) in order.

@@ -824,10 +824,9 @@ pub fn contrast(a: Color, b: Color) -> f64 {
     (x.max(y) + 0.05) / (x.min(y) + 0.05)
 }
 
-/// The user's theme folder: `$XDG_CONFIG_HOME/lastharness/themes` or `~/.config/lastharness/themes`.
+/// The user's theme folder: `$XDG_CONFIG_HOME/lastai/themes` or `~/.config/lastai/themes`.
 pub fn user_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))).unwrap_or_default();
-    base.join("lastharness").join("themes")
+    lh_config::appdir::config_dir().join("themes")
 }
 
 /// The window's own corner radius where the desktop reports it. Hyprland does (`decoration:rounding`).

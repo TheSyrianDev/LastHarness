@@ -120,8 +120,8 @@ impl App {
             None => {
                 let s = cx.new(|cx| InputState::new(window, cx));
                 self.pg.inputs.insert("models-search".into(), s.clone());
-                // Debug only, for screenshots: LASTHARNESS_MODELS_QUERY pre-fills the box and runs the search once.
-                if let Ok(q) = std::env::var("LASTHARNESS_MODELS_QUERY") {
+                // Debug only, for screenshots: LASTAI_MODELS_QUERY pre-fills the box and runs the search once.
+                if let Some(q) = lh_config::appdir::env_os("LASTAI_MODELS_QUERY", "LASTHARNESS_MODELS_QUERY").and_then(|v| v.into_string().ok()) {
                     let q = q.trim().to_string();
                     if !q.is_empty() {
                         s.update(cx, |i, cx| i.set_value(q.clone(), window, cx));

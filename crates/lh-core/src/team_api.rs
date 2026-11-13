@@ -108,11 +108,12 @@ fn step_from(v: &Value) -> Option<PlanStep> {
 
 struct RunApprover(Arc<Run>, Option<Arc<Session>>);
 
-/// Outside CLI workers, read from `<home>/.lastharness/external-workers.json`:
+/// Outside CLI workers, read from `<home>/.lastai/external-workers.json` (or the old `.lastharness` folder):
 /// `{"<role>": {"program": "...", "args": ["{brief}"], "writes": false, "timeout_secs": 600}}`.
 /// Missing or unreadable file means none. Nothing here is written by the app.
 fn external_clis(home: &FsPath) -> HashMap<String, lh_team::external::CliSpec> {
-    let Ok(text) = std::fs::read_to_string(home.join(".lastharness/external-workers.json")) else { return HashMap::new() };
+    let path = [".lastai", ".lastharness"].iter().map(|d| home.join(d).join("external-workers.json")).find(|p| p.exists());
+    let Some(Ok(text)) = path.map(std::fs::read_to_string) else { return HashMap::new() };
     let Ok(v) = serde_json::from_str::<Value>(&text) else { return HashMap::new() };
     let mut out = HashMap::new();
     for (role, c) in v.as_object().into_iter().flatten() {
@@ -587,7 +588,7 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
     let home: std::path::PathBuf = std::env::var_os("HOME").map(Into::into).unwrap_or_else(std::env::temp_dir);
     let sandbox = match &project {
         Some(p) => std::path::PathBuf::from(p),
-        None => home.join(".lastharness/workers"),
+        None => home.join(".lastai/workers"),
     };
     let _ = std::fs::create_dir_all(&sandbox);
     let approver: Arc<dyn Approver> = Arc::new(RunApprover(run.clone(), parent));

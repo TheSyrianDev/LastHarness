@@ -95,7 +95,7 @@ pub async fn fetch(cfg: &WebConfig, url: &str) -> Result<String, ToolError> {
         }
         let client = builder
             .resolve_to_addrs(&host, &addrs)
-            .user_agent("LastHarness/0 (agent fetch)")
+            .user_agent("LastAI/0 (agent fetch)")
             .build()
             .map_err(|e| fail(e.to_string()))?;
         let mut resp = client.get(url.clone()).send().await.map_err(|e| fail(format!("request failed: {e}")))?;

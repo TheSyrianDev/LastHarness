@@ -41,11 +41,7 @@ pub fn write_token(path: &Path, token: &str) -> std::io::Result<()> {
 
 /// Where the token lives by default: the runtime folder if there is one, else the state folder.
 pub fn default_token_path() -> std::path::PathBuf {
-    if let Some(d) = std::env::var_os("XDG_RUNTIME_DIR") {
-        return Path::new(&d).join("lastharness").join("token");
-    }
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
-    home.join(".local/state/lastharness/token")
+    lh_config::appdir::state_or_runtime_dir().join("token")
 }
 
 fn same(a: &[u8], b: &[u8]) -> bool {

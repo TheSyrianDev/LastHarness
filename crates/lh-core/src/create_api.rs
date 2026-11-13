@@ -130,7 +130,7 @@ async fn start_video(Json(b): Json<VideoBody>) -> Result<Json<Value>, ApiError> 
         return Err(ApiError(StatusCode::BAD_REQUEST, "steps are 1 to 30".into()));
     }
     let template = workflow_template("wan22-ti2v-5b-gguf.json")?;
-    let workflow = create_job::video_workflow(&template, &prompt, "blurry, low quality", seed_now(), 832, 480, b.frames, b.steps, 5.0, "lastharness/wan22")
+    let workflow = create_job::video_workflow(&template, &prompt, "blurry, low quality", seed_now(), 832, 480, b.frames, b.steps, 5.0, "lastai/wan22")
         .map_err(|e| ApiError(StatusCode::BAD_REQUEST, e))?;
     let id = new_job(&prompt);
     spawn_job(id, workflow, "12", WAN_RAM, "video");
@@ -149,7 +149,7 @@ async fn start_image(Json(b): Json<ImageBody>) -> Result<Json<Value>, ApiError> 
         return Err(ApiError(StatusCode::BAD_REQUEST, "steps are 1 to 30".into()));
     }
     let template = workflow_template("z-image-turbo-gguf.json")?;
-    let workflow = create_job::image_workflow(&template, &prompt, seed_now(), b.width, b.height, b.steps, 1.0, "lastharness/zimage")
+    let workflow = create_job::image_workflow(&template, &prompt, seed_now(), b.width, b.height, b.steps, 1.0, "lastai/zimage")
         .map_err(|e| ApiError(StatusCode::BAD_REQUEST, e))?;
     let id = new_job(&prompt);
     spawn_job(id, workflow, "10", ZIMAGE_RAM, "image");

@@ -75,7 +75,7 @@ async fn export<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b):
         }
         counts.insert("departments".into(), json!(n));
     }
-    std::fs::write(dir.join("manifest.json"), json!({"format": "lastharness-export", "version": 1, "counts": counts}).to_string()).map_err(ise)?;
+    std::fs::write(dir.join("manifest.json"), json!({"format": "lastai-export", "version": 1, "counts": counts}).to_string()).map_err(ise)?;
     let _ = st.settings.store.log("export", &b.dir, "user", &json!({"counts": counts}));
     Ok(Json(json!({"dir": b.dir, "counts": counts, "warning": "this folder holds your private notes, rules and roles; keep it somewhere private"})))
 }
@@ -97,7 +97,7 @@ struct Import {
 async fn import<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Json(b): Json<Import>) -> Result<Json<Value>, ApiError> {
     let dir = FsPath::new(&b.dir);
     let manifest: Value = std::fs::read_to_string(dir.join("manifest.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or_else(|| bad(format!("{} is not a Last AI export (no manifest.json)", b.dir)))?;
-    if manifest["format"] != "lastharness-export" || manifest["version"].as_u64().is_none_or(|v| v > 1) {
+    if !matches!(manifest["format"].as_str(), Some("lastai-export" | "lastharness-export")) || manifest["version"].as_u64().is_none_or(|v| v > 1) {
         return Err(bad("this export was made by a newer or different program and cannot be read"));
     }
     let rules: Vec<Value> = std::fs::read_to_string(dir.join("rules.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();

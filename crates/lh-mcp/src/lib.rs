@@ -1,4 +1,4 @@
-//! MCP client: use tools from MCP servers. Client only; LastHarness is not an MCP server.
+//! MCP client: use tools from MCP servers. Client only; Last AI is not an MCP server.
 //!
 //! A server is reached one of two ways: a local program talking over its standard input and output, or a
 //! remote server over HTTP (a POST per message; the reply is JSON or an event stream). Only tools are
@@ -170,7 +170,7 @@ impl Connection {
     }
 
     async fn handshake(&mut self) -> Result<()> {
-        self.request("initialize", json!({"protocolVersion": PROTOCOL, "capabilities": {}, "clientInfo": {"name": "lastharness", "version": env!("CARGO_PKG_VERSION")}})).await?;
+        self.request("initialize", json!({"protocolVersion": PROTOCOL, "capabilities": {}, "clientInfo": {"name": "lastai", "version": env!("CARGO_PKG_VERSION")}})).await?;
         self.notify("notifications/initialized").await?;
         let mut cursor: Option<String> = None;
         loop {

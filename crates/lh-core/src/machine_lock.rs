@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Owner field used on every lock line we write.
-pub const OWNER: &str = "claude-agent lastharness";
+pub const OWNER: &str = "claude-agent lastai";
 
 /// The script: `MACHINE_LOCK_CMD` when set (tests), else `$HOME/AI/Rig/bin/machine-lock`.
 fn script() -> Option<PathBuf> {

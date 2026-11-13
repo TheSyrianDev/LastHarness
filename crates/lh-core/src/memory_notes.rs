@@ -72,7 +72,7 @@ pub fn export_json(pages: &[Page]) -> String {
         .iter()
         .map(|p| json!({"id": p.id, "layer": p.layer.as_str(), "title": p.title, "body": p.body, "gist": p.gist, "privacy": p.privacy.as_str(), "pinned": p.pinned, "project": p.project, "department": p.department, "created": p.created, "updated": p.updated}))
         .collect();
-    serde_json::to_string_pretty(&json!({"format": "lastharness-memory", "version": 1, "notes": notes})).unwrap_or_default() + "\n"
+    serde_json::to_string_pretty(&json!({"format": "lastai-memory", "version": 1, "notes": notes})).unwrap_or_default() + "\n"
 }
 
 /// Markdown: a title line, then one `## Title` per note, each followed by a `layer:` line and the body.

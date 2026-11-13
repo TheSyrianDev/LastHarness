@@ -282,10 +282,10 @@ fn home() -> std::path::PathBuf {
     std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
 }
 fn config_dir() -> std::path::PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| home().join(".config")).join("lastharness")
+    lh_config::appdir::config_dir()
 }
 fn default_store_path() -> std::path::PathBuf {
-    std::env::var_os("XDG_DATA_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| home().join(".local/share")).join("lastharness/lh.db")
+    lh_config::appdir::data_dir().join("lh.db")
 }
 fn default_memory_dir() -> std::path::PathBuf {
     default_store_path().parent().map(|p| p.join("memory")).unwrap_or_else(|| std::path::PathBuf::from("memory"))

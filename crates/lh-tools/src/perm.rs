@@ -199,21 +199,21 @@ impl Permissions {
 
     /// Is this path inside the project? Follows symlinks and `..`; for a file that does not exist
     /// yet, the nearest existing parent is checked. Places that hold keys, passwords, browser profiles or
-    /// LastHarness's own data never count as inside, even when the project is the whole home folder.
+    /// Last AI's own data (and the old LastHarness folders) never count as inside, even when the project is the whole home folder.
     pub fn inside(&self, path: &Path) -> bool {
         self.inside_raw(path) && !self.in_secret_place(path)
     }
 
     fn in_secret_place(&self, path: &Path) -> bool {
         const SINGLE: &[&str] = &[".ssh", ".gnupg", ".aws", ".azure", ".kube", ".password-store", ".netrc", ".mozilla", "keyrings", ".pki"];
-        const PAIRS: &[(&str, &str)] = &[(".config", "gcloud"), (".config", "lastharness"), (".config", "BraveSoftware"), (".config", "chromium"), (".config", "google-chrome"), (".config", "Signal"), (".config", "rclone"), (".config", "gh"), (".docker", "config.json"), (".local", "lastharness")];
+        const PAIRS: &[(&str, &str)] = &[(".config", "gcloud"), (".config", "lastai"), (".config", "lastharness"), (".config", "BraveSoftware"), (".config", "chromium"), (".config", "google-chrome"), (".config", "Signal"), (".config", "rclone"), (".config", "gh"), (".docker", "config.json"), (".local", "lastai"), (".local", "lastharness")];
         let abs = if path.is_absolute() { path.to_path_buf() } else { self.root.join(path) };
         // judge the real place when it exists, so a link into one of these folders is caught too
         let real = abs.ancestors().find_map(|a| a.canonicalize().ok().map(|r| r.join(abs.strip_prefix(a).unwrap_or(Path::new(""))))).unwrap_or(abs);
         // only the part below the project root: a project that lives somewhere odd is the user's choice
         let below = real.strip_prefix(&self.root).unwrap_or(&real);
         let parts: Vec<&str> = below.components().filter_map(|c| c.as_os_str().to_str()).collect();
-        parts.iter().any(|p| SINGLE.contains(p)) || parts.windows(2).any(|w| PAIRS.contains(&(w[0], w[1]))) || parts.windows(3).any(|w| w == [".local", "share", "lastharness"])
+        parts.iter().any(|p| SINGLE.contains(p)) || parts.windows(2).any(|w| PAIRS.contains(&(w[0], w[1]))) || parts.windows(3).any(|w| w == [".local", "share", "lastai"] || w == [".local", "share", "lastharness"])
     }
 
     fn inside_raw(&self, path: &Path) -> bool {

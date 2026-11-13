@@ -560,10 +560,10 @@ impl App {
             settings_nav_focus: cx.focus_handle(),
             sp: Default::default(),
         };
-        // Debug only, for screenshots: LASTHARNESS_VIEW=providers or providers-add opens the Models page on start.
-        match std::env::var("LASTHARNESS_VIEW").as_deref() {
-            Ok("providers") => app.settings_open = true,
-            Ok("providers-add") => {
+        // Debug only, for screenshots: LASTAI_VIEW=providers or providers-add opens the Models page on start.
+        match lh_config::appdir::env_os("LASTAI_VIEW", "LASTHARNESS_VIEW").map(|v| v.to_string_lossy().into_owned()).as_deref() {
+            Some("providers") => app.settings_open = true,
+            Some("providers-add") => {
                 app.settings_open = true;
                 app.pg.open.insert("prov-form".into());
             }

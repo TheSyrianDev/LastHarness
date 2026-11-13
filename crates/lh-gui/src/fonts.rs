@@ -172,10 +172,9 @@ pub fn script_runs(text: &str) -> Vec<(Range<usize>, Script)> {
 
 use std::path::{Path, PathBuf};
 
-/// Where added fonts are kept: `$XDG_DATA_HOME/fonts/lastharness`, else `~/.local/share/fonts/lastharness`.
+/// Where added fonts are kept: `$XDG_DATA_HOME/lastai/fonts`, else `~/.local/share/lastai/fonts`.
 pub fn user_font_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
-    Some(base.join("fonts").join("lastharness"))
+    Some(lh_config::appdir::data_dir().join("fonts"))
 }
 
 /// The family names inside font bytes, or why the bytes are not a font. `ext` is the lowercase file extension.

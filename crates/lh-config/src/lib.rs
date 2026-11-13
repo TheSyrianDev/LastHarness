@@ -5,6 +5,8 @@
 //! Some settings take effect at once (`live`; a few of those only in chats started afterwards, and their help
 //! says so), the rest when the core next starts.
 
+pub mod appdir;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -179,8 +181,7 @@ pub struct ConfigFile {
 
 impl ConfigFile {
     pub fn default_path() -> PathBuf {
-        let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
-        base.join("lastharness").join("config.toml")
+        appdir::config_dir().join("config.toml")
     }
 
     /// Read the file. A file that does not exist is an empty one (every setting at its default).

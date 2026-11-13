@@ -227,7 +227,7 @@ pub fn run_image_job(lock: &std::path::Path, workflow: &Value, output_node: &str
             None => return Err("cannot read free RAM from /proc/meminfo".into()),
             _ => {}
         }
-        let id = http.submit(workflow, "lastharness-create")?;
+        let id = http.submit(workflow, "lastai-create")?;
         let started = std::time::Instant::now();
         let outputs = loop {
             std::thread::sleep(std::time::Duration::from_secs(2));
