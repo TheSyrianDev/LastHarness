@@ -1155,3 +1155,51 @@ impl RawArg for tokio::process::Command {
     }
 
 }
+
+/// A file lock next to `path`, held while the guard lives. A second holder gets an error instead of waiting.
+/// The lock file is `<path>.lh-lock` and is removed when the guard drops.
+pub struct FileLock(std::path::PathBuf);
+
+impl FileLock {
+    pub fn take(path: &std::path::Path) -> Result<FileLock, ToolError> {
+        let lock = path.with_extension(format!("{}.lh-lock", path.extension().and_then(|e| e.to_str()).unwrap_or("")));
+        std::fs::OpenOptions::new().write(true).create_new(true).open(&lock).map_err(|_| {
+            ToolError::Failed(format!("{} is being edited by another worker; try again", path.display()))
+        })?;
+        Ok(FileLock(lock))
+    }
+}
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Apply anchored edits to a file under its lock: read, check and apply as one transaction, write back.
+/// A second worker on the same file is refused, and a stale view changes nothing.
+pub fn edit_file_transaction(path: &std::path::Path, edits: &[LineEdit]) -> Result<(), ToolError> {
+    let _guard = FileLock::take(path)?;
+    let text = std::fs::read_to_string(path).map_err(|e| ToolError::Failed(e.to_string()))?;
+    let out = edit_transaction(&text, edits)?;
+    std::fs::write(path, out).map_err(|e| ToolError::Failed(e.to_string()))
+}
+
+#[cfg(test)]
+mod file_lock_tests {
+    use super::*;
+
+    #[test]
+    fn a_second_worker_is_refused_and_the_lock_clears() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("a.txt");
+        std::fs::write(&p, "one\ntwo\n").unwrap();
+        let first = FileLock::take(&p).unwrap();
+        assert!(FileLock::take(&p).is_err());
+        drop(first);
+        let a = format!("1#{}", line_tag("one"));
+        edit_file_transaction(&p, &[LineEdit { start: &a, end: &a, new: "ONE\n" }]).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "ONE\ntwo\n");
+        assert!(!d.path().join("a.txt.lh-lock").exists());
+    }
+}
