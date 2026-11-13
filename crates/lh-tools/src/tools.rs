@@ -457,6 +457,38 @@ pub fn edit_lines(text: &str, start: &str, end: &str, new: &str) -> Result<Strin
     Ok(out)
 }
 
+/// One anchored replacement: lines `start..=end` become `new`.
+pub struct LineEdit<'a> {
+    pub start: &'a str,
+    pub end: &'a str,
+    pub new: &'a str,
+}
+
+/// Apply several anchored edits as one transaction. Every anchor is checked against the text as read, the
+/// ranges must not overlap, and only then is anything written: a stale or overlapping edit changes nothing.
+pub fn edit_transaction(text: &str, edits: &[LineEdit]) -> Result<String, ToolError> {
+    let mut ranges = Vec::new();
+    for e in edits {
+        let (a, _) = parse_anchor(e.start)?;
+        let (b, _) = parse_anchor(e.end)?;
+        // checks the tags and the order against the text as read; the result is discarded
+        edit_lines(text, e.start, e.end, e.new)?;
+        ranges.push((a, b, e.new));
+    }
+    ranges.sort_by_key(|r| r.0);
+    for w in ranges.windows(2) {
+        if w[1].0 <= w[0].1 {
+            return Err(ToolError::Failed(format!("edits on lines {}-{} and {}-{} overlap; nothing was changed", w[0].0, w[0].1, w[1].0, w[1].1)));
+        }
+    }
+    // apply from the bottom up so earlier line numbers stay valid
+    let mut out = text.to_string();
+    for e in edits.iter().rev() {
+        out = edit_lines(&out, e.start, e.end, e.new)?;
+    }
+    Ok(out)
+}
+
 /// Replace `old` with `new` in `text`. `old` must be found, and found once unless `all`.
 pub fn edit_text(text: &str, old: &str, new: &str, all: bool) -> Result<String, ToolError> {
     if old.is_empty() {
@@ -850,6 +882,42 @@ pub(crate) fn image_stem(prompt: &str) -> String {
     let s: String = s.chars().take(40).collect();
     let s = s.trim_end_matches('-').to_string();
     if s.is_empty() { "image".into() } else { s }
+}
+
+#[cfg(test)]
+mod transaction_tests {
+    use super::*;
+
+    fn tagged(text: &str) -> Vec<String> {
+        text.lines().enumerate().map(|(i, l)| format!("{}#{}", i + 1, line_tag(l))).collect()
+    }
+
+    #[test]
+    fn disjoint_edits_apply_together_and_a_stale_one_changes_nothing() {
+        let text = "one\ntwo\nthree\nfour\n";
+        let a = tagged(text);
+        let ok = edit_transaction(text, &[
+            LineEdit { start: &a[0], end: &a[0], new: "ONE\n" },
+            LineEdit { start: &a[2], end: &a[3], new: "THREE-FOUR\n" },
+        ]).unwrap();
+        assert_eq!(ok, "ONE\ntwo\nTHREE-FOUR\n");
+        let stale = edit_transaction(text, &[
+            LineEdit { start: &a[0], end: &a[0], new: "ONE\n" },
+            LineEdit { start: "2#zzz", end: "2#zzz", new: "X\n" },
+        ]);
+        assert!(stale.is_err());
+    }
+
+    #[test]
+    fn overlapping_edits_are_refused() {
+        let text = "a\nb\nc\n";
+        let a = tagged(text);
+        let r = edit_transaction(text, &[
+            LineEdit { start: &a[0], end: &a[1], new: "X\n" },
+            LineEdit { start: &a[1], end: &a[2], new: "Y\n" },
+        ]);
+        assert!(matches!(r, Err(ToolError::Failed(m)) if m.contains("overlap")));
+    }
 }
 
 #[cfg(test)]
