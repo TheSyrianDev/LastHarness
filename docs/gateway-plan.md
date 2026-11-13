@@ -6,7 +6,7 @@ Status: planning. Hermes source read in this pass: `NousResearch/hermes-agent` (
 - Adapter base class `BasePlatformAdapter` (`gateway/platforms/base.py:1805`). Abstract methods include `connect(is_reconnect)`, `disconnect()`, `send(chat_id, content, reply_to)`, `get_chat_info(chat_id)`. One adapter per platform.
 - Authorization is per platform, from env: `<PLATFORM>_ALLOWED_USERS`, `<PLATFORM>_ALLOW_ALL_USERS`, group allow-list env (`gateway/authz_mixin.py:31-35`).
 - Unknown senders get a DM pairing code, not silence (`gateway/pairing.py` docstring): 8-char code from a 32-char alphabet via `secrets`; 1 h expiry; max 3 pending per platform; 1 request per user per 10 min; lockout after 5 failed approvals; files chmod 0600; codes never logged. Owner approves in the CLI.
-- Startup refuses an "open" DM or group policy unless an explicit allow-all opt-in is set (`gateway/run.py:2210`, `_own_policy_open_startup_violation`).
+- Startup refuses an "open" DM or group policy unless an explicit allow-all opt-in is set (`gateway/run.py:2209`, `_own_policy_open_startup_violation`).
 - Policy values per platform: `pair`, `ignore`, `decline`, `open` (`gateway/config.py:163`).
 
 ## What to copy, what to skip

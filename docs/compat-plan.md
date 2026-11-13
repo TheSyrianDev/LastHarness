@@ -4,9 +4,9 @@ Status: sources read in this pass (shallow clones in scratchpad only). Verified 
 
 ## Sources read
 - agentskills.io spec: `agentskills/docs/specification.mdx`.
-- Pi (`badlogic/pi-mono`): `packages/coding-agent/src/core/extensions/` (`types.ts`, `loader.ts`, `runner.ts`).
+- Pi (`badlogic/pi-mono`): `packages/coding-agent/src/core/extensions/` (`types.ts` ExtensionAPI at about line 1717 for `registerTool`, `loader.ts` uses jiti).
 - OMP (`can1357/oh-my-pi`): `src/extensions/` (mcp, codemode, tool-search as examples of `pi.registerTool`).
-- DSH (`deepseek-ai/deepseek-harness`): `docs/architecture.md`, `packages/boot/plugin-manager`.
+- DSH (`deepseek-ai/deepseek-harness`): `docs/architecture.md`, `packages/boot/plugin-manager` (README and package.json; no manifest schema read).
 - Hermes (`NousResearch/hermes-agent`): skill loading not found by grep for `SKILL.md`; no Hermes skill format verified.
 
 ## Verified facts
