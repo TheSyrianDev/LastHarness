@@ -45,7 +45,7 @@ target/release/lastai-gui # or the desktop app (needs the core running)
 
 桌面应用会自行找到核心及其令牌（参数：`--base`、`--token-file`）。它有简单的默认外观，你可以修改：把 `.toml` 文件放进 `~/.config/lastai/themes/`（六个内置主题，每个都有浅色和深色的三个系列，示例位于 `crates/lh-gui/themes/`）。按 Ctrl+N 开始新对话。
 
-Omarchy 版本（`LastAI-<version>-omarchy-x86_64.tar.gz`，用其中的 `install-omarchy.sh` 安装）还提供桌面自己的外观，以及 "Omarchy (transparent)" 外观，即采用 Omarchy 配色的液态玻璃效果。透明外观的透明程度取决于应用窗口（类名 `lastharness-gui`）的 Hyprland 窗口规则；没有规则时它保持不透明。其他版本（AppImage、Windows、macOS，或使用 `--no-default-features` 的源码构建）不包含 Omarchy 外观。要添加，请把这一行放进 `~/.config/hypr/hyprland.lua`（0.85 表示窗口显示的比例）：
+Omarchy 版本（`LastAI-<version>-omarchy-x86_64.tar.gz`，用其中的 `install-omarchy.sh` 安装）还提供桌面自己的外观，以及 "Omarchy (transparent)" 外观，即采用 Omarchy 配色的液态玻璃效果。透明外观的透明程度取决于应用窗口（类名 `lastai-gui`）的 Hyprland 窗口规则；没有规则时它保持不透明。其他版本（AppImage、Windows、macOS，或使用 `--no-default-features` 的源码构建）不包含 Omarchy 外观。要添加，请把这一行放进 `~/.config/hypr/hyprland.lua`（0.85 表示窗口显示的比例）：
 
 ```lua
 o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })

@@ -45,7 +45,7 @@ target/release/lastai-gui # or the desktop app (needs the core running)
 
 يجد التطبيق المكتبي البرنامج الأساسي ورمزه بنفسه (الخيارات: `--base` و`--token-file`). له مظهر افتراضي بسيط يمكنك تغييره: ضع ملف `.toml` في `~/.config/lastai/themes/` (السمات الست المدمجة، ولكل منها ثلاث عائلات بنسخة فاتحة وداكنة، موجودة في `crates/lh-gui/themes/` كأمثلة). اضغط Ctrl+N لبدء محادثة جديدة.
 
-نسخة Omarchy (`LastAI-<version>-omarchy-x86_64.tar.gz`، وتُثبَّت بالملف `install-omarchy.sh` الموجود فيها) تقدم أيضاً مظهر سطح المكتب الخاص بها، ومظهر "Omarchy (transparent)" وهو زجاج سائل بألوان Omarchy. يكون المظهر الشفاف بقدر الشفافية التي تحددها قاعدة نافذة Hyprland لنافذة التطبيق (الصنف `lastharness-gui`)؛ بدون قاعدة يبقى معتماً. الإصدارات الأخرى (AppImage أو Windows أو macOS أو بناء من المصدر بخيار `--no-default-features`) لا تتضمن مظهري Omarchy. لإضافة أحدهما، ضع هذا السطر في `~/.config/hypr/hyprland.lua` (القيمة 0.85 هي نسبة ظهور النافذة):
+نسخة Omarchy (`LastAI-<version>-omarchy-x86_64.tar.gz`، وتُثبَّت بالملف `install-omarchy.sh` الموجود فيها) تقدم أيضاً مظهر سطح المكتب الخاص بها، ومظهر "Omarchy (transparent)" وهو زجاج سائل بألوان Omarchy. يكون المظهر الشفاف بقدر الشفافية التي تحددها قاعدة نافذة Hyprland لنافذة التطبيق (الصنف `lastai-gui`)؛ بدون قاعدة يبقى معتماً. الإصدارات الأخرى (AppImage أو Windows أو macOS أو بناء من المصدر بخيار `--no-default-features`) لا تتضمن مظهري Omarchy. لإضافة أحدهما، ضع هذا السطر في `~/.config/hypr/hyprland.lua` (القيمة 0.85 هي نسبة ظهور النافذة):
 
 ```lua
 o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
