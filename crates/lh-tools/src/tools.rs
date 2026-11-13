@@ -1163,12 +1163,51 @@ impl RawArg for tokio::process::Command {
 pub struct FileLock(std::path::PathBuf);
 
 impl FileLock {
+    /// Take the lock. Waits up to `WAIT` for another holder to finish. A lock whose owner pid is gone, or
+    /// that is older than `STALE`, is removed and taken. The lock file holds the owner pid.
     pub fn take(path: &std::path::Path) -> Result<FileLock, ToolError> {
         let lock = path.with_extension(format!("{}.lh-lock", path.extension().and_then(|e| e.to_str()).unwrap_or("")));
-        std::fs::OpenOptions::new().write(true).create_new(true).open(&lock).map_err(|_| {
-            ToolError::Failed(format!("{} is being edited by another worker; try again", path.display()))
-        })?;
-        Ok(FileLock(lock))
+        let started = std::time::Instant::now();
+        loop {
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+                Ok(mut f) => {
+                    use std::io::Write;
+                    let _ = write!(f, "{}", std::process::id());
+                    return Ok(FileLock(lock));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if lock_is_stale(&lock) {
+                        let _ = std::fs::remove_file(&lock);
+                        continue;
+                    }
+                    if started.elapsed() >= WAIT {
+                        return Err(ToolError::Failed(format!("{} is being edited by another worker; try again", path.display())));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(e) => return Err(ToolError::Failed(format!("cannot lock {}: {e}", path.display()))),
+            }
+        }
+    }
+}
+
+/// How long a worker waits for another holder before it gives up.
+pub const WAIT: std::time::Duration = std::time::Duration::from_secs(1);
+/// A lock older than this is stale even if its pid looks alive (pid reuse).
+pub const STALE: std::time::Duration = std::time::Duration::from_secs(120);
+
+fn lock_is_stale(lock: &std::path::Path) -> bool {
+    let Ok(meta) = std::fs::metadata(lock) else { return false };
+    if meta.modified().ok().and_then(|m| m.elapsed().ok()).is_some_and(|age| age > STALE) {
+        return true;
+    }
+    let pid = std::fs::read_to_string(lock).ok().and_then(|t| t.trim().parse::<u32>().ok());
+    match pid {
+        // Linux: a live pid has a /proc entry. Elsewhere the pid cannot be checked, so only age counts.
+        Some(p) if cfg!(target_os = "linux") => !std::path::Path::new(&format!("/proc/{p}")).exists(),
+        Some(_) => false,
+        // empty or unreadable lock file (crash between create and write): stale once it is a little old
+        None => std::fs::metadata(lock).ok().and_then(|m| m.modified().ok()).and_then(|m| m.elapsed().ok()).is_some_and(|a| a > WAIT),
     }
 }
 
@@ -1192,6 +1231,18 @@ mod file_lock_tests {
     use super::*;
 
     #[test]
+    fn a_lock_with_a_dead_owner_is_taken_over() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("c.txt");
+        std::fs::write(&p, "x\n").unwrap();
+        // pid 0 never has a /proc entry; a fresh file with a dead pid is stale
+        std::fs::write(d.path().join("c.txt.lh-lock"), "0").unwrap();
+        let g = FileLock::take(&p).expect("stale lock taken over");
+        drop(g);
+        assert!(!d.path().join("c.txt.lh-lock").exists());
+    }
+
+    #[test]
     fn edit_tool_refuses_while_a_worker_holds_the_file() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("b.txt");
@@ -1206,7 +1257,7 @@ mod file_lock_tests {
         let p = d.path().join("a.txt");
         std::fs::write(&p, "one\ntwo\n").unwrap();
         let first = FileLock::take(&p).unwrap();
-        assert!(FileLock::take(&p).is_err());
+        assert!(FileLock::take(&p).is_err(), "a live holder is waited for, then refused");
         drop(first);
         let a = format!("1#{}", line_tag("one"));
         edit_file_transaction(&p, &[LineEdit { start: &a, end: &a, new: "ONE\n" }]).unwrap();
