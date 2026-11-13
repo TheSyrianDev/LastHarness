@@ -160,6 +160,14 @@ pub async fn run(c: &Client, args: &[String]) -> Result<String> {
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
     match cmd {
         "help" | "--help" | "-h" => Ok(HELP.into()),
+        "external" => {
+            let v = c.call("GET", "/v1/team/external", None).await?;
+            let rows = arr(&v, "external");
+            if rows.is_empty() {
+                return Ok("No outside workers. Bind one in ~/.lastharness/external-workers.json.".into());
+            }
+            Ok(rows.iter().map(|r| format!("{:<12} {:<16} writes:{} timeout:{}s", r["role"].as_str().unwrap_or(""), r["program"].as_str().unwrap_or(""), r["writes"], r["timeout_secs"])).collect::<Vec<_>>().join("\n"))
+        }
         "roles" => {
             let v = c.call("GET", "/v1/team/roles", None).await?;
             Ok(arr(&v, "roles").iter().map(|r| match r["error"].as_str() {

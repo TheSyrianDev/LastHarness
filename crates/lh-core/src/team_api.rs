@@ -248,6 +248,7 @@ fn type_json(t: &ModelType) -> Value {
 pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
     Router::new()
         .route("/v1/team/roles", get(list_roles::<M>))
+        .route("/v1/team/external", get(list_external))
         .route("/v1/team/roles/{name}", get(get_role::<M>).put(put_role::<M>).delete(delete_role::<M>))
         .route("/v1/team/roles/{name}/history", get(role_history::<M>))
         .route("/v1/team/roles/{name}/rollback", post(role_rollback::<M>))
@@ -384,6 +385,16 @@ async fn delete_type<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Pat
         Err(lh_team::Error::NeedsReassign(roles)) => Err(ApiError(StatusCode::CONFLICT, format!("these roles use the type and need another one first: {}", roles.join(", ")))),
         Err(e) => Err(err(e)),
     }
+}
+
+/// Read-only: which roles run an outside CLI, and whether it may write. Args are not shown.
+async fn list_external() -> Json<Value> {
+    let home: std::path::PathBuf = std::env::var_os("HOME").map(Into::into).unwrap_or_else(std::env::temp_dir);
+    let v: Vec<Value> = external_clis(&home)
+        .into_iter()
+        .map(|(role, c)| json!({"role": role, "program": c.program, "writes": c.writes, "timeout_secs": c.timeout.as_secs()}))
+        .collect();
+    Json(json!({"external": v}))
 }
 
 async fn list_depts<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
