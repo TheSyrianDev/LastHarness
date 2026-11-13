@@ -326,3 +326,16 @@ async fn tidy_returns_a_rewrite_that_is_saved_only_when_the_user_accepts() {
     assert_eq!(s.post("/v1/memory/tidy", json!({"text":"  ","model":"m"})).send().await.unwrap().status(), 400);
     assert_eq!(s.post("/v1/memory/tidy", json!({"text":"hi"})).send().await.unwrap().status(), 400);
 }
+
+/// The Memory list shows the assistant's note writes with their chat.
+#[tokio::test]
+async fn the_assistant_write_log_is_listed_with_its_chat() {
+    let d = tempfile::tempdir().unwrap();
+    let s = start_at(d.path(), vec![], Trust::Local, true);
+    let rt = s.mem.clone();
+    rt.log_write("add", "p1", "Tea", Some("chat-7")).unwrap();
+    let r = s.json(s.get("/v1/memory/writes")).await;
+    assert_eq!(r["writes"][0]["action"], "add");
+    assert_eq!(r["writes"][0]["chat"], "chat-7");
+    assert_eq!(r["writes"][0]["title"], "Tea");
+}

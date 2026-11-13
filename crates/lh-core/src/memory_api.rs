@@ -41,6 +41,7 @@ pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/memory/pages/{id}", get(get_page::<M>).patch(edit_page::<M>))
         .route("/v1/memory/pages/{id}", delete(delete_page::<M>))
         .route("/v1/memory/pages/{id}/archive", post(archive_page::<M>))
+        .route("/v1/memory/writes", get(assistant_writes::<M>))
         .route("/v1/memory/pages/{id}/restore", post(restore_page::<M>))
         .route("/v1/memory/pages/{id}/pin", post(pin_page::<M>))
         .route("/v1/memory/pages/{id}/privacy", post(privacy_page::<M>))
@@ -96,6 +97,13 @@ fn state_of(s: Option<&str>) -> lh_memory::State {
 struct ListQ {
     layer: Option<String>,
     state: Option<String>,
+}
+
+/// The assistant's note writes, newest first, each with the chat it came from.
+async fn assistant_writes<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Result<Json<Value>, ApiError> {
+    let rows = rt(&st)?.memory.writes(100).map_err(err)?;
+    let writes: Vec<Value> = rows.into_iter().map(|(id, at, action, page, title, conv)| json!({"id": id, "at": at, "action": action, "page": page, "title": title, "chat": conv})).collect();
+    Ok(Json(json!({"writes": writes})))
 }
 
 async fn list_pages<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Query(q): Query<ListQ>) -> Result<Json<Value>, ApiError> {
