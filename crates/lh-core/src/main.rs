@@ -33,7 +33,7 @@ async fn main() {
     let mut config_path = None::<std::path::PathBuf>;
     let mut provider_name = None::<String>;
     let (mut no_team, mut team_dir, mut team_tokens) = (false, None::<std::path::PathBuf>, 4000u32);
-    let (mut learn_mode, mut learn_threshold, mut skills_dir, mut skill_calls) = (None::<String>, None::<usize>, None::<std::path::PathBuf>, 6usize);
+    let (mut learn_mode, mut learn_threshold, mut skills_dir, mut skill_calls) = (None::<String>, None::<usize>, None::<std::path::PathBuf>, SKILL_MIN_CALLS_DEFAULT);
     let (mut no_memory, mut memory_dir, mut trust) = (false, None::<std::path::PathBuf>, None::<String>);
     let (mut embed_server, mut embed_model, mut embed_libs, mut embed_name, mut embed_url, mut embed_cloud) = (None::<String>, None::<String>, None::<String>, None::<String>, None::<String>, false);
     let mut no_sandbox = false;
@@ -293,6 +293,9 @@ fn default_memory_dir() -> std::path::PathBuf {
 fn default_team_dir() -> std::path::PathBuf {
     default_store_path().parent().map(|p| p.join("team")).unwrap_or_else(|| std::path::PathBuf::from("team"))
 }
+/// Tool steps in one task before a skill draft is proposed. Change with --skill-min-calls.
+const SKILL_MIN_CALLS_DEFAULT: usize = 8;
+
 fn default_skills_dir() -> std::path::PathBuf {
     default_store_path().parent().map(|p| p.join("skills")).unwrap_or_else(|| std::path::PathBuf::from("skills"))
 }
