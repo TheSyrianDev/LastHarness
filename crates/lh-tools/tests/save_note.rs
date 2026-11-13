@@ -42,7 +42,7 @@ struct Setup {
 }
 fn handle(mem: &Arc<Memory>, department: Option<&str>) -> Arc<MemoryHandle> {
     let dest = Destination { trust: Trust::Local, project: None, department: department.map(str::to_string) };
-    Arc::new(MemoryHandle { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), dest, cfg: RecallConfig::default(), layers: None, judge: None })
+    Arc::new(MemoryHandle { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), dest, cfg: RecallConfig::default(), layers: None, judge: None, conv: None })
 }
 fn setup(department: Option<&str>) -> Setup {
     let d = tempfile::tempdir().unwrap();

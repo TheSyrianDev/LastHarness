@@ -35,6 +35,7 @@ async fn model_saves_a_fact_in_one_call_and_a_conflict_from_another_department_i
         cfg: RecallConfig::default(),
         layers: None,
         judge: None,
+        conv: None,
     });
     let tools = default_tools().with_memory(handle);
     let d2 = tempfile::tempdir().unwrap();

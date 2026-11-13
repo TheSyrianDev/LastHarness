@@ -82,6 +82,7 @@ pub enum Tool {
     UseSkill,
     ReadSkillFile,
     Recall,
+    SearchChats,
     OpenNote,
     Remember,
     Forget,
@@ -105,6 +106,7 @@ impl Tool {
             Tool::UseSkill => "use_skill",
             Tool::ReadSkillFile => "read_skill_file",
             Tool::Recall => "recall",
+            Tool::SearchChats => "search_chats",
             Tool::OpenNote => "open_note",
             Tool::Remember => "remember",
             Tool::Forget => "forget",
@@ -161,6 +163,7 @@ impl Tool {
                 "Generate an image from a text description and save it in the project's `generated` folder.",
                 json!({"type":"object","properties":{"prompt":{"type":"string"},"size":{"type":"string","description":"for example 512x512"}},"required":["prompt"]}),
             ),
+            Tool::SearchChats => ("Search the text of past chats with the user, not notes. Returns the chat id, who said it, when, and the message.", json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"]})),
             Tool::Recall => ("Search the user's memory for notes about a topic. Returns note ids, titles and text.", json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"]})),
             Tool::UseSkill => ("Read the instructions of one of your skills before doing a task it covers. Returns the steps and the list of its other files.", json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})),
             Tool::ReadSkillFile => ("Read one of a skill's other files (a reference document or a script), by the path use_skill listed.", json!({"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]})),
@@ -206,6 +209,7 @@ impl Tool {
                 Action::Write(root.join("generated").join(format!("{}.png", image_stem(prompt))))
             }
             Tool::UseSkill | Tool::ReadSkillFile => Action::Memory { write: false, what: format!("read skill {}", args["name"].as_str().unwrap_or("")) },
+            Tool::SearchChats => Action::Memory { write: false, what: format!("search chats: {}", args["query"].as_str().unwrap_or("")) },
             Tool::Recall => Action::Memory { write: false, what: format!("recall: {}", args["query"].as_str().unwrap_or("")) },
             Tool::OpenNote => Action::Memory { write: false, what: format!("open note {}", args["id"].as_str().unwrap_or("")) },
             Tool::Remember => Action::Memory { write: true, what: format!("remember: {}", lh_memory::excerpt(args["text"].as_str().ok_or_else(|| ToolError::Args("`text` must be a string".into()))?, 300)) },
@@ -230,7 +234,7 @@ impl Tool {
                 crate::memory_tools::run_skill(self, args, l).map(Into::into)
             }
             Tool::SaveNote if set.untrusted() => Err(ToolError::Failed("web pages and files cannot change memory by themselves; ask the user to say it".into())),
-            Tool::Recall | Tool::OpenNote | Tool::Remember | Tool::Forget | Tool::SaveNote => crate::memory_tools::run(self, args, set.memory().ok_or_else(|| ToolError::Failed("memory is not available in this session".into()))?).await.map(Into::into),
+            Tool::Recall | Tool::SearchChats | Tool::OpenNote | Tool::Remember | Tool::Forget | Tool::SaveNote => crate::memory_tools::run(self, args, set.memory().ok_or_else(|| ToolError::Failed("memory is not available in this session".into()))?).await.map(Into::into),
             Tool::GenerateImage => Err(ToolError::Failed("image generation runs through the turn loop".into())),
             Tool::WebFetch => crate::web::fetch(web, args["url"].as_str().unwrap_or("")).await.map(Into::into),
             Tool::WebSearch => crate::web::search(web, args["query"].as_str().unwrap_or(""), 5).await.map(Into::into),
@@ -737,7 +741,7 @@ impl ToolSet {
     /// incognito sessions.
     pub fn with_memory(mut self, m: std::sync::Arc<crate::MemoryHandle>) -> Self {
         self.memory = Some(m);
-        for t in [Tool::Recall, Tool::OpenNote, Tool::Remember, Tool::Forget, Tool::SaveNote] {
+        for t in [Tool::Recall, Tool::SearchChats, Tool::OpenNote, Tool::Remember, Tool::Forget, Tool::SaveNote] {
             if !self.tools.contains(&t) {
                 self.tools.push(t);
             }
@@ -830,7 +834,7 @@ pub fn toolset_tools(name: &str) -> Option<Vec<Tool>> {
         "files" => vec![Tool::ReadFile, Tool::WriteFile, Tool::Edit, Tool::Grep, Tool::Glob],
         "terminal" => vec![Tool::RunCommand],
         "web" => vec![Tool::WebFetch, Tool::WebSearch],
-        "memory" => vec![Tool::Recall, Tool::OpenNote, Tool::Remember, Tool::Forget, Tool::SaveNote],
+        "memory" => vec![Tool::Recall, Tool::SearchChats, Tool::OpenNote, Tool::Remember, Tool::Forget, Tool::SaveNote],
         _ => return None,
     })
 }

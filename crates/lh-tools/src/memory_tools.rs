@@ -41,6 +41,17 @@ fn fail(m: impl Into<String>) -> ToolError {
 
 pub(crate) async fn run(tool: Tool, args: &Value, h: &MemoryHandle) -> Result<String, ToolError> {
     match tool {
+        Tool::SearchChats => {
+            let q = args["query"].as_str().unwrap_or("").trim();
+            if q.is_empty() {
+                return Err(ToolError::Args("`query` must not be empty".into()));
+            }
+            let hits = h.memory.search_conversations(q, 8).map_err(|e| fail(e.to_string()))?;
+            if hits.is_empty() {
+                return Ok(format!("No past chat says \"{q}\"."));
+            }
+            Ok(hits.iter().map(|x| format!("chat {} | {} at {} | {}", x.conv, x.role, x.at, excerpt(&x.content, 300))).collect::<Vec<_>>().join("\n"))
+        }
         Tool::Recall => {
             let q = args["query"].as_str().unwrap_or("");
             let semantic = if h.embedder.is_on() { h.memory.semantic_search(&*h.embedder, q, 10).await.unwrap_or_default() } else { vec![] };

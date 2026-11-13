@@ -155,3 +155,22 @@ async fn an_assistant_note_write_is_logged_with_its_chat() {
     assert_eq!(w[0].5.as_deref(), Some("chat-7"));
     assert_eq!(w[0].3, id);
 }
+
+/// The model can search past chats through search_chats, read-only, without a question.
+#[tokio::test]
+async fn the_model_can_search_past_chats() {
+    let d = tempfile::tempdir().unwrap();
+    let mem = Arc::new(Memory::open(Arc::new(Store::open_memory().unwrap()), d.path().join("m")).unwrap());
+    mem.start_conversation("old-chat", None).unwrap();
+    mem.append_message("old-chat", "user", "my dentist is on Tuesday").unwrap();
+    let h = Arc::new(MemoryHandle { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), dest: Destination { trust: Trust::Local, project: None, department: None }, cfg: RecallConfig::default(), layers: None, judge: None, conv: None });
+    let proj = d.path().join("proj");
+    std::fs::create_dir(&proj).unwrap();
+    let s = Setup { tools: default_tools().with_memory(h), perms: Permissions::new(&proj).unwrap(), mem: mem.clone(), _d: d };
+    let no = User(Answer::No, AtomicUsize::new(0));
+    let r = turn(&s, vec![call("search_chats", r#"{"query":"dentist"}"#), done()], &no).await;
+    assert!(r[0].contains("old-chat") && r[0].contains("dentist"), "{}", r[0]);
+    assert_eq!(no.1.load(Ordering::SeqCst), 0, "reading past chats does not ask");
+    let r = turn(&s, vec![call("search_chats", r#"{"query":"zebra"}"#), done()], &no).await;
+    assert!(r[0].starts_with("No past chat"), "{}", r[0]);
+}
