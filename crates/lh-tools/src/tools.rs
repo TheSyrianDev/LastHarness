@@ -132,8 +132,8 @@ impl Tool {
     pub fn def(self) -> ToolDef {
         let (description, parameters) = match self {
             Tool::ReadFile => (
-                "Read a text file (a folder gives its entries). offset: first line, from 1; limit: number of lines.",
-                json!({"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer"},"limit":{"type":"integer"}},"required":["path"]}),
+                "Read a text file (a folder gives its entries). Each line starts with its LINE#TAG anchor, which edit accepts as start and end. offset: first line, from 1; limit: number of lines; anchors: false for plain lines.",
+                json!({"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer"},"limit":{"type":"integer"},"anchors":{"type":"boolean"}},"required":["path"]}),
             ),
             Tool::WriteFile => (
                 "Create or replace a text file in the project.",
@@ -252,13 +252,19 @@ impl Tool {
                 buf.truncate(MAX_READ);
                 let mut s = String::from_utf8(buf).map_err(|_| ToolError::Failed("the file is not valid UTF-8 text".into()))?;
                 let (offset, limit) = (args["offset"].as_u64(), args["limit"].as_u64());
+                let mut first = 1;
                 if offset.is_some() || limit.is_some() {
                     let start = offset.unwrap_or(1).max(1) as usize - 1;
+                    first = start + 1;
                     let total = s.lines().count();
                     if start >= total.max(1) && total > 0 {
                         return Err(ToolError::Failed(format!("offset {} is past the end; the file has {total} lines", start + 1)));
                     }
                     s = s.lines().skip(start).take(limit.map_or(usize::MAX, |l| l as usize)).collect::<Vec<_>>().join("\n");
+                }
+                // each line carries its LINE#TAG anchor, which the edit tool accepts; `anchors: false` turns this off
+                if args["anchors"].as_bool() != Some(false) {
+                    s = s.lines().enumerate().map(|(i, l)| format!("{}#{}| {l}", first + i, line_tag(l))).collect::<Vec<_>>().join("\n");
                 }
                 if cut {
                     s.push_str("\n[file cut at 256 KB]");
@@ -874,6 +880,26 @@ mod tests {
         assert!(edit_lines(text, "bad", "bad", "x").is_err());
         // trailing spaces do not change the tag
         assert_eq!(line_tag("beta   "), line_tag("beta"));
+    }
+
+    #[tokio::test]
+    async fn read_anchors_round_trip_into_edit_and_stale_ones_are_refused() {
+        let d = tempfile::tempdir().unwrap();
+        let set = ToolSet::new([Tool::ReadFile, Tool::Edit]);
+        std::fs::write(d.path().join("a.txt"), "alpha\nbeta\ngamma\n").unwrap();
+        let read = Tool::ReadFile.run(&json!({"path":"a.txt"}), d.path(), &set).await.unwrap().text;
+        let line2 = read.lines().find(|l| l.starts_with("2#")).unwrap().to_string();
+        let anchor = line2.split('|').next().unwrap().to_string();
+        assert!(line2.ends_with("| beta"), "{line2}");
+        Tool::Edit.run(&json!({"path":"a.txt","start":anchor,"end":anchor,"new_string":"BETA"}), d.path(), &set).await.unwrap();
+        assert_eq!(std::fs::read_to_string(d.path().join("a.txt")).unwrap(), "alpha\nBETA\ngamma\n");
+        // the same anchor is stale now: the line text it named has changed
+        let stale = Tool::Edit.run(&json!({"path":"a.txt","start":anchor,"end":anchor,"new_string":"x"}), d.path(), &set).await.unwrap_err();
+        assert!(stale.to_string().contains("stale"), "{stale}");
+        assert_eq!(std::fs::read_to_string(d.path().join("a.txt")).unwrap(), "alpha\nBETA\ngamma\n");
+        // anchors: false gives plain lines
+        let plain = Tool::ReadFile.run(&json!({"path":"a.txt","anchors":false}), d.path(), &set).await.unwrap().text;
+        assert!(plain.starts_with("alpha\n"), "{plain}");
     }
 
     #[tokio::test]
