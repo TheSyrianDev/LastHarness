@@ -17,6 +17,8 @@ pub struct MemoryHandle {
     /// Where this worker's model is: decides what it may see.
     pub dest: Destination,
     pub cfg: RecallConfig,
+    /// The chat this write comes from, for the write log.
+    pub conv: Option<String>,
     /// A role's memory slice: only these layers are visible. `None` means all of them.
     pub layers: Option<Vec<lh_memory::Layer>>,
     /// A model on this machine that judges what the patterns let through, as the end-of-chat review does.
@@ -137,6 +139,7 @@ async fn save_note(args: &Value, h: &MemoryHandle) -> Result<String, ToolError> 
             n.project = (layer == Layer::Projects).then(|| h.dest.project.clone()).flatten();
             n.department = h.dest.department.clone();
             let page = h.memory.create(n, By::Assistant).map_err(|e| fail(e.to_string()))?;
+            let _ = h.memory.log_write("add", &page.id, &page.title, h.conv.as_deref());
             let _ = h.memory.index_pending(&*h.embedder).await;
             let mut out = format!("Saved \"{}\" in {} (id {}).", page.title, layer.as_str(), page.id);
             if redacted {
@@ -159,6 +162,7 @@ async fn save_note(args: &Value, h: &MemoryHandle) -> Result<String, ToolError> 
             let gist = body.map(|b| excerpt(&screen("", b).1, 120));
             let edit = lh_memory::Edit { title: Some(t2.clone()), body: Some(b2.clone()), gist };
             let updated = h.memory.update(id, edit, By::Assistant).map_err(|e| fail(e.to_string()))?;
+            let _ = h.memory.log_write("update", &updated.id, &updated.title, h.conv.as_deref());
             let _ = h.memory.index_pending(&*h.embedder).await;
             let mut out = format!("Updated \"{}\" (id {}, version {}).", updated.title, updated.id, updated.version);
             if redacted {

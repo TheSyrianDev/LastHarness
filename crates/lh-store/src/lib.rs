@@ -312,6 +312,16 @@ const MIGRATIONS: &[&str] = &[r#"
 "#, r#"
     -- The toolsets a chat was created with (comma-separated; null = all tools), so a reopened chat keeps its limit.
     alter table conversations add column toolsets text;
+"#, r#"
+    -- Every memory write the assistant makes through a chat: what changed, which page, in which chat.
+    create table memory_writes(
+      id integer primary key,
+      at integer not null,
+      action text not null,        -- add, update, delete
+      page text not null,
+      title text not null,
+      conv text
+    );
 "#];
 
 pub struct Store {

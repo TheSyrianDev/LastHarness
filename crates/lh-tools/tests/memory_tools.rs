@@ -42,7 +42,7 @@ struct Setup {
 fn setup(trust: Trust) -> Setup {
     let d = tempfile::tempdir().unwrap();
     let mem = Arc::new(Memory::open(Arc::new(Store::open_memory().unwrap()), d.path().join("m")).unwrap());
-    let h = Arc::new(MemoryHandle { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), dest: Destination { trust, project: None, department: None }, cfg: RecallConfig::default(), layers: None, judge: None });
+    let h = Arc::new(MemoryHandle { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), dest: Destination { trust, project: None, department: None }, cfg: RecallConfig::default(), layers: None, judge: None, conv: None });
     let proj = d.path().join("proj");
     std::fs::create_dir(&proj).unwrap();
     Setup { tools: default_tools().with_memory(h), perms: Permissions::new(&proj).unwrap(), mem, _d: d }
@@ -132,4 +132,26 @@ async fn without_a_memory_handle_the_tools_do_not_exist() {
         assert!(tools.get(n).is_none(), "{n}");
     }
     assert!(!tools.defs().iter().any(|d| d.name == "remember"));
+}
+
+/// Each save_note add and update is logged with its page and the chat it came from.
+#[tokio::test]
+async fn an_assistant_note_write_is_logged_with_its_chat() {
+    let d = tempfile::tempdir().unwrap();
+    let mem = Arc::new(Memory::open(Arc::new(Store::open_memory().unwrap()), d.path().join("m")).unwrap());
+    let h = Arc::new(MemoryHandle { memory: mem.clone(), embedder: Arc::new(AnyEmbedder::Off), dest: Destination { trust: Trust::Local, project: None, department: None }, cfg: RecallConfig::default(), layers: None, judge: None, conv: Some("chat-7".into()) });
+    let proj = d.path().join("proj");
+    std::fs::create_dir(&proj).unwrap();
+    let s = Setup { tools: default_tools().with_memory(h), perms: Permissions::new(&proj).unwrap(), mem: mem.clone(), _d: d };
+    let yes = User(Answer::Yes, AtomicUsize::new(0));
+    let r = turn(&s, vec![call("save_note", r#"{"action":"add","text":"Prefers tea.","title":"Tea"}"#), done()], &yes).await;
+    assert!(r[0].starts_with("Saved"), "{}", r[0]);
+    let id = mem.list(None, State::Live).unwrap()[0].id.clone();
+    let r = turn(&s, vec![call("save_note", &format!(r#"{{"action":"update","id":"{id}","text":"Prefers green tea."}}"#)), done()], &yes).await;
+    assert!(r[0].starts_with("Updated"), "{}", r[0]);
+    let w = mem.writes(10).unwrap();
+    assert_eq!(w.len(), 2);
+    assert_eq!((w[0].2.as_str(), w[1].2.as_str()), ("update", "add"));
+    assert_eq!(w[0].5.as_deref(), Some("chat-7"));
+    assert_eq!(w[0].3, id);
 }

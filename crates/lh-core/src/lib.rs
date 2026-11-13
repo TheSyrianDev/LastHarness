@@ -607,7 +607,7 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
                 });
                 judge
             });
-            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: live.recall.clone(), layers: None, judge }));
+            tools = tools.with_memory(Arc::new(lh_tools::MemoryHandle { memory: rt.memory.clone(), embedder: rt.embedder.clone(), dest: d.clone(), cfg: live.recall.clone(), layers: None, judge, conv: conv.clone() }));
         }
         dest = Some(d);
         let (m, e) = (rt.memory.clone(), rt.embedder.clone());

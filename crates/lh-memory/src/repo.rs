@@ -321,6 +321,21 @@ impl Memory {
         Ok(p)
     }
 
+    /// Record a memory write the assistant made through a chat (see `writes`).
+    pub fn log_write(&self, action: &str, page: &str, title: &str, conv: Option<&str>) -> Result<()> {
+        self.store.with(|c| c.execute("insert into memory_writes(at, action, page, title, conv) values (?1, ?2, ?3, ?4, ?5)", (now(), action, page, title, conv)).map(|_| ()))?;
+        Ok(())
+    }
+
+    /// The newest assistant memory writes first: (id, at, action, page, title, conv).
+    pub fn writes(&self, limit: usize) -> Result<Vec<(i64, i64, String, String, String, Option<String>)>> {
+        Ok(self.store.with(|c| {
+            let mut q = c.prepare("select id, at, action, page, title, conv from memory_writes order by id desc limit ?1")?;
+            let rows = q.query_map([limit as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+        })?)
+    }
+
     pub fn archive(&self, id: &str, by: By, note: &str) -> Result<Page> {
         let mut p = self.get(id)?;
         if p.archived_at.is_some() {
