@@ -119,5 +119,10 @@ if git -C "$pub" diff --cached --quiet; then
   echo "sync-public: nothing new since the last sync"
   exit 0
 fi
-git -C "$pub" -c user.name="$(git -C "$dev" config user.name)" -c user.email="$(git -C "$dev" config user.email)" commit -q -m "Sync from development ($short)"
+# the public commit carries the public pseudonym and its GitHub noreply address, never the owner's own identity
+uid="$(gh api user --jq .id)"
+pub_name=TheSyrianDev
+pub_email="$uid+TheSyrianDev@users.noreply.github.com"
+GIT_AUTHOR_NAME="$pub_name" GIT_AUTHOR_EMAIL="$pub_email" GIT_COMMITTER_NAME="$pub_name" GIT_COMMITTER_EMAIL="$pub_email" \
+  git -C "$pub" -c user.name="$pub_name" -c user.email="$pub_email" commit -q -m "Sync from development ($short)"
 echo "sync-public: committed $(git -C "$pub" rev-parse --short HEAD) in $pub (from $short)"
