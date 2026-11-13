@@ -117,3 +117,7 @@ Follow-ups to step 2 (context compression, `crates/lh-tools/src/compact.rs`). No
 ## Channel toolsets (for the messaging step)
 
 Not wired yet. Channels (Telegram first) must pass a toolset limit the same way chats do: `toolsets` on channel creation, stored with the channel, applied last in `new_session`. Default for a channel: `memory` only until Omar says otherwise. Test: a channel created with `["web"]` offers only web tools, also after a restart.
+
+## Build speed: revisit later
+
+- revisit later: Blaze needs nightly + blaze-releases.ix.dev, claims 11x avg / up to 92x on edit rebuilds. Skipped by Omar; not installed.
