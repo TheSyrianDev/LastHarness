@@ -267,6 +267,7 @@ pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/team/runs", get(list_runs::<M>).post(start_run::<M>))
         .route("/v1/team/runs/{id}", get(get_run::<M>))
         .route("/v1/team/runs/{id}/events", get(run_events::<M>))
+        .route("/v1/team/runs/{id}/checklist", get(run_checklist::<M>))
         .route("/v1/team/runs/{id}/answers/{q}", post(run_answer::<M>))
         .route("/v1/team/runs/{id}/stop", post(stop_run::<M>))
 }
@@ -629,6 +630,12 @@ async fn get_run<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id
     let mut j = run_summary(&r);
     j["events"] = json!(r.events());
     Ok(Json(j))
+}
+
+/// The live checklist of one run: one row per planned step with its state, in plan order.
+async fn run_checklist<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+    let r = run_of(&st, &id)?;
+    Ok(Json(json!({"rows": lh_team::checklist::fold_json(&r.events())})))
 }
 
 async fn run_events<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>) -> Result<SseResponse<impl Stream<Item = Result<Sse, Infallible>>>, ApiError> {
