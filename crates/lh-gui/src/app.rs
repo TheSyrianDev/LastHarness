@@ -1048,6 +1048,11 @@ impl App {
         self.banner = None;
         self.composer.update(cx, |s, cx| s.set_value("", window, cx));
         if let Some(Ok(cmd)) = lh_client::slash::parse(&text) {
+            if cmd.is_screen() {
+                // the GUI attaches files with its own control and has no /review yet; never send these to the core
+                self.attach_note = Some("Add files with the attach control here. The terminal app handles /attach, /detach and /review.".into());
+                return cx.notify();
+            }
             let key = c.key;
             let session = c.session.clone();
             return self.backend.send(Cmd::Slash { chat: key, session, cmd });

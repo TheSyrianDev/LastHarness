@@ -1,5 +1,6 @@
 //! Chat slash commands that call the core and show the answer as a notice: `/usage`, `/insights`,
-//! `/rollback [N]`, `/budget <tokens>|off`, `/help`. Same endpoints the GUI uses.
+//! `/rollback [N]`, `/budget <tokens>|off`, `/help`. Same endpoints the GUI uses. `/attach`, `/detach` and
+//! `/review` are parsed here too, but the screen runs them (see `Slash::is_screen`), not the core.
 
 use serde_json::{json, Value};
 
@@ -13,10 +14,23 @@ pub enum Slash {
     Rollback(String),
     Budget(Option<u64>),
     Help,
+    /// `/attach [path]`: the screen stages a file. The text is what follows the command, may be empty.
+    Attach(String),
+    /// `/detach <n>`: the screen removes a staged file. The text is what follows the command.
+    Detach(String),
+    /// `/review`: the screen asks the core for end-of-session suggestions.
+    Review,
+}
+
+impl Slash {
+    /// True for commands the screen handles itself (staging files, showing suggestions). The core never sees them.
+    pub fn is_screen(&self) -> bool {
+        matches!(self, Slash::Attach(_) | Slash::Detach(_) | Slash::Review)
+    }
 }
 
 /// The one-line list `/help` shows. Keep it in step with `parse`.
-pub const HELP: &str = "Commands: /usage (tokens used in this chat), /insights (what the core has learned), /rollback [N] (undo the last changes), /budget <tokens>|off (token limit for this chat), /help (this list). /attach and /detach add or remove files; /review asks for suggestions.";
+pub const HELP: &str = "Commands: /usage (tokens used in this chat), /insights (what the core has learned), /rollback [N] (undo the last changes), /budget <tokens>|off (token limit for this chat), /help (this list). /attach [path] adds a file, /detach <n> removes one, /review asks for suggestions.";
 
 /// Parse a chat line. `/budget` takes a token count or `off`; anything else after the command is an error text.
 pub fn parse(line: &str) -> Option<Result<Slash, String>> {
@@ -26,6 +40,9 @@ pub fn parse(line: &str) -> Option<Result<Slash, String>> {
         "/usage" => Some(Ok(Slash::Usage)),
         "/insights" => Some(Ok(Slash::Insights)),
         "/help" if rest.is_empty() => Some(Ok(Slash::Help)),
+        "/attach" => Some(Ok(Slash::Attach(rest.to_string()))),
+        "/detach" => Some(Ok(Slash::Detach(rest.to_string()))),
+        "/review" if rest.is_empty() => Some(Ok(Slash::Review)),
         "/rollback" => Some(Ok(Slash::Rollback(t.to_string()))),
         "/budget" => Some(match rest {
             "off" => Ok(Slash::Budget(None)),
@@ -40,6 +57,7 @@ pub async fn run(c: &Client, session: &str, cmd: Slash) -> Result<String, String
     let text = |v: Value| v["text"].as_str().or(v["message"].as_str()).unwrap_or("done").to_string();
     match cmd {
         Slash::Help => Ok(HELP.to_string()),
+        Slash::Attach(_) | Slash::Detach(_) | Slash::Review => Err(format!("{} is handled by the screen, not the core", cmd_name(&cmd))),
         Slash::Usage => c.call("GET", &format!("/v1/sessions/{session}/usage"), None).await.map(text).map_err(|e| e.to_string()),
         Slash::Insights => c.call("GET", "/v1/insights", None).await.map(text).map_err(|e| e.to_string()),
         Slash::Rollback(cmd) => c.call("POST", &format!("/v1/sessions/{session}/rollback"), Some(json!({ "command": cmd }))).await.map(text).map_err(|e| e.to_string()),
@@ -51,6 +69,14 @@ pub async fn run(c: &Client, session: &str, cmd: Slash) -> Result<String, String
                 None => "Token budget removed for this chat.".to_string(),
             })
             .map_err(|e| e.to_string()),
+    }
+}
+
+fn cmd_name(cmd: &Slash) -> &'static str {
+    match cmd {
+        Slash::Attach(_) => "/attach",
+        Slash::Detach(_) => "/detach",
+        _ => "/review",
     }
 }
 
@@ -75,7 +101,23 @@ mod tests {
         assert_eq!(parse("/budget 5000"), Some(Ok(Slash::Budget(Some(5000)))));
         assert_eq!(parse("/budget off"), Some(Ok(Slash::Budget(None))));
         assert!(matches!(parse("/budget lots"), Some(Err(_))));
-        assert_eq!(parse("/attach x"), None);
         assert_eq!(parse("hello"), None);
+    }
+
+    #[test]
+    fn attach_detach_review_parse_for_the_screen() {
+        assert_eq!(parse("/attach /tmp/a.txt"), Some(Ok(Slash::Attach("/tmp/a.txt".into()))));
+        assert_eq!(parse("  /attach  "), Some(Ok(Slash::Attach(String::new()))));
+        assert_eq!(parse("/attachment x"), None);
+        assert_eq!(parse("/detach 2"), Some(Ok(Slash::Detach("2".into()))));
+        assert_eq!(parse("/detach"), Some(Ok(Slash::Detach(String::new()))));
+        assert_eq!(parse("/review"), Some(Ok(Slash::Review)));
+        assert_eq!(parse("/review now"), None);
+        for c in [Slash::Attach(String::new()), Slash::Detach("1".into()), Slash::Review] {
+            assert!(c.is_screen());
+        }
+        for c in [Slash::Usage, Slash::Insights, Slash::Help, Slash::Rollback("/rollback".into()), Slash::Budget(None)] {
+            assert!(!c.is_screen());
+        }
     }
 }

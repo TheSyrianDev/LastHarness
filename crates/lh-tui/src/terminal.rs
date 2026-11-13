@@ -500,7 +500,7 @@ async fn event_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, client: A
                         let line = std::mem::take(&mut app.input);
                         app.attach_command(&line);
                     }
-                    KeyCode::Enter if !app.busy && matches!(lh_client::slash::parse(&app.input), Some(Ok(_)) | Some(Err(_))) => {
+                    KeyCode::Enter if !app.busy && matches!(lh_client::slash::parse(&app.input), Some(Ok(ref c)) if !c.is_screen()) || (!app.busy && matches!(lh_client::slash::parse(&app.input), Some(Err(_)))) => {
                         let line = std::mem::take(&mut app.input);
                         match lh_client::slash::parse(&line) {
                             Some(Ok(cmd)) => {
