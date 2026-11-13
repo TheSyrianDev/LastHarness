@@ -4,7 +4,7 @@ LastHarness is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE
 
 Commercial use is not covered by the public license. To use LastHarness commercially, including in a paid product or service, get a separate written agreement from the copyright holder.
 
-Commercial licensing contact: omarbarood64@gmail.com
+Commercial licensing contact: contact through GitHub issues or Discussions on the project repository.
 
 A quote, an inquiry or a payment does not grant commercial rights by itself. Rights are granted only by a signed written agreement.
 
