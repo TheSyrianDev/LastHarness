@@ -72,7 +72,7 @@ impl Message {
             m["tool_calls"] = self
                 .tool_calls
                 .iter()
-                .map(|c| json!({ "id": c.id, "type": "function", "function": { "name": c.name, "arguments": c.arguments } }))
+                .map(|c| json!({ "id": c.id, "type": "function", "function": { "name": c.name, "arguments": history_arguments(&c.arguments) } }))
                 .collect();
         }
         if let Some(id) = &self.tool_call_id {
@@ -165,5 +165,29 @@ impl Response {
     /// The assistant message to put back into the history for the next request.
     pub fn into_message(self) -> Message {
         Message::assistant(self.text, self.tool_calls)
+    }
+}
+
+/// Arguments as sent back in the history. A call whose arguments are not valid JSON would make the server
+/// answer HTTP 500 on the next request, so it goes as `{}`. The stored call is not changed.
+fn history_arguments(raw: &str) -> String {
+    if serde_json::from_str::<Value>(raw).is_ok() {
+        return raw.to_string();
+    }
+    crate::repair_json(raw).unwrap_or_else(|| "{}".to_string())
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    #[test]
+    fn a_malformed_argument_goes_back_as_valid_json() {
+        let m = Message::assistant("", vec![ToolCall { id: "c1".into(), name: "calc".into(), arguments: r#"{"expr":"2^1"#.into(), repaired: false }]);
+        let v = m.to_json();
+        let args = v["tool_calls"][0]["function"]["arguments"].as_str().unwrap();
+        assert!(serde_json::from_str::<Value>(args).is_ok(), "sent: {args}");
+        let stored = &m.tool_calls[0].arguments;
+        assert_eq!(stored, r#"{"expr":"2^1"#, "the stored call is not changed");
     }
 }

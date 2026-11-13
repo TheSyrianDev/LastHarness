@@ -192,7 +192,9 @@ impl Provider {
         if v["choices"][0].is_null() {
             return Err(Error::Format(v.to_string()));
         }
-        Ok(parse_response(&v, &self.compat))
+        let mut r = parse_response(&v, &self.compat);
+        crate::raw_calls::recover(&mut r);
+        Ok(r)
     }
 
     /// Streams the reply, calling `on_event` for each piece, and returns the whole reply at the end.

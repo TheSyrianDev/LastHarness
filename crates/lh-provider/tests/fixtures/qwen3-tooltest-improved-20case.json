@@ -1,0 +1,184 @@
+{
+ "summary": {
+  "OK": 10,
+  "MISSED_RAW": 8,
+  "HTTP_ERROR": 1,
+  "SPURIOUS": 1
+ },
+ "rows": [
+  {
+   "case": "calc_1",
+   "verdict": "OK",
+   "finish": "tool_calls",
+   "tool_calls": [
+    "calc {\"expr\":\"17*23\"}"
+   ],
+   "raw_call_in_content": false,
+   "content_head": ""
+  },
+  {
+   "case": "calc_2",
+   "verdict": "OK",
+   "finish": "tool_calls",
+   "tool_calls": [
+    "calc {\"expr\":\"144/12\"}"
+   ],
+   "raw_call_in_content": false,
+   "content_head": ""
+  },
+  {
+   "case": "calc_3",
+   "verdict": "MISSED_RAW",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": true,
+   "content_head": "<function=calc>\n<parameter=expr>2^10</parameter>\n</function>"
+  },
+  {
+   "case": "calc_4",
+   "verdict": "MISSED_RAW",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": true,
+   "content_head": "<function=calc>\n<parameter=expr>(7+8)*3</parameter>\n</function>"
+  },
+  {
+   "case": "calc_5",
+   "verdict": "MISSED_RAW",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": true,
+   "content_head": "<function=calc>\n<parameter=expr>1000-387</parameter>\n</function>"
+  },
+  {
+   "case": "weather_1",
+   "verdict": "MISSED_RAW",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": true,
+   "content_head": "<function=weather>\n<parameter=city>Paris</parameter>\n<parameter=unit>c</parameter>\n</function>"
+  },
+  {
+   "case": "weather_2",
+   "verdict": "MISSED_RAW",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": true,
+   "content_head": "<function=weather>\n<parameter=city>Cairo</parameter>\n<parameter=unit>f</parameter>\n</function>"
+  },
+  {
+   "case": "weather_3",
+   "verdict": "MISSED_RAW",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": true,
+   "content_head": "<function=weather>\n<parameter=city>Tokyo</parameter>\n</function>"
+  },
+  {
+   "case": "weather_4",
+   "verdict": "MISSED_RAW",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": true,
+   "content_head": "<function=weather>\n<parameter=city>Berlin</parameter>\n<parameter=unit>c</parameter>\n</function>"
+  },
+  {
+   "case": "weather_5",
+   "verdict": "MISSED_RAW",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": true,
+   "content_head": "<function=weather>\n<parameter=city>Lagos</parameter>\n<parameter=unit>c</parameter>\n</function>"
+  },
+  {
+   "case": "multi_1",
+   "verdict": "OK",
+   "finish": "tool_calls",
+   "tool_calls": [
+    "calc {\"expr\":\"9*9\"}"
+   ],
+   "raw_call_in_content": false,
+   "content_head": ""
+  },
+  {
+   "case": "multi_2",
+   "verdict": "OK",
+   "finish": "tool_calls",
+   "tool_calls": [
+    "weather {\"city\":\"Oslo\",\"unit\":\"c\"}"
+   ],
+   "raw_call_in_content": false,
+   "content_head": ""
+  },
+  {
+   "case": "multi_3",
+   "verdict": "OK",
+   "finish": "tool_calls",
+   "tool_calls": [
+    "calc {\"expr\":\"3^3\"}"
+   ],
+   "raw_call_in_content": false,
+   "content_head": ""
+  },
+  {
+   "case": "none_1",
+   "verdict": "OK",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": false,
+   "content_head": "Hello"
+  },
+  {
+   "case": "none_2",
+   "verdict": "OK",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": false,
+   "content_head": "The capital of France is Paris."
+  },
+  {
+   "case": "none_3",
+   "verdict": "OK",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": false,
+   "content_head": "A tool is a device or method used to perform a specific task or achieve a particular goal."
+  },
+  {
+   "case": "none_4",
+   "verdict": "OK",
+   "finish": "stop",
+   "tool_calls": [],
+   "raw_call_in_content": false,
+   "content_head": "Rain falls softly  \nDrums the earth's gentle song  \nWhispers through the leaves"
+  },
+  {
+   "case": "malformed_1",
+   "verdict": "HTTP_ERROR",
+   "finish": "http_error",
+   "tool_calls": [],
+   "raw_call_in_content": false,
+   "content_head": "HTTP 500: {\"error\":{\"code\":500,\"message\":\"Failed to parse tool call arguments as JSON: [json.excepti"
+  },
+  {
+   "case": "malformed_2",
+   "verdict": "OK",
+   "finish": "tool_calls",
+   "tool_calls": [
+    "weather {\"city\":\"Madrid\"}"
+   ],
+   "raw_call_in_content": false,
+   "content_head": ""
+  },
+  {
+   "case": "malformed_3",
+   "verdict": "SPURIOUS",
+   "finish": "tool_calls",
+   "tool_calls": [
+    "calc {\"expr\":\"-\"}"
+   ],
+   "raw_call_in_content": false,
+   "content_head": ""
+  }
+ ]
+}

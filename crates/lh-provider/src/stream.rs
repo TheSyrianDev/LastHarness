@@ -84,6 +84,7 @@ impl Assembler {
     pub fn finish(mut self) -> Response {
         let mut ev = Vec::new();
         self.flush_calls(&mut ev);
+        crate::raw_calls::recover(&mut self.response);
         self.response
     }
 }
