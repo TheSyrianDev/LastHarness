@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.0-alpha
+
+First alpha. Built from the code in this repository; see the sections above for what each part does.
+
+### Added
+- Local core `lhd` with an HTTP API and SSE, a terminal app (`la`, alias `lh`) and the desktop app (`lastai-gui`).
+- Models and keys: search GGUF models by fit, download through hfd-core, run and use installed models.
+- Create: image and video jobs through a local ComfyUI.
+- Team: departments and workers; outside CLI workers bound in `~/.lastharness/external-workers.json`, writes need approval.
+- Chat: `/usage`, `/insights`, `/rollback`, `/budget` in terminal and desktop; `@git diff` references.
+- Memory undo, snapshots and rollback, toolsets, schedules including `every weekday at 9`.
+- Local add-on hub (folder version) in `lh-core`.
+- Headless smoke script `scripts/smoke-headless.sh`.
+
+### Changed
+- Compaction keeps the system prompt, the first user message and the last turns verbatim.
+- Qwen-style raw `<function=...>` tool calls in replies are recovered as tool calls.
+
+### Known gaps
+- `@URL` references are listed but not fetched in chat.
+- The Mercury live checklist is not built.
+- The add-on hub has no UI or routes.
+- Parallel subagents do not yet use the file-locked edit transaction.
+- Wan 2.2 colour noise was traced to a 64-bit seed; the live check after the fix is pending.
+
 ## Unreleased
 
 ### Added
