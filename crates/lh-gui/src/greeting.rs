@@ -103,8 +103,8 @@ mod tests {
         assert_eq!(greeting_at("sam example", 14, false), "Good afternoon, Sam Example");
         assert_eq!(greeting_at("McKay", 22, false), "Good evening, McKay");
         assert_eq!(greeting_at("", 3, false), "Good evening");
-        assert!(greeting_at("عمر", 9, true).starts_with("صباح الخير"));
-        assert_eq!(tidy_name("عمر"), "عمر");
+        assert!(greeting_at("سارة", 9, true).starts_with("صباح الخير"));
+        assert_eq!(tidy_name("سارة"), "سارة");
     }
 
     #[test]
