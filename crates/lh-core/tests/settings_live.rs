@@ -325,3 +325,17 @@ async fn the_rollback_command_undoes_a_turn_or_changes() {
     assert_eq!(r["restored"].as_array().unwrap().len(), 1, "{r}");
     assert!(!proj.path().join("b.txt").exists() && proj.path().join("a.txt").exists());
 }
+
+/// A chat limited to the `files` toolset sends the model only the file tools.
+#[tokio::test]
+async fn a_chat_limited_to_files_offers_only_file_tools() {
+    let d = tempfile::tempdir().unwrap();
+    let proj = tempfile::tempdir().unwrap();
+    let s = start(d.path(), vec![text("ok")], false);
+    let bad = s.req(reqwest::Method::POST, "/v1/sessions").json(&json!({"model": "m", "project_dir": proj.path(), "toolsets": ["telegram"]})).send().await.unwrap();
+    assert_eq!(bad.status(), 400);
+    let id = s.session(json!({"model": "m", "project_dir": proj.path(), "toolsets": ["files"]})).await;
+    s.turn(&id, "hi", "no").await;
+    let names: Vec<String> = s.seen.lock().unwrap().iter().rev().find(|r| r.model != "titler").unwrap().tools.iter().map(|t| t.name.clone()).collect();
+    assert_eq!(names, ["read", "write", "edit", "grep", "glob"]);
+}

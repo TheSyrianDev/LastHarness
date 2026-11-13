@@ -496,6 +496,8 @@ struct NewSession {
     /// under the same permissions). Ignored when `project_dir` is given.
     mode: Option<String>,
     system: Option<String>,
+    /// Limit the chat to these toolsets: `files`, `terminal`, `web`, `memory`. Absent means all tools.
+    toolsets: Option<Vec<String>>,
     #[serde(default)]
     ask_all: bool,
     /// Per-role sampling and template settings.
@@ -665,6 +667,10 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         slot
     });
     let parts = session::SystemParts { kind, folder: tools_on.then(|| perms.root().to_path_buf()), guidelines: tools.guidelines(), client_block, learned_block, about };
+    // applied last, so tools the chat adds on its own (memory, show, model and team tools) are limited too
+    if let Some(sets) = &b.toolsets {
+        tools = tools.restrict_to_toolsets(sets).map_err(|m| ApiError(StatusCode::BAD_REQUEST, m))?;
+    }
     let mut session = Session::new(req, perms, tools, parts);
     (session.incognito, session.dest, session.conv, session.project) = (b.incognito, dest, conv, project);
     let session = Arc::new(session);

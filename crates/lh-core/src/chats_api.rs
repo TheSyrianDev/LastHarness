@@ -170,7 +170,7 @@ async fn resume<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id)
     if c.mode == "project" && project.is_none() {
         return Err(ApiError(StatusCode::CONFLICT, "this chat belongs to a project folder that no longer exists".into()));
     }
-    let nb = NewSession { model: model.clone(), project_dir: project, mode, system: None, ask_all: false, no_sandbox: false, sampling: None, max_tokens: None, incognito: false, channel: false };
+    let nb = NewSession { model: model.clone(), project_dir: project, mode, system: None, toolsets: None, ask_all: false, no_sandbox: false, sampling: None, max_tokens: None, incognito: false, channel: false };
     let _ = new_session(&st, nb, Some(id.clone())).await?;
     let session = st.sessions.lock().unwrap().get(&id).cloned().ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, "the session was not created".into()))?;
     let n = messages.len();

@@ -772,6 +772,17 @@ impl ToolSet {
         self.extras.retain(|e| !names.contains(&e.def().name.as_str()));
         self
     }
+    /// Keep only the tools in the named toolsets (`files`, `terminal`, `web`, `memory`). Anything else
+    /// is dropped, including MCP and skill tools. An unknown toolset name is an error.
+    pub fn restrict_to_toolsets(mut self, sets: &[String]) -> Result<Self, String> {
+        let mut allowed = Vec::new();
+        for name in sets {
+            allowed.extend(toolset_tools(name).ok_or_else(|| format!("unknown toolset \"{name}\"; use files, terminal, web or memory"))?);
+        }
+        self.tools.retain(|t| allowed.contains(t));
+        self.extras.clear();
+        Ok(self)
+    }
     /// Keep only the named tools (and drop the rest), for a role that lists the tools it may use.
     pub fn only(mut self, names: &[String]) -> Self {
         self.tools.retain(|t| names.iter().any(|n| canonical_name(n) == t.name()));
@@ -811,6 +822,17 @@ impl ToolSet {
     pub fn defs(&self) -> Vec<ToolDef> {
         self.tools.iter().map(|t| t.def()).chain(self.extras.iter().map(|e| e.def())).collect()
     }
+}
+
+/// The tools in one named toolset. None for an unknown name.
+pub fn toolset_tools(name: &str) -> Option<Vec<Tool>> {
+    Some(match name {
+        "files" => vec![Tool::ReadFile, Tool::WriteFile, Tool::Edit, Tool::Grep, Tool::Glob],
+        "terminal" => vec![Tool::RunCommand],
+        "web" => vec![Tool::WebFetch, Tool::WebSearch],
+        "memory" => vec![Tool::Recall, Tool::OpenNote, Tool::Remember, Tool::Forget, Tool::SaveNote],
+        _ => return None,
+    })
 }
 
 pub fn default_tools() -> ToolSet {
@@ -923,6 +945,18 @@ mod tests {
         assert_eq!(plain, "alpha\nbeta\n");
         let anchored = Tool::ReadFile.run(&json!({"path":"a.txt"}), d.path(), &set).await.unwrap().text;
         assert!(anchored.starts_with("1#"), "{anchored}");
+    }
+
+    #[test]
+    fn toolsets_keep_only_their_tools() {
+        let files = default_tools().restrict_to_toolsets(&["files".to_string()]).unwrap();
+        let defs = files.defs();
+        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, ["read", "write", "edit", "grep", "glob"]);
+        let both = default_tools().restrict_to_toolsets(&["terminal".to_string(), "web".to_string()]).unwrap();
+        let defs = both.defs();
+        assert_eq!(defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), ["bash", "web_fetch", "web_search"]);
+        assert!(default_tools().restrict_to_toolsets(&["telegram".to_string()]).is_err());
     }
 
     #[tokio::test]
