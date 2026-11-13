@@ -107,6 +107,25 @@ fn step_from(v: &Value) -> Option<PlanStep> {
 }
 
 struct RunApprover(Arc<Run>, Option<Arc<Session>>);
+
+/// Outside CLI workers, read from `<home>/.lastharness/external-workers.json`:
+/// `{"<role>": {"program": "...", "args": ["{brief}"], "writes": false, "timeout_secs": 600}}`.
+/// Missing or unreadable file means none. Nothing here is written by the app.
+fn external_clis(home: &FsPath) -> HashMap<String, lh_team::external::CliSpec> {
+    let Ok(text) = std::fs::read_to_string(home.join(".lastharness/external-workers.json")) else { return HashMap::new() };
+    let Ok(v) = serde_json::from_str::<Value>(&text) else { return HashMap::new() };
+    let mut out = HashMap::new();
+    for (role, c) in v.as_object().into_iter().flatten() {
+        let Some(program) = c["program"].as_str() else { continue };
+        out.insert(role.clone(), lh_team::external::CliSpec {
+            program: program.into(),
+            args: c["args"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
+            writes: c["writes"].as_bool().unwrap_or(false),
+            timeout: std::time::Duration::from_secs(c["timeout_secs"].as_u64().unwrap_or(600)),
+        });
+    }
+    out
+}
 impl Approver for RunApprover {
     fn plan<'a>(&'a self, dept: &'a str, plan: &'a Plan) -> BoxFut<'a, PlanDecision> {
         Box::pin(async move {
@@ -126,6 +145,15 @@ impl Approver for RunApprover {
                 Some("reject") => PlanDecision::Reject(a.as_ref().and_then(|v| v["note"].as_str()).unwrap_or("").to_string()),
                 _ => PlanDecision::Reject("nobody answered".into()),
             }
+        })
+    }
+    fn write_ok<'a>(&'a self, dept: &'a str, what: &'a str) -> BoxFut<'a, bool> {
+        Box::pin(async move {
+            if let Some(sess) = &self.1 {
+                return sess.ask_user("call_department", format!("{dept} wants {what} to change files. Allow?"), "outside worker write".into(), dept, String::new()).await == Answer::Yes;
+            }
+            let a = self.0.question(json!({"type": "write_needed", "dept": dept, "what": what})).await;
+            a.as_ref().and_then(|v| v["decision"].as_str()) == Some("approve")
         })
     }
     fn checkin<'a>(&'a self, dept: &'a str, milestone: &'a str, summaries: &'a [String]) -> BoxFut<'a, bool> {
@@ -544,8 +572,16 @@ pub(crate) async fn start<M: Model + 'static>(st: &Arc<AppState<M>>, dept: Strin
         provider_name,
         max_tokens: t.max_tokens,
     };
+    let home: std::path::PathBuf = std::env::var_os("HOME").map(Into::into).unwrap_or_else(std::env::temp_dir);
+    let sandbox = match &project {
+        Some(p) => std::path::PathBuf::from(p),
+        None => home.join(".lastharness/workers"),
+    };
+    let _ = std::fs::create_dir_all(&sandbox);
+    let approver: Arc<dyn Approver> = Arc::new(RunApprover(run.clone(), parent));
+    let backend = lh_team::external::WithExternal { inner: backend, clis: external_clis(&home), sandbox, approver: approver.clone() };
     let r2 = run.clone();
-    let engine = Engine::new(backend, s.store.clone(), t.roles.clone(), t.depts.clone(), t.registry.clone(), Arc::new(move |e| r2.push(e.to_json())), Arc::new(RunApprover(run.clone(), parent)));
+    let engine = Engine::new(backend, s.store.clone(), t.roles.clone(), t.depts.clone(), t.registry.clone(), Arc::new(move |e| r2.push(e.to_json())), approver);
     let r3 = run.clone();
     tokio::spawn(async move {
         let out = engine.run_department(dept, goal, RunCtx { project, depth: 0 }).await;
