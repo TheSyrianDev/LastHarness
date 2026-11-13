@@ -285,7 +285,7 @@ impl Tool {
                 let s = |k: &str| args[k].as_str().ok_or_else(|| ToolError::Args(format!("`{k}` must be a string")));
                 let new = s("new_string")?;
                 // held for the whole read-check-write, so two workers on one file cannot interleave
-                let _guard = FileLock::take(&p)?;
+                let _guard = take_lock_off_thread(p.clone()).await?;
                 let text = tokio::fs::read_to_string(&p).await.map_err(|e| ToolError::Failed(format!("cannot read {}: {e}", p.display())))?;
                 let out = if let Some(start) = args["start"].as_str() {
                     edit_lines(&text, start, args["end"].as_str().unwrap_or(start), new)?
@@ -1208,6 +1208,14 @@ impl FileLock {
     }
 }
 
+/// `FileLock::take` sleeps while it waits, so async callers run it on the blocking pool.
+/// This keeps a waiting edit from stalling a tokio worker.
+pub async fn take_lock_off_thread(path: PathBuf) -> Result<FileLock, ToolError> {
+    tokio::task::spawn_blocking(move || FileLock::take(&path))
+        .await
+        .map_err(|e| ToolError::Failed(format!("lock task failed: {e}")))?
+}
+
 /// How long a worker waits for another holder before it gives up.
 pub const WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 /// A lock older than this is stale even if its pid looks alive (pid reuse).
@@ -1257,6 +1265,30 @@ mod file_lock_tests {
         let g = FileLock::take(&p).expect("stale lock taken over");
         drop(g);
         assert!(!d.path().join("c.txt.lh-lock").exists());
+    }
+
+    #[test]
+    fn async_take_does_not_stall_the_runtime_while_waiting() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("d.txt");
+        std::fs::write(&p, "x\n").unwrap();
+        let _held = FileLock::take(&p).unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async {
+            let ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let t = ticks.clone();
+            let ticker = tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    t.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            });
+            // the live holder makes this wait the full WAIT, then refuse
+            assert!(take_lock_off_thread(p.clone()).await.is_err());
+            ticker.abort();
+            // about 1 s of waiting at 10 ms per tick; a blocked worker would give 0 or 1 ticks
+            assert!(ticks.load(std::sync::atomic::Ordering::SeqCst) >= 20);
+        });
     }
 
     #[test]
