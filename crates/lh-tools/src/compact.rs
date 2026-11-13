@@ -263,6 +263,30 @@ mod tests {
         assert!(sent.messages[..last_user].iter().filter(|x| x.role == Role::Tool).all(|x| x.content.as_deref().unwrap().lines().count() <= 1));
     }
 
+    #[tokio::test]
+    async fn the_system_prompt_goal_and_last_turns_stay_whole() {
+        let mut r = ChatRequest { model: "m".into(), ..Default::default() };
+        r.messages.push(Message::system("SYS-PROMPT"));
+        r.messages.push(Message::user("GOAL: port the parser"));
+        for turn in 0..5 {
+            r.messages.push(Message::user(format!("turn {turn}")));
+            r.messages.push(Message::assistant("", vec![ToolCall { id: format!("c{turn}"), name: "read_file".into(), arguments: "{}".into(), repaired: false }]));
+            r.messages.push(Message::tool_result(format!("c{turn}"), format!("line {turn}\n").repeat(40)));
+        }
+        let m = Summarizer::new("Summary of turns 0 and 1.");
+        let mut o = opts(1);
+        o.keep_last_turns = 3;
+        let c = compact_if_needed(&m, &NoMeter, &mut r, None, &o).await.unwrap().unwrap();
+        assert!(c.messages_summarized > 0);
+        assert!(r.messages[0].content.as_deref().unwrap().starts_with("SYS-PROMPT"));
+        assert!(r.messages[0].content.as_deref().unwrap().contains("Summary of turns 0 and 1."));
+        assert_eq!(r.messages[1].content.as_deref(), Some("GOAL: port the parser"));
+        let users: Vec<_> = r.messages.iter().filter(|x| x.role == Role::User).filter_map(|x| x.content.clone()).collect();
+        assert!(users.ends_with(&["turn 2".to_string(), "turn 3".to_string(), "turn 4".to_string()]));
+        let kept_tool = r.messages.iter().rev().find(|x| x.role == Role::Tool).unwrap();
+        assert_eq!(kept_tool.content.as_deref(), Some(format!("line 4\n").repeat(40).as_str()), "the newest tool output stays whole");
+    }
+
     #[test]
     fn compaction_starts_at_half_the_window() {
         assert_eq!(compact_threshold(Some(32_768)), 16_384);
