@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastharness-lockup-on-dark.svg">
-    <img alt="LastHarness" src=".github/assets/lastharness-lockup-on-light.svg" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastai-lockup-on-dark.svg">
+    <img alt="Last AI" src=".github/assets/lastai-lockup-on-light.svg" width="360">
   </picture>
 </p>
 
@@ -43,9 +43,9 @@ target/release/la              # chat
 target/release/lastai-gui # or the desktop app (needs the core running)
 ```
 
-L'application de bureau trouve elle-même le programme central et son jeton (options : `--base`, `--token-file`). Elle a un aspect par défaut sobre que vous pouvez changer : placez un fichier `.toml` dans `~/.config/lastharness/themes/` (les six thèmes intégrés, chacun avec trois familles en clair et en sombre, se trouvent dans `crates/lh-gui/themes/` comme exemples). Appuyez sur Ctrl+N pour une nouvelle conversation.
+L'application de bureau trouve elle-même le programme central et son jeton (options : `--base`, `--token-file`). Elle a un aspect par défaut sobre que vous pouvez changer : placez un fichier `.toml` dans `~/.config/lastai/themes/` (les six thèmes intégrés, chacun avec trois familles en clair et en sombre, se trouvent dans `crates/lh-gui/themes/` comme exemples). Appuyez sur Ctrl+N pour une nouvelle conversation.
 
-La version Omarchy (`LastHarness-<version>-omarchy-x86_64.tar.gz`, installée avec son `install-omarchy.sh`) propose aussi l'aspect de bureau propre à Omarchy, ainsi qu'un aspect « Omarchy (transparent) », un verre liquide aux couleurs d'Omarchy. L'aspect transparent est aussi translucide que la règle de fenêtre Hyprland pour la fenêtre de l'application (classe `lastharness-gui`) le permet ; sans règle, il reste opaque. Les autres versions (AppImage, Windows, macOS, ou une compilation source avec `--no-default-features`) n'incluent pas les aspects Omarchy. Pour en ajouter un, mettez cette ligne dans `~/.config/hypr/hyprland.lua` (0.85 est la part visible de la fenêtre) :
+La version Omarchy (`LastAI-<version>-omarchy-x86_64.tar.gz`, installée avec son `install-omarchy.sh`) propose aussi l'aspect de bureau propre à Omarchy, ainsi qu'un aspect « Omarchy (transparent) », un verre liquide aux couleurs d'Omarchy. L'aspect transparent est aussi translucide que la règle de fenêtre Hyprland pour la fenêtre de l'application (classe `lastharness-gui`) le permet ; sans règle, il reste opaque. Les autres versions (AppImage, Windows, macOS, ou une compilation source avec `--no-default-features`) n'incluent pas les aspects Omarchy. Pour en ajouter un, mettez cette ligne dans `~/.config/hypr/hyprland.lua` (0.85 est la part visible de la fenêtre) :
 
 ```lua
 o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
@@ -77,7 +77,7 @@ Le bloc Create de la page Modèles et clés produit des images (Z-Image Turbo) e
 
 Chaque commande a `help`, qui fonctionne sans que le programme central tourne, par exemple `lh team help`.
 
-- `lastaid` est le programme central. Il écoute uniquement sur `127.0.0.1:7842`. Les réglages viennent de `config.toml` ; une option de ligne de commande remplace le fichier. Le jeton dont les clients ont besoin est écrit dans `$XDG_RUNTIME_DIR/lastharness/token`.
+- `lastaid` est le programme central. Il écoute uniquement sur `127.0.0.1:7842`. Les réglages viennent de `config.toml` ; une option de ligne de commande remplace le fichier. Le jeton dont les clients ont besoin est écrit dans `$XDG_RUNTIME_DIR/lastai/token`.
 - `la` et `lastai` ouvrent la conversation terminal. Options : `--url`, `--token-file`, `--model`, `--ask-all`, `--incognito`.
 - `lh setup` : les questions du premier lancement. `lh settings` : voir et modifier chaque réglage (`set`, `reset`).
 - `lh memory ...` : les notes que l'assistant conserve. `lh learn ...` : les règles, le style, les compétences et les suggestions qui attendent votre décision.
@@ -92,9 +92,9 @@ La page du navigateur est servie en HTTPS lorsque `web.listen` est défini (par 
 
 ## Où vivent les fichiers
 
-- Réglages : `~/.config/lastharness/config.toml` (les prix de dépense facultatifs se trouvent dans `spend.toml` à côté).
-- Données : `~/.local/share/lastharness/` : `lh.db` (journal d'activité, règles, index), `memory/` (vos notes en Markdown), `skills/`, `team/` (rôles et départements), `mcp.json`, `web/` (le certificat de la porte navigateur).
-- Jeton : `$XDG_RUNTIME_DIR/lastharness/token`.
+- Réglages : `~/.config/lastai/config.toml` (les prix de dépense facultatifs se trouvent dans `spend.toml` à côté).
+- Données : `~/.local/share/lastai/` : `lh.db` (journal d'activité, règles, index), `memory/` (vos notes en Markdown), `skills/`, `team/` (rôles et départements), `mcp.json`, `web/` (le certificat de la porte navigateur).
+- Jeton : `$XDG_RUNTIME_DIR/lastai/token`.
 
 ## Pas encore construit
 

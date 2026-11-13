@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastharness-lockup-on-dark.svg">
-    <img alt="LastHarness" src=".github/assets/lastharness-lockup-on-light.svg" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastai-lockup-on-dark.svg">
+    <img alt="Last AI" src=".github/assets/lastai-lockup-on-light.svg" width="360">
   </picture>
 </p>
 
@@ -43,9 +43,9 @@ target/release/la              # chat
 target/release/lastai-gui # or the desktop app (needs the core running)
 ```
 
-桌面应用会自行找到核心及其令牌（参数：`--base`、`--token-file`）。它有简单的默认外观，你可以修改：把 `.toml` 文件放进 `~/.config/lastharness/themes/`（六个内置主题，每个都有浅色和深色的三个系列，示例位于 `crates/lh-gui/themes/`）。按 Ctrl+N 开始新对话。
+桌面应用会自行找到核心及其令牌（参数：`--base`、`--token-file`）。它有简单的默认外观，你可以修改：把 `.toml` 文件放进 `~/.config/lastai/themes/`（六个内置主题，每个都有浅色和深色的三个系列，示例位于 `crates/lh-gui/themes/`）。按 Ctrl+N 开始新对话。
 
-Omarchy 版本（`LastHarness-<version>-omarchy-x86_64.tar.gz`，用其中的 `install-omarchy.sh` 安装）还提供桌面自己的外观，以及 "Omarchy (transparent)" 外观，即采用 Omarchy 配色的液态玻璃效果。透明外观的透明程度取决于应用窗口（类名 `lastharness-gui`）的 Hyprland 窗口规则；没有规则时它保持不透明。其他版本（AppImage、Windows、macOS，或使用 `--no-default-features` 的源码构建）不包含 Omarchy 外观。要添加，请把这一行放进 `~/.config/hypr/hyprland.lua`（0.85 表示窗口显示的比例）：
+Omarchy 版本（`LastAI-<version>-omarchy-x86_64.tar.gz`，用其中的 `install-omarchy.sh` 安装）还提供桌面自己的外观，以及 "Omarchy (transparent)" 外观，即采用 Omarchy 配色的液态玻璃效果。透明外观的透明程度取决于应用窗口（类名 `lastharness-gui`）的 Hyprland 窗口规则；没有规则时它保持不透明。其他版本（AppImage、Windows、macOS，或使用 `--no-default-features` 的源码构建）不包含 Omarchy 外观。要添加，请把这一行放进 `~/.config/hypr/hyprland.lua`（0.85 表示窗口显示的比例）：
 
 ```lua
 o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
@@ -77,7 +77,7 @@ o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 
 每个命令都有 `help`，无需核心运行即可使用，例如 `lh team help`。
 
-- `lastaid` 是核心。它只监听 `127.0.0.1:7842`。设置来自 `config.toml`；命令行参数会覆盖该文件。客户端需要的令牌写在 `$XDG_RUNTIME_DIR/lastharness/token`。
+- `lastaid` 是核心。它只监听 `127.0.0.1:7842`。设置来自 `config.toml`；命令行参数会覆盖该文件。客户端需要的令牌写在 `$XDG_RUNTIME_DIR/lastai/token`。
 - `la` 和 `lastai` 打开终端对话。选项：`--url`、`--token-file`、`--model`、`--ask-all`、`--incognito`。
 - `lh setup`：首次运行的问题。`lh settings`：查看和修改每项设置（`set`、`reset`）。
 - `lh memory ...`：助手保存的笔记。`lh learn ...`：等待你处理的规则、风格、技能和建议。
@@ -92,9 +92,9 @@ o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 
 ## 文件存放位置
 
-- 设置：`~/.config/lastharness/config.toml`（可选的花费价格在旁边的 `spend.toml` 中）。
-- 数据：`~/.local/share/lastharness/`：`lh.db`（活动日志、规则、索引）、`memory/`（你的 Markdown 笔记）、`skills/`、`team/`（角色和部门）、`mcp.json`、`web/`（浏览器入口的证书）。
-- 令牌：`$XDG_RUNTIME_DIR/lastharness/token`。
+- 设置：`~/.config/lastai/config.toml`（可选的花费价格在旁边的 `spend.toml` 中）。
+- 数据：`~/.local/share/lastai/`：`lh.db`（活动日志、规则、索引）、`memory/`（你的 Markdown 笔记）、`skills/`、`team/`（角色和部门）、`mcp.json`、`web/`（浏览器入口的证书）。
+- 令牌：`$XDG_RUNTIME_DIR/lastai/token`。
 
 ## 尚未构建
 

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastharness-lockup-on-dark.svg">
-    <img alt="LastHarness" src=".github/assets/lastharness-lockup-on-light.svg" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastai-lockup-on-dark.svg">
+    <img alt="Last AI" src=".github/assets/lastai-lockup-on-light.svg" width="360">
   </picture>
 </p>
 
@@ -43,9 +43,9 @@ target/release/la              # chat
 target/release/lastai-gui # or the desktop app (needs the core running)
 ```
 
-يجد التطبيق المكتبي البرنامج الأساسي ورمزه بنفسه (الخيارات: `--base` و`--token-file`). له مظهر افتراضي بسيط يمكنك تغييره: ضع ملف `.toml` في `~/.config/lastharness/themes/` (السمات الست المدمجة، ولكل منها ثلاث عائلات بنسخة فاتحة وداكنة، موجودة في `crates/lh-gui/themes/` كأمثلة). اضغط Ctrl+N لبدء محادثة جديدة.
+يجد التطبيق المكتبي البرنامج الأساسي ورمزه بنفسه (الخيارات: `--base` و`--token-file`). له مظهر افتراضي بسيط يمكنك تغييره: ضع ملف `.toml` في `~/.config/lastai/themes/` (السمات الست المدمجة، ولكل منها ثلاث عائلات بنسخة فاتحة وداكنة، موجودة في `crates/lh-gui/themes/` كأمثلة). اضغط Ctrl+N لبدء محادثة جديدة.
 
-نسخة Omarchy (`LastHarness-<version>-omarchy-x86_64.tar.gz`، وتُثبَّت بالملف `install-omarchy.sh` الموجود فيها) تقدم أيضاً مظهر سطح المكتب الخاص بها، ومظهر "Omarchy (transparent)" وهو زجاج سائل بألوان Omarchy. يكون المظهر الشفاف بقدر الشفافية التي تحددها قاعدة نافذة Hyprland لنافذة التطبيق (الصنف `lastharness-gui`)؛ بدون قاعدة يبقى معتماً. الإصدارات الأخرى (AppImage أو Windows أو macOS أو بناء من المصدر بخيار `--no-default-features`) لا تتضمن مظهري Omarchy. لإضافة أحدهما، ضع هذا السطر في `~/.config/hypr/hyprland.lua` (القيمة 0.85 هي نسبة ظهور النافذة):
+نسخة Omarchy (`LastAI-<version>-omarchy-x86_64.tar.gz`، وتُثبَّت بالملف `install-omarchy.sh` الموجود فيها) تقدم أيضاً مظهر سطح المكتب الخاص بها، ومظهر "Omarchy (transparent)" وهو زجاج سائل بألوان Omarchy. يكون المظهر الشفاف بقدر الشفافية التي تحددها قاعدة نافذة Hyprland لنافذة التطبيق (الصنف `lastharness-gui`)؛ بدون قاعدة يبقى معتماً. الإصدارات الأخرى (AppImage أو Windows أو macOS أو بناء من المصدر بخيار `--no-default-features`) لا تتضمن مظهري Omarchy. لإضافة أحدهما، ضع هذا السطر في `~/.config/hypr/hyprland.lua` (القيمة 0.85 هي نسبة ظهور النافذة):
 
 ```lua
 o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
@@ -77,7 +77,7 @@ o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 
 كل أمر لديه `help`، ويعمل دون تشغيل البرنامج الأساسي، مثل `lh team help`.
 
-- `lastaid` هو البرنامج الأساسي. يستمع على `127.0.0.1:7842` فقط. تأتي الإعدادات من `config.toml`؛ وخيار سطر الأوامر يتجاوز الملف. الرمز الذي تحتاجه العملاء يُكتب في `$XDG_RUNTIME_DIR/lastharness/token`.
+- `lastaid` هو البرنامج الأساسي. يستمع على `127.0.0.1:7842` فقط. تأتي الإعدادات من `config.toml`؛ وخيار سطر الأوامر يتجاوز الملف. الرمز الذي تحتاجه العملاء يُكتب في `$XDG_RUNTIME_DIR/lastai/token`.
 - `la` و`lastai` يفتحان محادثة الطرفية. الخيارات: `--url` و`--token-file` و`--model` و`--ask-all` و`--incognito`.
 - `lh setup`: أسئلة التشغيل الأول. `lh settings`: عرض كل إعداد وتغييره (`set` و`reset`).
 - `lh memory ...`: الملاحظات التي يحتفظ بها المساعد. `lh learn ...`: القواعد والأسلوب والمهارات والاقتراحات التي تنتظر موافقتك.
@@ -92,9 +92,9 @@ o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 
 ## أين تُحفظ الملفات
 
-- الإعدادات: `~/.config/lastharness/config.toml` (وأسعار الإنفاق الاختيارية في `spend.toml` بجانبه).
-- البيانات: `~/.local/share/lastharness/`: `lh.db` (سجل النشاط والقواعد والفهارس)، و`memory/` (ملاحظاتك بصيغة Markdown)، و`skills/`، و`team/` (الأدوار والأقسام)، و`mcp.json`، و`web/` (شهادة بوابة المتصفح).
-- الرمز: `$XDG_RUNTIME_DIR/lastharness/token`.
+- الإعدادات: `~/.config/lastai/config.toml` (وأسعار الإنفاق الاختيارية في `spend.toml` بجانبه).
+- البيانات: `~/.local/share/lastai/`: `lh.db` (سجل النشاط والقواعد والفهارس)، و`memory/` (ملاحظاتك بصيغة Markdown)، و`skills/`، و`team/` (الأدوار والأقسام)، و`mcp.json`، و`web/` (شهادة بوابة المتصفح).
+- الرمز: `$XDG_RUNTIME_DIR/lastai/token`.
 
 ## لم يُبن بعد
 

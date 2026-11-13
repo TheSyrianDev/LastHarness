@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastharness-lockup-on-dark.svg">
-    <img alt="LastHarness" src=".github/assets/lastharness-lockup-on-light.svg" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastai-lockup-on-dark.svg">
+    <img alt="Last AI" src=".github/assets/lastai-lockup-on-light.svg" width="360">
   </picture>
 </p>
 
@@ -43,9 +43,9 @@ target/release/la              # chat
 target/release/lastai-gui # or the desktop app (needs the core running)
 ```
 
-Die Desktop-App findet den Kern und sein Token selbst (Optionen: `--base`, `--token-file`). Sie hat ein schlichtes Standarddesign, das du ändern kannst: Lege eine `.toml`-Datei in `~/.config/lastharness/themes/` ab (die sechs eingebauten Themes, jeweils drei Familien in Hell und Dunkel, liegen als Beispiele in `crates/lh-gui/themes/`). Drücke Strg+N für einen neuen Chat.
+Die Desktop-App findet den Kern und sein Token selbst (Optionen: `--base`, `--token-file`). Sie hat ein schlichtes Standarddesign, das du ändern kannst: Lege eine `.toml`-Datei in `~/.config/lastai/themes/` ab (die sechs eingebauten Themes, jeweils drei Familien in Hell und Dunkel, liegen als Beispiele in `crates/lh-gui/themes/`). Drücke Strg+N für einen neuen Chat.
 
-Die Omarchy-Version (`LastHarness-<version>-omarchy-x86_64.tar.gz`, installiert mit ihrer `install-omarchy.sh`) bietet außerdem das eigene Desktop-Design und ein Design „Omarchy (transparent)“, also Flüssigglas in den Omarchy-Farben. Das transparente Design ist so durchsichtig, wie es die Hyprland-Fensterregel für das Fenster der App (Klasse `lastharness-gui`) vorgibt; ohne Regel bleibt es undurchsichtig. Andere Versionen (AppImage, Windows, macOS oder ein Quellbuild mit `--no-default-features`) enthalten die Omarchy-Designs nicht. Um eines hinzuzufügen, setze diese Zeile in `~/.config/hypr/hyprland.lua` (0.85 ist der sichtbare Anteil des Fensters):
+Die Omarchy-Version (`LastAI-<version>-omarchy-x86_64.tar.gz`, installiert mit ihrer `install-omarchy.sh`) bietet außerdem das eigene Desktop-Design und ein Design „Omarchy (transparent)“, also Flüssigglas in den Omarchy-Farben. Das transparente Design ist so durchsichtig, wie es die Hyprland-Fensterregel für das Fenster der App (Klasse `lastharness-gui`) vorgibt; ohne Regel bleibt es undurchsichtig. Andere Versionen (AppImage, Windows, macOS oder ein Quellbuild mit `--no-default-features`) enthalten die Omarchy-Designs nicht. Um eines hinzuzufügen, setze diese Zeile in `~/.config/hypr/hyprland.lua` (0.85 ist der sichtbare Anteil des Fensters):
 
 ```lua
 o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
@@ -77,7 +77,7 @@ Der Create-Block auf der Seite „Modelle und Schlüssel“ erstellt Bilder (Z-I
 
 Jeder Befehl hat `help`, das auch ohne laufenden Kern funktioniert, zum Beispiel `lh team help`.
 
-- `lastaid` ist der Kern. Er lauscht nur auf `127.0.0.1:7842`. Die Einstellungen kommen aus `config.toml`; ein Kommandozeilen-Flag überschreibt die Datei. Das Token, das die Clients brauchen, wird nach `$XDG_RUNTIME_DIR/lastharness/token` geschrieben.
+- `lastaid` ist der Kern. Er lauscht nur auf `127.0.0.1:7842`. Die Einstellungen kommen aus `config.toml`; ein Kommandozeilen-Flag überschreibt die Datei. Das Token, das die Clients brauchen, wird nach `$XDG_RUNTIME_DIR/lastai/token` geschrieben.
 - `la` und `lastai` öffnen den Terminal-Chat. Optionen: `--url`, `--token-file`, `--model`, `--ask-all`, `--incognito`.
 - `lh setup`: Fragen beim ersten Start. `lh settings`: jede Einstellung ansehen und ändern (`set`, `reset`).
 - `lh memory ...`: die Notizen, die der Assistent führt. `lh learn ...`: Regeln, Stil, Fähigkeiten und Vorschläge, die auf dich warten.
@@ -92,9 +92,9 @@ Die Browserseite wird über HTTPS bereitgestellt, wenn `web.listen` gesetzt ist 
 
 ## Wo Dateien liegen
 
-- Einstellungen: `~/.config/lastharness/config.toml` (optionale Ausgabenpreise in `spend.toml` daneben).
-- Daten: `~/.local/share/lastharness/`: `lh.db` (Aktivitätsprotokoll, Regeln, Indizes), `memory/` (deine Notizen als Markdown), `skills/`, `team/` (Rollen und Abteilungen), `mcp.json`, `web/` (das Zertifikat der Browser-Schnittstelle).
-- Token: `$XDG_RUNTIME_DIR/lastharness/token`.
+- Einstellungen: `~/.config/lastai/config.toml` (optionale Ausgabenpreise in `spend.toml` daneben).
+- Daten: `~/.local/share/lastai/`: `lh.db` (Aktivitätsprotokoll, Regeln, Indizes), `memory/` (deine Notizen als Markdown), `skills/`, `team/` (Rollen und Abteilungen), `mcp.json`, `web/` (das Zertifikat der Browser-Schnittstelle).
+- Token: `$XDG_RUNTIME_DIR/lastai/token`.
 
 ## Noch nicht gebaut
 

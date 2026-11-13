@@ -1,4 +1,4 @@
-# LastHarness Specification
+# Last AI Specification
 
 **Version:** 0.1 draft. Nothing is built.
 **Companion documents:** [`../roadmap.md`](../roadmap.md) says when each part is built. `.grill/lastharness-reboot.md` records why each decision was made. The old design is archived in [`../archive/lastharness-v1-spec.md`](../archive/lastharness-v1-spec.md).
@@ -32,7 +32,7 @@ Each section is marked **Decided** (the user chose it), **Provisional** (a recom
 
 ## 1. Vision and Audience — Decided
 
-LastHarness is a harness for AI models. It is **department-led**, **local-first** and **endpoint-agnostic**.
+Last AI is a harness for AI models. It is **department-led**, **local-first** and **endpoint-agnostic**.
 
 - **Department-led.** Work is done by a team of specialist workers organised into departments (§8). You hand it a goal; the departments do the parts.
 - **Local-first.** Your models and your data live on your machine by default. Cloud models and services are optional additions.
@@ -349,7 +349,7 @@ Big goals work as: the harness proposes a breakdown, the user approves or edits 
 - **MCP servers** are added as a remote server by link, or a local one by command. For a local one, the approval shows the exact command that will run. Tools are supported first; resources, prompts and elicitation are added when needed.
 - **Project folders** load their own skills and MCP servers only after the user trusts the folder. The trust pop-up has a button to **disable that folder's skills and MCP servers and use the user's own** instead.
 
-**What an MCP server is.** An MCP server is a program that gives an AI app context and actions over the Model Context Protocol (JSON-RPC). It can offer three kinds of thing: **tools** (functions the model can call), **resources** (data such as files or database records) and **prompts** (reusable templates). A server can run in two ways: **locally**, where the app starts it as a process on the user's machine (stdio), or **remotely**, where it runs elsewhere and the app connects over HTTPS (Streamable HTTP, with OAuth or API keys). A local server is a program running on the user's machine, so adding one is closer to installing software than to adding a link. A server may also ask the user for input (elicitation). Sampling, where a server asks the app's model for completions, is deprecated in the 2026-07-28 revision. Which of these LastHarness supports is still to be decided.
+**What an MCP server is.** An MCP server is a program that gives an AI app context and actions over the Model Context Protocol (JSON-RPC). It can offer three kinds of thing: **tools** (functions the model can call), **resources** (data such as files or database records) and **prompts** (reusable templates). A server can run in two ways: **locally**, where the app starts it as a process on the user's machine (stdio), or **remotely**, where it runs elsewhere and the app connects over HTTPS (Streamable HTTP, with OAuth or API keys). A local server is a program running on the user's machine, so adding one is closer to installing software than to adding a link. A server may also ask the user for input (elicitation). Sampling, where a server asks the app's model for completions, is deprecated in the 2026-07-28 revision. Which of these Last AI supports is still to be decided.
 
 **Code extensions** in the manner of Pi packages (TypeScript modules that hook into the harness, installed from npm or git, running with the user's permissions) are **not in the first release**, by your choice of "not yet". They may come later, and Pi's package catalog (extensions, skills, prompt templates and themes installed from npm) is the model to study then. For now the only way to extend the app with running code is an MCP server, under the permission rules.
 
@@ -393,9 +393,9 @@ What Omarchy provides (checked on the dev machine, to be re-checked against the 
 - `shell.toml` sets translucency (`background-alpha`) for the bar, menu and notifications, which is how glass looks are done.
 - Omarchy refuses code-running files in themes installed from outside (terminal configs, Lua, editor extensions) and keeps only colour. This matches our rule that plugins are data only.
 
-So LastHarness ships a template and a hook, takes its colours, fonts and translucency from the active theme, and switches live when the theme changes. **Blur on Omarchy comes from Hyprland's own blur settings** (readable with `hyprctl getoption decoration:blur:size`, `blur:passes` and `blur:enabled`; checked on the dev machine), so the app's blur matches the rest of the desktop.
+So Last AI ships a template and a hook, takes its colours, fonts and translucency from the active theme, and switches live when the theme changes. **Blur on Omarchy comes from Hyprland's own blur settings** (readable with `hyprctl getoption decoration:blur:size`, `blur:passes` and `blur:enabled`; checked on the dev machine), so the app's blur matches the rest of the desktop.
 
-**Theme format (Decided).** LastHarness has its **own theme format**, not an extension of Omarchy's `colors.toml`. It describes colours, opacity, blur and similar settings (the full list of fields is still to be written). On Omarchy the app fills those values from the active Omarchy theme and Hyprland. On macOS and Windows it uses themes from its own theme folder and follows the system light or dark setting. Community themes are plugin bundles carrying these files, with no code.
+**Theme format (Decided).** Last AI has its **own theme format**, not an extension of Omarchy's `colors.toml`. It describes colours, opacity, blur and similar settings (the full list of fields is still to be written). On Omarchy the app fills those values from the active Omarchy theme and Hyprland. On macOS and Windows it uses themes from its own theme folder and follows the system light or dark setting. Community themes are plugin bundles carrying these files, with no code.
 
 ### 11.1 Terminal — Decided
 
@@ -448,7 +448,7 @@ Direct first (same network, or a VPN the user already runs), then a **relay** as
 
 ### 12.3 Subscription — Decided
 
-A paid LastHarness subscription covers three optional services: the **hosted relay**, **hosted web search** and **memory sync across devices** through a login. The relay code is open source and self-hostable. LastHarness itself is free and works fully without an account. Synced memory is encrypted with a key derived from the account password, so the servers hold only ciphertext, and a recovery code is offered at signup. Losing both loses only the synced copy.
+A paid Last AI subscription covers three optional services: the **hosted relay**, **hosted web search** and **memory sync across devices** through a login. The relay code is open source and self-hostable. Last AI itself is free and works fully without an account. Synced memory is encrypted with a key derived from the account password, so the servers hold only ciphertext, and a recovery code is offered at signup. Losing both loses only the synced copy.
 
 The subscription is a **separate track with its own repository and timeline**, started after the first release. The first release works fully without it. Until it exists, pairing works on the local network or the user's own VPN, and the settings show the subscription features as "coming later". The track covers accounts, billing, relay hosting, hosted search, memory sync and support.
 

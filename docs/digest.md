@@ -1,4 +1,4 @@
-# LastHarness in one page
+# Last AI in one page
 
 Details: `spec/lastharness.md` (what it is), `roadmap.md` (when), `../.grill/lastharness-reboot.md` (every decision, in order).
 

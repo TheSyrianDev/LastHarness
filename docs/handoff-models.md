@@ -1,6 +1,6 @@
 # Handoff: models, create, web search (stopped at 98% usage)
 
-## Commits (LastHarness, no push)
+## Commits (Last AI, no push)
 - e7fc36a Machine lock: take and release through machine-lock (tested: lh-core 71 lib)
 - 674b6f8 Create: image and video seeds in 0..2^31-1 (tested: lh-core 71 lib)
 - 5f45b2d Docs: steal plan (proposal, not approved)

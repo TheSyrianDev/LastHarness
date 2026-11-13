@@ -1,4 +1,4 @@
-# LastHarness (agent instructions)
+# Last AI (agent instructions)
 
 A team-first AI harness: departments and their workers do the work. Local-first and endpoint-agnostic, with memory as a supporting feature. Rust core `lhd` with a local HTTP API and SSE, thin front ends: terminal (`lh`) and the GPUI desktop app (`crates/lh-gui`).
 
@@ -13,7 +13,7 @@ A team-first AI harness: departments and their workers do the work. Local-first 
 
 ## Rules for this project
 
-- **Release has started (2026-10-17).** The user approved publishing the code to GitHub. Pushing to GitHub is allowed once the user says the repository is ready; do not create the GitHub repository or push without that go-ahead for each first push. The `backup` remote on the user's Seagate drive (`/run/media/omar/Seagate/LastHarness.git`) stays. Before anything goes public, check it holds no secrets, tokens, private paths or personal data.
+- **Release has started (2026-10-17).** The user approved publishing the code to GitHub. Pushing to GitHub is allowed once the user says the repository is ready; do not create the GitHub repository or push without that go-ahead for each first push. The `backup` remote on the user's Seagate drive (`/run/media/omar/Seagate/Last AI.git`) stays. Before anything goes public, check it holds no secrets, tokens, private paths or personal data.
 - **Never commit as Claude.** Commits are authored by the user, with the user's git name and email. Do not set Claude or any agent as author or committer, and do not add `Co-Authored-By`, "Generated with" or any other line that names Claude or another agent, in commit messages or anywhere else in the history.
 - **The assistant commits, not the user.** The user does not commit. Claude commits each finished change itself, authored as the user's git identity (never as Claude). Do not wait for the user to commit or ask first.
 - **Commit as you go.** Commit automatically, without asking, after each finished, working change: a bug fix, a new feature, or any other change (it builds and its tests pass), with a short message that says what changed and why. Stage only the files you changed for that task, never `git add -A` over the user's other uncommitted work. Do not push to GitHub without asking the user first; when the user says yes, push. Pushing to the Seagate `backup` remote is allowed when the drive is mounted. The never-commit-as-Claude rule above still applies.
@@ -34,7 +34,7 @@ Linux (Omarchy, Arch), Dell G15 with 24 GB RAM and an RTX 3050 with 4 GB. Rust c
 
 ## Next step
 
-Milestone 0 (spikes) is done. Milestones 1 to 8 are built (see `docs/milestone-N-report.md`; 4 is roles and departments, 5 is onboarding and settings, 6 is the browser UI (now parked), 7 is messaging channels, 8 is the desktop app in `crates/lh-gui`, drawn with GPUI). Early releases (v0.1.0-alpha.x) are on GitHub for Linux, Windows and macOS; the public repo is `~/Projects/public/LastHarness`. On 2026-10-30 the user kept GPUI after trying Tauri 2 (generative answers drawn natively, apps in Servo) and chose the "Quiet desk" redesign; see the decision log. Milestone 9 (mobile) and 10 (macOS and Windows) are next; wait for the planning session. Check `git log` and `.grill/parked.md` for the current state. Decided so far: SQLite store, EmbeddingGemma 2, local API over HTTP on localhost with SSE, the terminal app starts as `lastharness` or `lh`. While the user is away, ask nothing and park questions in `.grill/parked.md`. GUI visuals and branding: propose creative designs freely, and the user decides. Not yet done: the cloud API run (ask first), and Ollama and LM Studio probing.
+Milestone 0 (spikes) is done. Milestones 1 to 8 are built (see `docs/milestone-N-report.md`; 4 is roles and departments, 5 is onboarding and settings, 6 is the browser UI (now parked), 7 is messaging channels, 8 is the desktop app in `crates/lh-gui`, drawn with GPUI). Early releases (v0.1.0-alpha.x) are on GitHub for Linux, Windows and macOS; the public repo is `~/Projects/public/Last AI`. On 2026-10-30 the user kept GPUI after trying Tauri 2 (generative answers drawn natively, apps in Servo) and chose the "Quiet desk" redesign; see the decision log. Milestone 9 (mobile) and 10 (macOS and Windows) are next; wait for the planning session. Check `git log` and `.grill/parked.md` for the current state. Decided so far: SQLite store, EmbeddingGemma 2, local API over HTTP on localhost with SSE, the terminal app starts as `lastharness` or `lh`. While the user is away, ask nothing and park questions in `.grill/parked.md`. GUI visuals and branding: propose creative designs freely, and the user decides. Not yet done: the cloud API run (ask first), and Ollama and LM Studio probing.
 
 ## Test model
 

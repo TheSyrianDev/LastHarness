@@ -4,7 +4,7 @@
 #
 #   scripts/sync-public.sh [--apply] [--rev REV] [public-folder]
 #
-#   public-folder  default: ../public/LastHarness
+#   public-folder  default: ../public/LastAI
 #   --rev REV      the development commit to copy from (default: HEAD)
 #   --apply        write the files and commit in the public copy. Without it nothing is written:
 #                  the script only shows what would change (a dry run).
@@ -26,7 +26,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-pub="${pub:-$dev/../public/LastHarness}"
+pub="${pub:-$dev/../public/LastAI}"
 rev="$(git -C "$dev" rev-parse --verify "$rev^{commit}")"
 short="$(git -C "$dev" rev-parse --short "$rev")"
 
@@ -39,7 +39,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT INT TERM
 list="$work/files"
 # the README's logo is the one brand file that goes public
-{ git -C "$dev" ls-tree -r --name-only "$rev" | grep -Ev "$EXCLUDE"; git -C "$dev" ls-tree -r --name-only "$rev" -- 'brand/assets/' | grep -E '^brand/assets/lastharness-lockup-on-[^/]*\.svg$'; } | sort -u > "$list"
+{ git -C "$dev" ls-tree -r --name-only "$rev" | grep -Ev "$EXCLUDE"; git -C "$dev" ls-tree -r --name-only "$rev" -- '.github/assets/' | grep -E '^.github/assets/lastai-lockup-on-[^/]*\.svg$'; } | sort -u > "$list"
 
 # uncommitted edits to synced files would be silently left out; make the user decide first
 dirty="$(cd "$dev" && git status --porcelain --untracked-files=no | cut -c4- | grep -Fxf "$list" || true)"

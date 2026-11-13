@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Renamed from LastHarness to Last AI. Config and data move to `~/.config/lastai` and `~/.local/share/lastai`; the old `lastharness` folders are copied over on first run. `LASTAI_*` env vars are read first; `LASTHARNESS_*` still work. Binaries: `lastai-gui`, `lastaid`, `la`, `lastai`.
+
 ## 0.1.0-alpha
 
 First alpha. Built from the code in this repository; see the sections above for what each part does.

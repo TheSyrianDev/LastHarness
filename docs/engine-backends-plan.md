@@ -5,8 +5,8 @@ Status: answers from the user on 2026-11-06. Not yet sent to the LastEngine sess
 ## Decided by the user
 
 1. Backend order: CUDA cleanup, CPU, Vulkan, ROCm/HIP, Metal.
-2. No AMD, Apple or Intel test hardware. The user plans a LastSoft Discord to find testers and contributors (LastHarness, LastEngine, hf-dl).
-3. Three packages: LastHarness alone; LastEngine alone, in its own repo with its own releases; and one bundle with both for ordinary users.
+2. No AMD, Apple or Intel test hardware. The user plans a LastSoft Discord to find testers and contributors (Last AI, LastEngine, hf-dl).
+3. Three packages: Last AI alone; LastEngine alone, in its own repo with its own releases; and one bundle with both for ordinary users.
 
 ## Backends
 
@@ -35,7 +35,7 @@ Intel is covered by Vulkan. A SYCL backend is a later option.
 
 ## Packaging
 
-- `LastHarness` releases: app only; talks to any OpenAI-style endpoint (llama-swap, LastEngine, cloud).
+- `Last AI` releases: app only; talks to any OpenAI-style endpoint (llama-swap, LastEngine, cloud).
 - `LastEngine` repo and releases: the server binary per backend and OS.
 - Bundle release: app plus LastEngine plus a default llama-swap or direct launch config, for ordinary users.
 - Open: licence and checksum policy for the bundle; whether the app can fetch LastEngine on demand instead of bundling.
