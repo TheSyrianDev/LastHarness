@@ -1,5 +1,5 @@
 # Maintainer: see the repository. Template for the 0.1.0-alpha release tarball.
-pkgname=lastharness
+pkgname=lastai
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Team-first local AI harness: departments and workers, local-first"
@@ -21,6 +21,6 @@ package() {
   install -Dm755 target/release/lastaid "$pkgdir/usr/bin/lastaid"
   install -Dm755 target/release/la "$pkgdir/usr/bin/la"
   install -Dm755 target/release/lastai-gui "$pkgdir/usr/bin/lastai-gui"
-  install -Dm644 packaging/lastharness.desktop "$pkgdir/usr/share/applications/lastharness.desktop"
-  install -Dm644 packaging/lastharness.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/lastharness.png"
+  install -Dm644 packaging/lastai.desktop "$pkgdir/usr/share/applications/lastai.desktop"
+  install -Dm644 packaging/lastai.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/lastai.png"
 }

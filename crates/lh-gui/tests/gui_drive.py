@@ -36,7 +36,7 @@ if a.page:
 prefs = tmp + "/gui.toml"
 if a.theme or a.rtl:
     open(prefs, "w").write((f'theme = "{a.theme}"\n' if a.theme else "") + ('direction = "rtl"\n' if a.rtl else ""))
-app = subprocess.Popen([f"{root}/target/release/lastharness-gui", "--base", f"http://127.0.0.1:{a.port}", "--token-file", tmp + "/token", "--prefs", prefs, "--themes", tmp + "/themes"], env=app_env, stderr=open(tmp + "/app.log", "w"))
+app = subprocess.Popen([f"{root}/target/release/lastai-gui", "--base", f"http://127.0.0.1:{a.port}", "--token-file", tmp + "/token", "--prefs", prefs, "--themes", tmp + "/themes"], env=app_env, stderr=open(tmp + "/app.log", "w"))
 def window():
     for _ in range(100):
         for c in json.loads(subprocess.check_output(["hyprctl", "clients", "-j"])):

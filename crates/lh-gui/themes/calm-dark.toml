@@ -1,5 +1,5 @@
 # Built-in look. Plain placeholder values, not a design. Copy this file to
-# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+# ~/.config/lastai/themes/ and edit it; changes show up while the app runs.
 name = "Calm"
 mode = "dark"          # light or dark
 

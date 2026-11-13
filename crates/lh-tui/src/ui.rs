@@ -92,7 +92,7 @@ fn draw_tree(f: &mut Frame, screen: &crate::tree_ui::TreeScreen) {
     f.render_widget(Paragraph::new(vec![first_line, Line::from(Span::styled(second, dim))]), footer);
 }
 
-/// The status colours of the LastHarness brand (Grove palette in brand/motion-kit/source/tokens.json).
+/// The status colours of the Last AI brand (Grove palette in brand/motion-kit/source/tokens.json).
 pub fn slot_colour(asking: bool, busy: bool) -> Color {
     if asking {
         Color::Rgb(0xd0, 0x78, 0x4f)

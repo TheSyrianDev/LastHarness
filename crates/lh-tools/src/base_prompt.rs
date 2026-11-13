@@ -1,4 +1,4 @@
-//! The built-in base prompt: what LastHarness is, what the agent's job is, where it works, what it may
+//! The built-in base prompt: what Last AI is, what the agent's job is, where it works, what it may
 //! do without asking, and how to use memory and skills. It always comes first in the system message.
 //!
 //! It is built once when a session starts, from facts that do not change during the session, so its

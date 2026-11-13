@@ -68,11 +68,11 @@ jobs:
         run: |
           ver="${GITHUB_REF_NAME#v}"
           [[ $GITHUB_REF == refs/tags/* ]] || ver="dev-${GITHUB_SHA::7}"
-          name="LastHarness-$ver-omarchy-x86_64"
+          name="LastAI-$ver-omarchy-x86_64"
           d="dist/$name"
           mkdir -p "$d"
-          for b in lastharness-gui lhd lh lastharness; do cp "target/release/$b" "$d/"; done
-          cp scripts/install-omarchy.sh packaging/omarchy/lastharness-icon-refresh packaging/omarchy/theme-set-hook packaging/lastharness.desktop packaging/omarchy/README.md LICENSE COMMERCIAL-LICENSING.md "$d/"
+          for b in lastai-gui lastaid la lastai; do cp "target/release/$b" "$d/"; done
+          cp scripts/install-omarchy.sh packaging/omarchy/lastai-icon-refresh packaging/omarchy/theme-set-hook packaging/lastai.desktop packaging/omarchy/README.md LICENSE COMMERCIAL-LICENSING.md "$d/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           ls -l dist
       - uses: actions/upload-artifact@v4
@@ -106,17 +106,17 @@ jobs:
         shell: pwsh
         run: |
           $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "dev-$($env:GITHUB_SHA.Substring(0,7))" }
-          $dir = "dist/LastHarness"
+          $dir = "dist/LastAI"
           New-Item -ItemType Directory -Force $dir | Out-Null
-          foreach ($b in 'lastharness-gui','lhd','lh','lastharness') { Copy-Item "target/release/$b.exe" $dir }
+          foreach ($b in 'lastai-gui','lastaid','la','lastai') { Copy-Item "target/release/$b.exe" $dir }
           Copy-Item README.md, LICENSE, COMMERCIAL-LICENSING.md $dir
-          Compress-Archive -Path "$dir/*" -DestinationPath "dist/LastHarness-$ver-windows-x64.zip"
+          Compress-Archive -Path "$dir/*" -DestinationPath "dist/LastAI-$ver-windows-x64.zip"
           Get-ChildItem dist
       - name: Smoke test
         continue-on-error: true
         shell: pwsh
         run: |
-          $d = "dist/LastHarness"
+          $d = "dist/LastAI"
           $state = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/lh-smoke"
           $tok = "$state/token"
           $lhd = Start-Process -FilePath "$d/lhd.exe" -ArgumentList "--listen","127.0.0.1:17842","--token-file",$tok,"--store","$state/lh.db","--provider","http://127.0.0.1:9/v1" -PassThru -RedirectStandardError "$state/lhd.err" -RedirectStandardOutput "$state/lhd.out"
@@ -135,7 +135,7 @@ jobs:
           Get-Content "$state/lhd.err" -ErrorAction SilentlyContinue
           if (-not $ok) { Write-Host "SMOKE: lhd health FAILED" } else { Write-Host "SMOKE: lhd health OK" }
           & "$d/lh.exe" --help; Write-Host "SMOKE: lh --help exit $LASTEXITCODE"
-          $gui = Start-Process -FilePath "$d/lastharness-gui.exe" -PassThru -RedirectStandardError "$state/gui.err" -RedirectStandardOutput "$state/gui.out"
+          $gui = Start-Process -FilePath "$d/lastai-gui.exe" -PassThru -RedirectStandardError "$state/gui.err" -RedirectStandardOutput "$state/gui.out"
           Start-Sleep 10
           if ($gui.HasExited) { Write-Host "SMOKE: GUI exited early, code $($gui.ExitCode)" } else { Write-Host "SMOKE: GUI still running after 10 s"; Stop-Process -Id $gui.Id -Force }
           Get-Content "$state/gui.err" -ErrorAction SilentlyContinue | Select-Object -Last 30
@@ -171,16 +171,16 @@ jobs:
       - name: Bundle the app and the disk image
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then ver="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA:0:7}"; fi
-          app="dist/LastHarness.app"
+          app="dist/LastAI.app"
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-          for b in lastharness-gui lhd lh lastharness; do cp "target/release/$b" "$app/Contents/MacOS/"; done
+          for b in lastai-gui lastaid la lastai; do cp "target/release/$b" "$app/Contents/MacOS/"; done
           cat > "$app/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
-            <key>CFBundleName</key><string>LastHarness</string>
-            <key>CFBundleIdentifier</key><string>dev.lastharness.app</string>
-            <key>CFBundleExecutable</key><string>lastharness-gui</string>
+            <key>CFBundleName</key><string>Last AI</string>
+            <key>CFBundleIdentifier</key><string>dev.lastai.app</string>
+            <key>CFBundleExecutable</key><string>lastai-gui</string>
             <key>CFBundlePackageType</key><string>APPL</string>
             <key>CFBundleShortVersionString</key><string>${ver#v}</string>
             <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -191,7 +191,7 @@ jobs:
           # App icon from the 256x256 source png. Sizes above 256 are upscales, so they will look soft.
           iconset="$RUNNER_TEMP/AppIcon.iconset"
           mkdir -p "$iconset"
-          src=packaging/lastharness.png
+          src=packaging/lastai.png
           for s in 16 32 128 256 512; do
             sips -z "$s" "$s" "$src" --out "$iconset/icon_${s}x${s}.png" >/dev/null
             sips -z "$((s * 2))" "$((s * 2))" "$src" --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null
@@ -205,8 +205,8 @@ jobs:
           cp -R "$app" "$stage/"
           cp README.md LICENSE COMMERCIAL-LICENSING.md "$stage/"
           ln -s /Applications "$stage/Applications"
-          hdiutil create -volname LastHarness -srcfolder "$stage" -ov -format UDZO "LastHarness-$ver-macos-arm64.dmg"
-          mv LastHarness-*.dmg dist/
+          hdiutil create -volname Last AI -srcfolder "$stage" -ov -format UDZO "LastAI-$ver-macos-arm64.dmg"
+          mv LastAI-*.dmg dist/
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:

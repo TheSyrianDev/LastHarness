@@ -1,6 +1,6 @@
 # Contributing
 
-LastHarness is developed in a private repository and copied here from time to time, so each commit in this
+Last AI is developed in a private repository and copied here from time to time, so each commit in this
 repository is a snapshot of development, not a single change.
 
 - Build: `cargo build --workspace`. Test: `cargo test --workspace`. Rust 1.89 or newer.

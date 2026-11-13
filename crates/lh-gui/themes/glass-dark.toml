@@ -1,5 +1,5 @@
 # Built-in look. Liquid glass panels, pop-ups and controls (the [material] table). Copy this file to
-# ~/.config/lastharness/themes/ and edit it; changes show up while the app runs.
+# ~/.config/lastai/themes/ and edit it; changes show up while the app runs.
 name = "Glass"
 mode = "dark"          # light or dark
 

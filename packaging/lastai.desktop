@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=LastHarness
+Name=Last AI
 Comment=Local-first AI harness with a memory that lasts
-Exec=lastharness-gui
-Icon=lastharness
+Exec=lastai-gui
+Icon=lastai
 Categories=Development;Utility;
 Terminal=false

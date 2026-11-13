@@ -1,4 +1,4 @@
-/* LastHarness front end. Colours come from the active theme as CSS variables (set by app.js from the
+/* Last AI front end. Colours come from the active theme as CSS variables (set by app.js from the
    theme files); these defaults are the Calm light theme. Layout follows the desktop app: sidebar,
    one reading column, side panel. */
 :root {

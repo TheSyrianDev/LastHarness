@@ -1,6 +1,6 @@
 //! Offscreen pictures of whole screens, for design review. Nothing is shown on screen and the mouse is not touched:
 //! the window is a test window drawn by the offscreen renderer. The core is not running, so each screen is set up by
-//! hand. Run with `LH_SCREEN_SHOTS=<dir> cargo test -p lh-gui --bin lastharness-gui screen_shots -- --ignored`.
+//! hand. Run with `LH_SCREEN_SHOTS=<dir> cargo test -p lh-gui --bin lastai-gui screen_shots -- --ignored`.
 
 use super::*;
 use std::sync::Arc;

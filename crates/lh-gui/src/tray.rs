@@ -173,7 +173,7 @@ impl ksni::Tray for Tray {
     fn icon_name(&self) -> String {
         // hosts prefer a name over pixmaps, so the name is empty unless the colour is unknown
         match self.pick {
-            Pick::Symbolic => "lastharness-symbolic".into(),
+            Pick::Symbolic => "lastai-symbolic".into(),
             Pick::Pixmap(_) => String::new(),
         }
     }

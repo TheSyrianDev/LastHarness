@@ -11,7 +11,7 @@ port = 7852
 lhd = subprocess.Popen([f"{root}/target/release/lhd", "--provider", "http://localhost:9292/v1", "--listen", f"127.0.0.1:{port}", "--token-file", tmp + "/token", "--idle-after", "0"], env=env, stdout=subprocess.DEVNULL, stderr=open(tmp + "/lhd.log", "w"))
 while not os.path.exists(tmp + "/token"): time.sleep(0.1)
 def launch():
-    return subprocess.Popen([f"{root}/target/release/lastharness-gui", "--base", f"http://127.0.0.1:{port}", "--token-file", tmp + "/token", "--prefs", tmp + "/gui.toml", "--themes", tmp + "/themes"], env=app_env, stderr=open(tmp + "/app.log", "a"))
+    return subprocess.Popen([f"{root}/target/release/lastai-gui", "--base", f"http://127.0.0.1:{port}", "--token-file", tmp + "/token", "--prefs", tmp + "/gui.toml", "--themes", tmp + "/themes"], env=app_env, stderr=open(tmp + "/app.log", "a"))
 def window(app):
     for _ in range(100):
         for c in json.loads(subprocess.check_output(["hyprctl", "clients", "-j"])):

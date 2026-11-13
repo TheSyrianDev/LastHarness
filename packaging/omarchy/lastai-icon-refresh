@@ -1,5 +1,5 @@
 #!/bin/bash
-# Regenerate the transparent, theme-coloured LastHarness launcher icon.
+# Regenerate the transparent, theme-coloured Last AI launcher icon.
 set -euo pipefail
 colors=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml
 [[ -f $colors ]] || colors=/dev/null  # off Omarchy: the default colours below
@@ -14,14 +14,14 @@ d=$(( $(lum "$fg") - $(lum "$bg") )); d=${d#-}
 if (( d < 60000 )); then
   if (( $(lum "$bg") < 128000 )); then eye=#000000; else eye=#ffffff; fi
 fi
-svg=$icons/scalable/apps/lastharness.svg
+svg=$icons/scalable/apps/lastai.svg
 mkdir -p "$(dirname "$svg")"
 cat > "$svg" <<SVG
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="6 7 51 51" width="512" height="512"><rect x="8" y="18" width="38" height="38" rx="15" fill="$fg"/><g transform="translate(2.4 -2) rotate(-8 27 37)"><rect x="18.6" y="30.6" width="6" height="11" rx="3" fill="$eye"/><rect x="30.1" y="31.4" width="4.6" height="10.2" rx="2.3" fill="$eye"/></g><circle cx="49" cy="15" r="6" fill="$accent"/></svg>
 SVG
 for s in 16 22 24 32 48 64 128 256 512; do
   d=$icons/${s}x${s}/apps; [[ -d $d ]] || continue
-  rsvg-convert -w "$s" -h "$s" "$svg" -o "$d/lastharness.png"
+  rsvg-convert -w "$s" -h "$s" "$svg" -o "$d/lastai.png"
 done
-[[ -d $icons/256x256@2 ]] && rsvg-convert -w 512 -h 512 "$svg" -o "$icons/256x256@2/apps/lastharness.png" 2>/dev/null || true
+[[ -d $icons/256x256@2 ]] && rsvg-convert -w 512 -h 512 "$svg" -o "$icons/256x256@2/apps/lastai.png" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -f -t "$icons" || true
