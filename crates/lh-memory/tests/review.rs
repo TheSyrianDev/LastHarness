@@ -93,3 +93,14 @@ fn a_suggestion_is_not_applied_until_it_is_accepted() {
     m.reject_proposal(id).unwrap();
     assert_eq!(m.list(None, State::Live).unwrap().len(), before, "a rejected suggestion changes nothing");
 }
+
+#[test]
+fn the_periodic_nudge_flags_stale_pages_on_a_fake_clock() {
+    let (_d, m) = mem();
+    m.create(NewPage::new(Layer::Facts, "Old fact".to_string(), "Lives in Berlin.".to_string()), By::Assistant).unwrap();
+    let now = lh_store::now();
+    let stale_at = |days: i64| m.maintenance_at(now + days * 86_400).unwrap().iter().any(|f| f.kind == FindingKind::Stale);
+    assert!(!stale_at(0), "fresh page is not stale");
+    assert!(!stale_at(STALE_DAYS - 1), "one day short of the limit");
+    assert!(stale_at(STALE_DAYS + 1), "past the limit it is flagged");
+}

@@ -45,6 +45,11 @@ pub fn similarity(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
 
 impl Memory {
     pub fn maintenance(&self) -> Result<Vec<Finding>> {
+        self.maintenance_at(now())
+    }
+
+    /// The periodic check as of `at` (unix seconds). Tests pass a fake clock; the server passes the real one.
+    pub fn maintenance_at(&self, at: i64) -> Result<Vec<Finding>> {
         let pages = self.list(None, State::Live)?;
         let mut out = vec![];
         let sets: Vec<HashSet<String>> = pages.iter().map(word_set).collect();
@@ -91,7 +96,7 @@ impl Memory {
             }
         }
         let uses_links = pages.iter().any(|p| !text::links(&p.body).is_empty());
-        let cutoff = now() - STALE_DAYS * 86_400;
+        let cutoff = at - STALE_DAYS * 86_400;
         for p in &pages {
             if p.layer != Layer::Preferences && !p.pinned && p.updated < cutoff {
                 out.push(Finding { kind: FindingKind::Stale, pages: vec![p.id.clone()], detail: format!("not changed for over {STALE_DAYS} days") });
