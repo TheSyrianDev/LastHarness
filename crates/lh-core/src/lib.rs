@@ -588,6 +588,7 @@ async fn new_session<M: Model + 'static>(st: &Arc<AppState<M>>, b: NewSession, f
         about = text;
         let _ = rt.memory.start_conversation(&id, project.as_deref());
         let _ = rt.memory.set_conversation_meta(&id, &model_name, mode_name);
+        let _ = rt.memory.set_conversation_toolsets(&id, b.toolsets.as_ref().map(|t| t.join(",")).as_deref());
         conv = Some(id.clone());
         if tools_on {
             // on a model on this machine, that model also judges what remember saves, as the review does

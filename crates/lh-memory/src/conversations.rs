@@ -127,6 +127,17 @@ impl Memory {
         Ok(())
     }
 
+    /// The toolsets a chat was created with, comma-separated; None when it had all tools.
+    pub fn set_conversation_toolsets(&self, id: &str, toolsets: Option<&str>) -> Result<()> {
+        self.store.with(|c| c.execute("update conversations set toolsets = ?2 where id = ?1", (id, toolsets)).map(|_| ()))?;
+        Ok(())
+    }
+
+    pub fn conversation_toolsets(&self, id: &str) -> Result<Option<Vec<String>>> {
+        let raw: Option<String> = self.store.with(|c| c.query_row("select toolsets from conversations where id = ?1", [id], |r| r.get(0)).map(|v: Option<String>| v))?;
+        Ok(raw.map(|s| s.split(',').filter(|x| !x.is_empty()).map(str::to_string).collect()))
+    }
+
     pub fn end_conversation(&self, id: &str) -> Result<()> {
         self.store.with(|c| c.execute("update conversations set ended = ?2 where id = ?1", (id, now())).map(|_| ()))?;
         Ok(())

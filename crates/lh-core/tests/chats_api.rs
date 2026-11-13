@@ -273,3 +273,22 @@ async fn the_cloud_warning_gives_a_cost_only_when_the_model_has_a_listed_price()
     let w = local.json(local.post(&format!("/v1/chats/{id}/resume"), json!({"model": "any"}))).await;
     assert!(w["warning"]["estimated_cost_micro_usd"].is_null() && !w["warning"]["message"].as_str().unwrap().contains('$'));
 }
+
+/// A files-only chat is still files-only after a restart and reopen.
+#[tokio::test]
+async fn a_reopened_chat_keeps_its_toolset_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let proj = tempfile::tempdir().unwrap();
+    let id = {
+        let s = start_at(dir.path(), vec![text("ok")], Trust::Local);
+        let id = s.session(json!({"project_dir": proj.path(), "toolsets": ["files"]})).await;
+        s.turn(&id, "hello").await;
+        id
+    };
+    let s = start_at(dir.path(), vec![text("again")], Trust::Local);
+    let r = s.json(s.post(&format!("/v1/chats/{id}/resume"), json!({"confirm": true}))).await;
+    assert_eq!(r["session"], id.as_str());
+    s.turn(&id, "still there?").await;
+    let names: Vec<String> = s.seen.lock().unwrap().iter().rev().find(|r| r.model != "titler").unwrap().tools.iter().map(|t| t.name.clone()).collect();
+    assert_eq!(names, ["read", "write", "edit", "grep", "glob"], "{names:?}");
+}

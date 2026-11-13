@@ -309,6 +309,9 @@ const MIGRATIONS: &[&str] = &[r#"
     -- and whether its owner shares it with the other departments.
     alter table pages add column department text;
     alter table pages add column shared integer not null default 0;
+"#, r#"
+    -- The toolsets a chat was created with (comma-separated; null = all tools), so a reopened chat keeps its limit.
+    alter table conversations add column toolsets text;
 "#];
 
 pub struct Store {
