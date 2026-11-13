@@ -13,7 +13,7 @@
 A local-first AI harness built around a team: departments, and the workers in them.</p>
 
 > [!WARNING]
-> **Alpha.** Last AI is early software and is only used on one machine so far. Expect rough edges and breaking changes. Last AI (the desktop app and the `la` terminal app) is tested on Linux (Omarchy) and Windows (author-tested). The macOS build is early alpha: it starts in CI, but no one has used it day to day yet.
+> **Alpha, version 0.1.0-alpha.** See [CHANGELOG.md](CHANGELOG.md) for what works and the known gaps. Last AI is early software and is only used on one machine so far. Expect rough edges and breaking changes. Last AI (the desktop app and the `la` terminal app) is tested on Linux (Omarchy) and Windows (author-tested). The macOS build is early alpha: it starts in CI, but no one has used it day to day yet.
 
 <p align="center">
   <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
@@ -50,6 +50,8 @@ The Omarchy release (`LastHarness-<version>-omarchy-x86_64.tar.gz`, installed wi
 ```lua
 o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 ```
+
+Check a built core without the desktop: `scripts/smoke-headless.sh` (starts `lhd` on a temp store and checks the HTTP API).
 
 To start the core at every login: `lh service preview`, then `lh service install` (a systemd user service; no sudo; closing the terminal never stops the core).
 
