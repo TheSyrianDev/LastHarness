@@ -113,3 +113,7 @@ Follow-ups to step 2 (context compression, `crates/lh-tools/src/compact.rs`). No
 - (a) Prune old tool outputs to one-line stubs before summarizing. Where: `compact.rs` before the summary request. Size S. Test: a tool result older than the last turns becomes one line; newer results stay whole.
 - (b) Protect the system prompt, the first user message and the last N turns from pruning and summary. Where: `compact.rs` (`keep_last_turns` exists; first user message and system prompt are not yet protected by name). Size S. Test: after compaction the system text, first user message and last N turns are byte-identical.
 - (c) A long tool-heavy session test that stays under the window and keeps the task goal. Where: `crates/lh-tools/tests` with a mocked model. Size M. Test: 200 tool calls with a fake model; the estimate stays under the window after compaction; the first user message (task goal) is still present.
+
+## Channel toolsets (for the messaging step)
+
+Not wired yet. Channels (Telegram first) must pass a toolset limit the same way chats do: `toolsets` on channel creation, stored with the channel, applied last in `new_session`. Default for a channel: `memory` only until Omar says otherwise. Test: a channel created with `["web"]` offers only web tools, also after a restart.
