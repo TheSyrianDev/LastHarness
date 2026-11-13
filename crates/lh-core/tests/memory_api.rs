@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use lh_core::{auth, router, AppState, MemoryRuntime, Settings};
 use lh_memory::embed::AnyEmbedder;
-use lh_memory::{By, Layer, Memory, NewPage, Privacy, RecallConfig, State, Trust};
+use lh_memory::{By, Edit, Layer, Memory, NewPage, Privacy, RecallConfig, State, Trust};
 use lh_provider::{ChatRequest, Event, FinishReason, Response, SseParser};
 use lh_store::Store;
 use lh_tools::Model;
@@ -338,4 +338,28 @@ async fn the_assistant_write_log_is_listed_with_its_chat() {
     assert_eq!(r["writes"][0]["action"], "add");
     assert_eq!(r["writes"][0]["chat"], "chat-7");
     assert_eq!(r["writes"][0]["title"], "Tea");
+}
+
+/// Undo of an assistant write: an added note is archived, an updated note goes back to its earlier text.
+#[tokio::test]
+async fn undoing_an_assistant_write_archives_an_add_and_restores_the_earlier_text() {
+    let d = tempfile::tempdir().unwrap();
+    let s = start_at(d.path(), vec![], Trust::Local, true);
+    let m = s.mem.clone();
+    let mut n = NewPage::new(Layer::Facts, "Tea", "Likes green tea");
+    n.gist = "tea".into();
+    let p = m.create(n, By::User).unwrap();
+    m.update(&p.id, Edit { title: None, body: Some("Likes black tea".into()), gist: None }, By::Assistant).unwrap();
+    m.log_write("update", &p.id, "Tea", Some("chat-1")).unwrap();
+    let upd = s.json(s.get("/v1/memory/writes")).await["writes"][0]["id"].as_i64().unwrap();
+    let r = s.json(s.post(&format!("/v1/memory/writes/{upd}/undo"), json!({}))).await;
+    assert_eq!(r["body"], "Likes green tea", "{r}");
+
+    let mut n2 = NewPage::new(Layer::Facts, "Coffee", "Drinks one cup");
+    n2.gist = "coffee".into();
+    let c = m.create(n2, By::Assistant).unwrap();
+    m.log_write("add", &c.id, "Coffee", Some("chat-2")).unwrap();
+    let add = s.json(s.get("/v1/memory/writes")).await["writes"][0]["id"].as_i64().unwrap();
+    let a = s.json(s.post(&format!("/v1/memory/writes/{add}/undo"), json!({}))).await;
+    assert_eq!(a["archived"], true, "{a}");
 }

@@ -42,6 +42,7 @@ pub(crate) fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/memory/pages/{id}", delete(delete_page::<M>))
         .route("/v1/memory/pages/{id}/archive", post(archive_page::<M>))
         .route("/v1/memory/writes", get(assistant_writes::<M>))
+        .route("/v1/memory/writes/{id}/undo", post(undo_write::<M>))
         .route("/v1/memory/pages/{id}/restore", post(restore_page::<M>))
         .route("/v1/memory/pages/{id}/pin", post(pin_page::<M>))
         .route("/v1/memory/pages/{id}/privacy", post(privacy_page::<M>))
@@ -104,6 +105,10 @@ async fn assistant_writes<M: Model + 'static>(State(st): State<Arc<AppState<M>>>
     let rows = rt(&st)?.memory.writes(100).map_err(err)?;
     let writes: Vec<Value> = rows.into_iter().map(|(id, at, action, page, title, conv)| json!({"id": id, "at": at, "action": action, "page": page, "title": title, "chat": conv})).collect();
     Ok(Json(json!({"writes": writes})))
+}
+
+async fn undo_write<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<i64>) -> Result<Json<Value>, ApiError> {
+    Ok(Json(page_json(&rt(&st)?.memory.undo_write(id, By::User).map_err(err)?)))
 }
 
 async fn list_pages<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Query(q): Query<ListQ>) -> Result<Json<Value>, ApiError> {

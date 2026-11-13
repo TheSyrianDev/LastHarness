@@ -336,6 +336,28 @@ impl Memory {
         })?)
     }
 
+    /// Undo one logged assistant write. An added note is archived (restorable). An updated note
+    /// goes back to the text it had before that write, taken from the page history.
+    pub fn undo_write(&self, write_id: i64, by: By) -> Result<Page> {
+        let (at, action, page): (i64, String, String) = self
+            .store
+            .with(|c| c.query_row("select at, action, page from memory_writes where id = ?1", [write_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional())?
+            .ok_or_else(|| Error::NotFound(format!("write {write_id}")))?;
+        match action.as_str() {
+            "add" => self.archive(&page, by, "undo of an assistant add"),
+            "update" => {
+                let rows = self.history(&page)?;
+                let w = rows.iter().rposition(|r| r.at <= at).ok_or_else(|| Error::Invalid("no earlier text to go back to".into()))?;
+                if w == 0 {
+                    return Err(Error::Invalid("no earlier text to go back to".into()));
+                }
+                let prior = &rows[w - 1];
+                self.update(&page, Edit { title: Some(prior.title.clone()), body: Some(prior.body.clone()), gist: None }, by)
+            }
+            _ => Err(Error::Invalid(format!("cannot undo a {action} write"))),
+        }
+    }
+
     pub fn archive(&self, id: &str, by: By, note: &str) -> Result<Page> {
         let mut p = self.get(id)?;
         if p.archived_at.is_some() {
