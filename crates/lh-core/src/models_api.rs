@@ -25,6 +25,7 @@ pub fn routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/models/download", post(start_download))
         .route("/v1/models/downloads", get(list_downloads))
         .route("/v1/models/run", post(run_model))
+        .route("/v1/models/delete", post(delete_model))
 }
 
 #[derive(Deserialize)]
@@ -225,6 +226,54 @@ fn router_config_has(file: &str) -> bool {
         .and_then(|r| std::fs::read_to_string(r.join("router/config.yaml")).ok())
         .map(|c| crate::model_run::is_registered(&c, file))
         .unwrap_or(false)
+}
+
+#[derive(Deserialize)]
+struct DeleteBody {
+    folder: String,
+    file: String,
+}
+
+/// Delete one installed GGUF under `~/AI/Models/<folder>/`. Refused while the file is registered with llama-swap,
+/// so a running or configured model is never removed from under the router. Plain names only.
+async fn delete_model(via: Option<axum::Extension<crate::web::Via>>, Json(b): Json<DeleteBody>) -> Result<Json<Value>, ApiError> {
+    crate::registry_api::no_device(via)?;
+    let models = std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("AI/Models"))
+        .ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, "no home folder is set".into()))?;
+    if router_config_has(&b.file) {
+        return Err(ApiError(StatusCode::CONFLICT, "this model is registered with llama-swap; remove it from the router first".into()));
+    }
+    remove_gguf(&models, &b.folder, &b.file).map_err(|m| ApiError(StatusCode::BAD_REQUEST, m))?;
+    Ok(Json(json!({ "deleted": b.file })))
+}
+
+/// Removes `<models>/<folder>/<file>`. Both names must be plain and the file a `.gguf`.
+fn remove_gguf(models: &std::path::Path, folder: &str, file: &str) -> Result<(), String> {
+    let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if !plain(folder) || !plain(file) || !file.ends_with(".gguf") {
+        return Err("folder and file must be plain names, file a .gguf".into());
+    }
+    let path = models.join(folder).join(file);
+    std::fs::remove_file(&path).map_err(|e| format!("could not delete {}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod delete_tests {
+    use super::remove_gguf;
+
+    #[test]
+    fn deletes_only_a_plain_gguf_inside_the_models_folder() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("m")).unwrap();
+        std::fs::write(d.path().join("m/a.gguf"), b"x").unwrap();
+        std::fs::write(d.path().join("m/a.txt"), b"x").unwrap();
+        assert!(remove_gguf(d.path(), "m", "../m/a.gguf").is_err());
+        assert!(remove_gguf(d.path(), "m", "a.txt").is_err());
+        assert!(d.path().join("m/a.gguf").exists() && d.path().join("m/a.txt").exists());
+        remove_gguf(d.path(), "m", "a.gguf").unwrap();
+        assert!(!d.path().join("m/a.gguf").exists());
+        assert!(remove_gguf(d.path(), "m", "a.gguf").is_err(), "missing file is an error");
+    }
 }
 
 #[derive(Deserialize)]
