@@ -34,3 +34,9 @@ Stopped at step 1 (inventory) because of the wind-down message. Nothing unfinish
 - Dev repo is now at /home/omar/Projects/LastAI. The old path /home/omar/Projects/LastHarness no longer exists.
 - No push, no GitHub changes until the owner says so.
 - Note: a fresh copy made now would still carry the LastHarness names, so step 7 waits for the rename.
+
+## Status (2026-11-13)
+
+- Done: config/data/token paths with old-name fallback and migration (b7f5ded, tests in lh-config appdir.rs); user-visible text, packaging and release names (f978f8c).
+- Not done: docs/ (outside archive), README.fr/de/ar/zh-CN, CHANGELOG, brand assets (lastharness-lockup-*.svg), historical "formerly LastHarness" headers, sync-public.sh default path, lh-pageview-engine test fixture.
+- Kept on purpose: keychain service "lastharness", systemd unit lastharness.service, project .lastharness/ folder, export/memory format read compat, machine lock owner.
