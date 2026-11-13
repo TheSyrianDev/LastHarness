@@ -44,11 +44,32 @@ pub fn safe_relative(path: &str) -> Option<&Path> {
     ok.then_some(p)
 }
 
+/// The unstaged and staged changes in `folder` as one diff, or None when it is not a git work tree.
+fn git_diff(folder: &Path) -> Option<String> {
+    let out = std::process::Command::new("git").arg("-C").arg(folder).args(["diff", "HEAD"]).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// The `http(s)` URLs written as `@URL` in `text`, without the `@`. Fetching them is up to the caller.
+pub fn url_refs(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .filter_map(|w| w.strip_prefix('@'))
+        .map(|w| w.trim_end_matches([',', '.', ';', ':', ')']))
+        .filter(|w| w.starts_with("http://") || w.starts_with("https://"))
+        .map(String::from)
+        .collect()
+}
+
 /// `text` with each `@path` that names a readable file in `folder` followed by that file's text.
 /// Unknown or unsafe references stay as written, so nothing is lost.
 pub fn expand_references(text: &str, folder: &Path) -> String {
     let mut out = text.to_string();
     let mut added = String::new();
+    if text.split_whitespace().collect::<Vec<_>>().windows(2).any(|w| w == ["@git", "diff"]) {
+        if let Some(diff) = git_diff(folder) {
+            added.push_str(&format!("\n\n@git diff\n```diff\n{}\n```", cut(&diff, REFERENCE_MAX)));
+        }
+    }
     for word in text.split_whitespace() {
         let Some(path) = word.strip_prefix('@') else { continue };
         let path = path.trim_end_matches([',', '.', ';', ':', ')']);
@@ -108,5 +129,14 @@ mod tests {
         assert_eq!(plain, "nothing here @missing.rs");
         let twice = expand_references("@src/lib.rs @src/lib.rs", &d);
         assert_eq!(twice.matches("@src/lib.rs\n```").count(), 1);
+    }
+
+    #[test]
+    fn git_diff_and_url_refs() {
+        let d = dir("gitdiff");
+        let _ = std::process::Command::new("git").arg("-C").arg(&d).args(["init", "-q"]).status();
+        let no_repo_or_empty = expand_references("show @git diff", &d);
+        assert!(no_repo_or_empty.starts_with("show @git diff"));
+        assert_eq!(url_refs("see @https://example.com/a, and @ftp://x @http://y.org/z."), vec!["https://example.com/a".to_string(), "http://y.org/z".to_string()]);
     }
 }
