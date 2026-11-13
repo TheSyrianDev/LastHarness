@@ -42,6 +42,9 @@ pub enum CompactError {
     Model(#[from] Error),
 }
 
+/// Tool outputs longer than this (bytes) are shrunk to one line before the summary request.
+const PRUNE_OVER: usize = 200;
+
 /// Where a summary starts inside the system message.
 pub const SUMMARY_MARKER: &str = "\n\n[Summary of the earlier conversation]\n";
 const ASK: &str = "Pause the task. Write a summary of this conversation so far, for yourself to continue from. Keep every fact, decision, file name, \
@@ -83,6 +86,13 @@ pub async fn compact_if_needed<M: Model, T: Meter>(
     }
 
     let mut ask = req.clone();
+    // Old tool outputs are dropped by the summary anyway; shrink the long ones before asking.
+    for m in ask.messages[lead..cut].iter_mut().filter(|m| m.role == Role::Tool) {
+        if let Some(c) = m.content.as_deref().filter(|c| c.len() > PRUNE_OVER || c.contains('\n')) {
+            let first: String = c.lines().next().unwrap_or("").chars().take(120).collect();
+            m.content = Some(format!("{first} [older output pruned]"));
+        }
+    }
     ask.messages.push(Message::user(ASK));
     ask.max_tokens = Some(3000); // room for a thinking model to think and still write the summary
     match meter.before(&ask).await {
@@ -102,8 +112,13 @@ pub async fn compact_if_needed<M: Model, T: Meter>(
     }
     system.push_str(SUMMARY_MARKER);
     system.push_str(summary);
-    let summarized = cut - lead;
+    // The first user message (the task goal) is kept word for word, after the system text.
+    let first_user = users.first().copied().filter(|&i| i >= lead && i < cut);
+    let summarized = cut - lead - usize::from(first_user.is_some());
     let mut messages = vec![Message::system(system)];
+    if let Some(i) = first_user {
+        messages.push(req.messages[i].clone());
+    }
     messages.extend(req.messages.drain(cut..));
     req.messages = messages;
     Ok(Some(Compacted { tokens_before: before, tokens_after: estimate_tokens(req), messages_summarized: summarized }))
@@ -167,13 +182,14 @@ mod tests {
         let mut r = long_chat();
         let before = r.clone();
         let c = compact_if_needed(&m, &NoMeter, &mut r, None, &opts(100)).await.unwrap().unwrap();
-        assert_eq!(c.messages_summarized, 6);
+        assert_eq!(c.messages_summarized, 5);
         assert!(c.tokens_after < c.tokens_before);
-        assert_eq!(r.messages.len(), 2);
+        assert_eq!(r.messages.len(), 3);
         assert_eq!(r.messages[0].role, Role::System);
         let sys = r.messages[0].content.as_deref().unwrap();
         assert!(sys.starts_with("You are helpful.") && sys.contains("They discussed two things."));
-        assert_eq!(r.messages[1], Message::user("latest question"));
+        assert_eq!(r.messages[1], before.messages[1]);
+        assert_eq!(r.messages[2], Message::user("latest question"));
         // the summary request is the old history untouched, plus one message at the end
         let sent = &m.seen.lock().unwrap()[0];
         assert_eq!(&sent.messages[..8], &before.messages[..]);
@@ -216,6 +232,35 @@ mod tests {
             msg.content = msg.content.as_ref().map(|c| c.chars().take(5).collect());
         }
         assert!(compact_if_needed(&Summarizer::new("S"), &NoMeter, &mut r, Some(30_000), &opts(24_000)).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn a_long_tool_heavy_session_stays_small_and_keeps_the_goal() {
+        let call = |i: usize| ToolCall { id: format!("c{i}"), name: "read_file".into(), arguments: "{\"path\":\"a.rs\"}".into(), repaired: false };
+        let mut r = ChatRequest { model: "m".into(), ..Default::default() };
+        r.messages.push(Message::system("You are helpful."));
+        r.messages.push(Message::user("GOAL: port the parser"));
+        for turn in 0..20 {
+            if turn > 0 {
+                r.messages.push(Message::user(format!("continue {turn}")));
+            }
+            for i in 0..10 {
+                let id = turn * 10 + i;
+                r.messages.push(Message::assistant("", vec![call(id)]));
+                r.messages.push(Message::tool_result(format!("c{id}"), "fn line\n".repeat(60)));
+            }
+        }
+        assert_eq!(r.messages.iter().filter(|m| m.tool_calls.len() == 1).count(), 200);
+        let win = 20_000;
+        let before = estimate_tokens(&r);
+        assert!(before > compact_threshold(Some(win)), "the fixture must be over the threshold");
+        let m = Summarizer::new("Ported half the parser.");
+        let c = compact_if_needed(&m, &NoMeter, &mut r, None, &opts(compact_threshold(Some(win)))).await.unwrap().unwrap();
+        assert!(c.tokens_after < win / 2, "after compaction: {} tokens", c.tokens_after);
+        assert_eq!(r.messages[1].content.as_deref(), Some("GOAL: port the parser"));
+        let sent = &m.seen.lock().unwrap()[0];
+        let last_user = sent.messages[..sent.messages.len() - 1].iter().rposition(|x| x.role == Role::User).unwrap(); // the last one is the summary request
+        assert!(sent.messages[..last_user].iter().filter(|x| x.role == Role::Tool).all(|x| x.content.as_deref().unwrap().lines().count() <= 1));
     }
 
     #[test]
