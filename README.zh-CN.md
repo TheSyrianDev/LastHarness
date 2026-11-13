@@ -16,7 +16,7 @@
 > **Alpha 版。** Last AI 是早期软件，目前只在一台机器上使用。预计会有粗糙之处和破坏性变更。Last AI（桌面应用和 `la` 终端应用）在 Linux（Omarchy）和 Windows（作者本人测试）上经过测试。macOS 版本处于早期 alpha 阶段：它能在 CI 中启动，但还没有人日常使用。
 
 <p align="center">
-  <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue"></a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-orange">
 </p>

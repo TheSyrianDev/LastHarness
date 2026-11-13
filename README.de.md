@@ -16,7 +16,7 @@ Ein lokal-first KI-Harness, das um ein Team herum gebaut ist: Abteilungen und di
 > **Alpha.** Last AI ist frühe Software und wird bisher nur auf einem Rechner genutzt. Erwarte Ecken und Kanten sowie Änderungen, die bestehende Funktionen brechen. Last AI (die Desktop-App und die Terminal-App `la`) wird unter Linux (Omarchy) und Windows getestet (vom Autor getestet). Der macOS-Build ist eine frühe Alpha: Er startet in der CI, aber bisher nutzt ihn niemand im Alltag.
 
 <p align="center">
-  <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue"></a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-orange">
 </p>

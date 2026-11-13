@@ -16,7 +16,7 @@
 > **ألفا.** Last AI برنامج في مراحله الأولى، ويُستخدم حتى الآن على جهاز واحد فقط. توقع خشونة في التجربة وتغييرات تكسر التوافق. Last AI (التطبيق المكتبي وتطبيق الطرفية `la`) مُختبر على Linux (Omarchy) وWindows (اختبره المؤلف). نسخة macOS في مرحلة ألفا مبكرة: تبدأ في CI، لكن لم يستخدمها أحد يومياً بعد.
 
 <p align="center">
-  <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue"></a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-orange">
 </p>

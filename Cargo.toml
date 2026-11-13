@@ -8,7 +8,7 @@ exclude = ["crates/lh-pageview-engine", "crates/lh-pageview-servo"]
 version = "0.0.0"
 edition = "2021"
 license = "PolyForm-Noncommercial-1.0.0"
-repository = "https://github.com/TheSyrianDev/LastHarness"
+repository = "https://github.com/TheSyrianDev/LastAI"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
