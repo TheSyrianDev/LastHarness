@@ -378,6 +378,14 @@ async fn write_atomic(p: &Path, root: &Path, content: &str) -> Result<ToolOutput
     if let Some(dir) = p.parent() {
         tokio::fs::create_dir_all(dir).await.map_err(|e| ToolError::Failed(e.to_string()))?;
     }
+    // snapshot first, so /rollback can put the previous bytes back
+    let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().to_string();
+    let prev = if tokio::fs::metadata(&p).await.is_ok() {
+        Some(tokio::fs::read(&p).await.map_err(|e| ToolError::Failed(format!("cannot save a snapshot first: {e}")))?)
+    } else {
+        None
+    };
+    crate::snapshot::save(root, &rel, prev.as_deref()).map_err(|e| ToolError::Failed(format!("cannot save a snapshot first: {e}")))?;
     // Write to a sibling and rename, so a crash never leaves half a file. The sibling has a name
     // nobody can predict and is created new, so a link planted at that name cannot redirect the write.
     let mut rnd = [0u8; 6];
