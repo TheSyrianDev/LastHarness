@@ -1,19 +1,30 @@
-# Compatibility plan: skills and extensions from other tools (proposal, not decided)
+# Compatibility plan: skills and extensions from other tools (proposal)
 
-Status: planning only. Built from the local surveys (`research/surveys/05-skills-plugins.md`, `research/surveys/10-feature-dossiers/`). The agentskills.io spec, the Pi/OMP TypeScript extension API and the DSH plugin format were NOT read in this pass. Each row needs a source read before a decision.
+Status: sources read in this pass (shallow clones in scratchpad only). Verified facts are marked; the rest is a proposal.
+
+## Sources read
+- agentskills.io spec: `agentskills/docs/specification.mdx`.
+- Pi (`badlogic/pi-mono`): `packages/coding-agent/src/core/extensions/` (`types.ts`, `loader.ts`, `runner.ts`).
+- OMP (`can1357/oh-my-pi`): `src/extensions/` (mcp, codemode, tool-search as examples of `pi.registerTool`).
+- DSH (`deepseek-ai/deepseek-harness`): `docs/architecture.md`, `packages/boot/plugin-manager`.
+- Hermes (`NousResearch/hermes-agent`): skill loading not found by grep for `SKILL.md`; no Hermes skill format verified.
+
+## Verified facts
+- SKILL.md: YAML frontmatter plus Markdown body. `name` required: 1-64 chars, a-z 0-9 and hyphens, no leading, trailing or doubled hyphen, must equal the parent folder name. `description` required. Optional: `license`, `compatibility`, `metadata`, `allowed-tools`. Optional folders `scripts/`, `references/`, `assets/`; progressive loading (body first, resources on demand).
+- Pi extensions: TypeScript modules loaded through jiti (`loader.ts`). API surface is `pi.on(event, handler)` for lifecycle events (session_start, session_compact, session_shutdown, and more) and `pi.registerTool(...)`. Needs a JS/TS runtime to run.
+- OMP extensions: same shape (`src/extensions/*/index.ts`, `pi.registerTool`), built on Pi's runtime.
+- DSH: a plugin tree of layered bundles on a Cordis framework; plugins contribute services, typed events and reversible effects. Requires the Node/Electron runtime. Plugin manifest format not confirmed in this pass.
 
 ## Ranking by cost (cheapest first)
-
 | Format | Verdict | Why | Cost |
 |---|---|---|---|
-| SKILL.md (markdown with frontmatter, agentskills.io style) | Loads directly | Our skills are markdown already (`lh-learn`, `use_skill`). Needs a frontmatter reader and a mapping of tool names. | S |
-| Claude-style plugin folders (commands, skills, rules) | Mostly direct | Same markdown parts; commands need a slash-command mapping. Hooks need a per-event adapter. | M |
-| Pi/OMP TypeScript extensions | Needs a JS runtime | Extensions call a TS API. Running them means embedding a JS engine, a sandbox and an API shim. | L |
-| DSH plugins | Not feasible yet | Format and runtime not read; treat as unknown until the spec is read. | ? |
+| SKILL.md (agentskills.io) | Loads directly | Plain markdown plus frontmatter; our `use_skill` already reads markdown. Validate `name` rules; map `allowed-tools` onto our tool names. `scripts/` only runs with approval. | S |
+| Pi/OMP extension | Needs a JS runtime | Behaviour lives in TS code calling `pi.on` and `pi.registerTool`. Needs an embedded JS engine and an API shim. | L |
+| DSH plugin | Not feasible now | Needs the Cordis runtime and Node; the plugin unit is a whole runtime, not a skill. | XL |
 
 ## Rules
-- Anything that runs code from another tool is off by default and asks first, same as outside CLI workers (`crates/lh-team/src/external.rs`).
-- Imported skills start as Learn proposals, not active skills, so the user approves them first.
+- Code from another tool is off by default and asks first, as with outside CLI workers (`crates/lh-team/src/external.rs`).
+- Imported skills start as proposals in Learn, not active.
 
 ## Next step
-- Read the SKILL.md spec and one real example; then build a read-only importer that lists what it would load (no run).
+- Build a read-only SKILL.md importer that validates `name`/`description` and lists what it would load. No script runs.
