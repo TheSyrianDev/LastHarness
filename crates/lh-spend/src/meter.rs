@@ -15,6 +15,8 @@ struct Shared {
     provider: String,
     /// Runs on this machine or a private network: priced at zero unless a price says otherwise.
     local: bool,
+    /// Token budgets per chat (prompt plus completion tokens). In memory: a restart clears them.
+    budgets: std::sync::Mutex<std::collections::HashMap<String, u64>>,
 }
 
 /// Checks each model call against the spending rules and records what it cost.
@@ -55,7 +57,7 @@ const DEFAULT_MAX_OUTPUT: u64 = 4096;
 
 impl SpendMeter {
     pub fn new(store: Arc<Store>, cfg: Config, provider: impl Into<String>, local: bool) -> Self {
-        Self { shared: Arc::new(Shared { store, cfg: std::sync::RwLock::new(cfg.clone()), base: cfg, provider: provider.into(), local }), session: String::new() }
+        Self { shared: Arc::new(Shared { store, cfg: std::sync::RwLock::new(cfg.clone()), base: cfg, provider: provider.into(), local, budgets: Default::default() }), session: String::new() }
     }
 
     /// Change the rules while the core runs: `f` starts from the rules the meter was built with, so a setting
@@ -110,6 +112,26 @@ impl SpendMeter {
         let (today, today_calls) = sum(day);
         let (this_month, month_calls) = sum(month);
         Summary { today, today_calls, this_month, month_calls, unpriced, by_provider }
+    }
+
+    /// Cap this chat's tokens (prompt plus completion, summed over calls). `None` removes the cap.
+    pub fn set_token_budget(&self, tokens: Option<u64>) {
+        let mut b = self.shared.budgets.lock().unwrap();
+        match tokens {
+            Some(t) => b.insert(self.session.clone(), t),
+            None => b.remove(&self.session),
+        };
+    }
+
+    /// Refuse a new turn when this chat has used its token budget.
+    pub fn check_token_budget(&self) -> Result<(), String> {
+        let Some(budget) = self.shared.budgets.lock().unwrap().get(&self.session).copied() else { return Ok(()) };
+        let u = self.chat_usage();
+        let used = (u.prompt_tokens + u.completion_tokens) as u64;
+        if used >= budget {
+            return Err(format!("This chat has used its token budget ({used} of {budget} tokens). Raise the budget or start a new chat."));
+        }
+        Ok(())
     }
 
     /// What this chat has used, for the `/usage` command. Counts only rows of this chat's session.
@@ -262,6 +284,19 @@ mod tests {
     }
     fn req(model: &str, max: u32) -> ChatRequest {
         ChatRequest { model: model.into(), messages: vec![Message::user("hello there")], max_tokens: Some(max), ..Default::default() }
+    }
+
+    #[tokio::test]
+    async fn token_budget_stops_a_chat_once_used() {
+        let m = meter(gpt_cfg(Mode::None), false);
+        m.set_token_budget(Some(1500));
+        assert!(m.check_token_budget().is_ok());
+        m.after(&req("gpt-4o", 100), Some(Usage { prompt_tokens: 1000, completion_tokens: 400, cached_tokens: 0 })).await;
+        assert!(m.check_token_budget().is_ok());
+        m.after(&req("gpt-4o", 100), Some(Usage { prompt_tokens: 100, completion_tokens: 0, cached_tokens: 0 })).await;
+        assert!(m.check_token_budget().unwrap_err().contains("1500 tokens"));
+        m.set_token_budget(None);
+        assert!(m.check_token_budget().is_ok());
     }
 
     #[test]

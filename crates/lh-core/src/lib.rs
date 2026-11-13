@@ -402,6 +402,7 @@ fn api_routes<M: Model + 'static>() -> Router<Arc<AppState<M>>> {
         .route("/v1/activity/{seq}/undo", post(undo::<M>))
         .route("/v1/spend", get(spend::<M>))
         .route("/v1/insights", get(insights::<M>))
+        .route("/v1/sessions/{id}/budget", post(set_budget::<M>))
         .route("/v1/sessions/{id}/usage", get(chat_usage::<M>))
         .route("/v1/events", get(app_events::<M>))
         .route("/v1/sessions", post(create_session::<M>))
@@ -966,6 +967,7 @@ async fn start_turn<M: Model + 'static>(
         let stored = original;
         (p.attachments, notices, stored)
     };
+    st.settings.spend.for_session(&id).check_token_budget().map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
     if !s.try_start() {
         return Err(ApiError(StatusCode::CONFLICT, "a turn is already running in this session".into()));
     }
@@ -1253,6 +1255,19 @@ async fn spend<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<V
 /// `/insights`: spend across chats, as plain text.
 async fn insights<M: Model + 'static>(State(st): State<Arc<AppState<M>>>) -> Json<Value> {
     Json(json!({"text": lh_spend::insights_text(&st.settings.spend.summary())}))
+}
+
+/// Body for the chat token budget. `tokens: null` removes it.
+#[derive(Deserialize)]
+struct BudgetBody {
+    tokens: Option<u64>,
+}
+
+/// Set or clear a chat's token budget. Held in memory: a restart clears it.
+async fn set_budget<M: Model + 'static>(State(st): State<Arc<AppState<M>>>, Path(id): Path<String>, Json(b): Json<BudgetBody>) -> Result<Json<Value>, ApiError> {
+    st.session(&id)?;
+    st.settings.spend.for_session(id).set_token_budget(b.tokens);
+    Ok(Json(json!({"tokens": b.tokens})))
 }
 
 /// `/usage`: tokens and cost of one chat.
