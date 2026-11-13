@@ -44,7 +44,7 @@ sha2 = "0.10"
 base64 = "0.22"
 hmac = "0.12"
 # Optional Hub adapter (see models_catalog.rs). Off by default.
-hfd-core = { path = "/home/omar/Projects/hf-dl/crates/hfd-core", optional = true }
+hfd-core = { git = "https://github.com/TheSyrianDev/hf-dl", tag = "v0.4.0-rc.1", optional = true }
 
 [features]
 hf-catalog = ["dep:hfd-core"]

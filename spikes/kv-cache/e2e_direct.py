@@ -5,7 +5,7 @@ import json, os, subprocess, sys, tempfile, time, urllib.request, glob
 variant = sys.argv[1]
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 server = glob.glob(os.path.expanduser("~/AI/engines/_prebuilt/mainline-b11541/llama-b11541/llama-server"))[0]
-gguf = "/home/omar/AI/models/lfm25-2.6b/LFM2.5-2.6B-Q4_K_M.gguf"
+gguf = "/home/omar/AI/Models/lfm25-2.6b/LFM2.5-2.6B-Q4_K_M.gguf"
 tmp = tempfile.mkdtemp(prefix="lh-kvd-"); slots = tmp + "/slots"; os.makedirs(slots)
 os.makedirs(tmp + "/config/lastharness"); os.makedirs(tmp + "/run")
 open(tmp + "/config/lastharness/config.toml", "w").write(f'[provider]\nurl = "http://127.0.0.1:8098/v1"\n[kvcache]\nenabled = {"true" if variant == "on" else "false"}\ndir = "{slots}"\nmax_gb = 5\n')

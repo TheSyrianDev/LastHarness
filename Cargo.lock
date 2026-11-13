@@ -3523,11 +3523,11 @@ dependencies = [
 
 [[package]]
 name = "hfd-core"
-version = "0.2.0"
+version = "0.4.0-rc.1"
+source = "git+https://github.com/TheSyrianDev/hf-dl?tag=v0.4.0-rc.1#b7d030bc6940026f32e8f614720b03fa20b693e6"
 dependencies = [
  "fs2",
  "futures-util",
- "globset",
  "hex",
  "hf-xet",
  "pathdiff",
@@ -3535,6 +3535,7 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
+ "sha1",
  "sha2 0.10.9",
  "thiserror 2.0.21",
  "tokio",
