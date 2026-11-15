@@ -1,26 +1,52 @@
-# Maintainer: see the repository. Template for the 0.1.0-alpha release tarball.
+# Maintainer: TheSyrianDev <215098066+TheSyrianDev@users.noreply.github.com>
+# Source build of Last AI with the Omarchy integration (theme-following looks and launcher icon).
+# Release tags look like v0.1.0-alpha; pkgver cannot hold '-', so it uses '_' and _tag maps back.
 pkgname=lastai
-pkgver=0.1.0
+pkgver=0.1.0_alpha
 pkgrel=1
 pkgdesc="Team-first local AI harness: departments and workers, local-first"
 arch=('x86_64')
 url="https://github.com/TheSyrianDev/LastAI"
-license=('custom')
-depends=('gtk3' 'fontconfig' 'vulkan-icd-loader')
-makedepends=('rust' 'cargo')
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+license=('LicenseRef-LastAI')
+depends=('gtk3' 'fontconfig' 'freetype2' 'vulkan-icd-loader' 'libxkbcommon' 'libxkbcommon-x11'
+         'wayland' 'libxcb' 'openssl' 'dbus' 'alsa-lib' 'glibc' 'gcc-libs')
+makedepends=('rust' 'cargo' 'pkgconf' 'git')
+optdepends=('librsvg: theme-coloured launcher icon (lastai-omarchy-setup)'
+            'gtk-update-icon-cache: refresh the icon cache after a theme change')
+install=lastai.install
+options=('!lto' '!debug')
+_tag="v${pkgver//_/-}"
+_srcdir="LastAI-${_tag#v}"
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 sha256sums=('SKIP')
 
+prepare() {
+  cd "$_srcdir"
+  sed -i "s/^version = \"0.0.0\"$/version = \"${pkgver//_/-}\"/" Cargo.toml
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
 build() {
-  cd "$pkgname-$pkgver"
-  cargo build --release --locked -p lh-core -p lh-tui -p lh-gui
+  cd "$_srcdir"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo build --release -p lh-core -p lh-tui -p lh-gui --features lh-gui/omarchy
 }
 
 package() {
-  cd "$pkgname-$pkgver"
-  install -Dm755 target/release/lastaid "$pkgdir/usr/bin/lastaid"
-  install -Dm755 target/release/la "$pkgdir/usr/bin/la"
-  install -Dm755 target/release/lastai-gui "$pkgdir/usr/bin/lastai-gui"
+  cd "$_srcdir"
+  local t="${CARGO_TARGET_DIR:-target}/release" b
+  for b in lastai-gui lastaid la lastai; do
+    install -Dm755 "$t/$b" "$pkgdir/usr/bin/$b"
+  done
+  install -Dm755 packaging/omarchy/lastai-omarchy-setup "$pkgdir/usr/bin/lastai-omarchy-setup"
   install -Dm644 packaging/lastai.desktop "$pkgdir/usr/share/applications/lastai.desktop"
+  grep -q '^StartupWMClass=' "$pkgdir/usr/share/applications/lastai.desktop" \
+    || echo 'StartupWMClass=lastai-gui' >> "$pkgdir/usr/share/applications/lastai.desktop"
   install -Dm644 packaging/lastai.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/lastai.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 COMMERCIAL-LICENSING.md "$pkgdir/usr/share/licenses/$pkgname/COMMERCIAL-LICENSING.md"
+  install -Dm755 packaging/omarchy/theme-set-hook "$pkgdir/usr/share/lastai/omarchy/theme-set-hook"
+  install -Dm755 packaging/omarchy/lastai-icon-refresh "$pkgdir/usr/share/lastai/omarchy/lastai-icon-refresh"
+  install -Dm644 packaging/omarchy/README.md "$pkgdir/usr/share/lastai/omarchy/README.md"
 }

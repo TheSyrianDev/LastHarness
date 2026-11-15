@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastai-lockup-on-dark.svg">
-    <img alt="Last AI" src=".github/assets/lastai-lockup-on-light.svg" width="360">
+    <img alt="Last AI" src=".github/assets/lastai-lockup-on-light.svg" width="240">
   </picture>
 </p>
 

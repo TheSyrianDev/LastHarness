@@ -1,0 +1,12 @@
+post_install() {
+  echo "Last AI is installed. On Omarchy, run this once as your own user (not root):"
+  echo "  lastai-omarchy-setup"
+  echo "It adds the theme hook that recolours the launcher icon. It never edits your Hyprland config."
+}
+post_upgrade() {
+  post_install
+}
+post_remove() {
+  echo "To remove the per-user Omarchy hook and icons: run 'lastai-omarchy-setup --uninstall' before removing,"
+  echo "or delete ~/.config/omarchy/hooks/theme-set.d/lastai-icon yourself."
+}

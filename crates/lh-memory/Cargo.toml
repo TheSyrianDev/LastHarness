@@ -12,7 +12,7 @@ getrandom = "0.3"
 reqwest.workspace = true
 tokio = { workspace = true, features = ["process", "time", "net", "sync"] }
 regex = "1.13.1"
-lh-provider = { version = "0.0.0", path = "../lh-provider" }
+lh-provider = { path = "../lh-provider" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

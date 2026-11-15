@@ -1,13 +1,15 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lastai-lockup-on-dark.svg">
-    <img alt="Last AI" src=".github/assets/lastai-lockup-on-light.svg" width="360">
+    <img alt="Last AI" src=".github/assets/lastai-lockup-on-light.svg" width="240">
   </picture>
 </p>
 
 <p align="center">
   <a href="README.md">English</a> · <a href="README.ar.md">العربية</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a>
 </p>
+
+<p align="center"><a href="https://github.com/TheSyrianDev/LastAI">Last AI</a> · <a href="https://github.com/TheSyrianDev/LastEngine">Last Engine</a> · <a href="https://github.com/TheSyrianDev/hf-dl">hf-dl</a></p>
 
 <p align="center"><em>The last harness you'll need.</em><br>
 A local-first AI harness built around a team: departments, and the workers in them.</p>
@@ -45,7 +47,7 @@ target/release/lastai-gui # or the desktop app (needs the core running)
 
 The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastai/themes/` (the six built-in ones, three families each in light and dark, are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat.
 
-The Omarchy release (`LastAI-<version>-omarchy-x86_64.tar.gz`, installed with its `install-omarchy.sh`) also offers the desktop's own look, and an "Omarchy (transparent)" look that is liquid glass in the Omarchy colours. The transparent look is as see-through as the Hyprland window rule for the app's window (class `lastai-gui`) says; without a rule it stays opaque. Other builds (AppImage, Windows, macOS, or a source build with `--no-default-features`) leave the Omarchy looks out. To add one, put this line in `~/.config/hypr/hyprland.lua` (0.85 is how much of the window shows):
+The Omarchy release (the Arch package `LastAI-<version>-x86_64.pkg.tar.zst`: `sudo pacman -U LastAI-*.pkg.tar.zst`, then `lastai-omarchy-setup`) also offers the desktop's own look, and an "Omarchy (transparent)" look that is liquid glass in the Omarchy colours. The transparent look is as see-through as the Hyprland window rule for the app's window (class `lastai-gui`) says; without a rule it stays opaque. Other builds (AppImage, Windows, macOS, or a source build with `--no-default-features`) leave the Omarchy looks out. To add one, put this line in `~/.config/hypr/hyprland.lua` (0.85 is how much of the window shows):
 
 ```lua
 o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
@@ -71,9 +73,21 @@ The Create block on the Models and keys page makes images (Z-Image Turbo) and sh
 
 ## Install and release build
 
+Release downloads (prereleases on GitHub):
+
+- Debian / Ubuntu: `sudo apt install ./LastAI-<version>-amd64.deb`.
+- Fedora / openSUSE: `sudo dnf install ./LastAI-<version>-x86_64.rpm`.
+- Arch / Omarchy: `sudo pacman -U LastAI-*.pkg.tar.zst`, then `lastai-omarchy-setup` (sets up the theme hook and icon for your user). This is the only build with the Omarchy looks.
+- Other Linux distributions: the AppImage.
+- Windows: the `LastAI-<version>-windows-x64.zip`.
+- macOS (Apple silicon, early alpha): the `LastAI-<version>-macos-arm64.dmg`.
+
+Build it yourself:
+
 - Source: `cargo build --release` (needs Rust stable; on Linux the desktop app needs the usual GPUI and system libraries).
+- Arch package: `makepkg -si` in `packaging/aur`. `scripts/install-omarchy.sh` still installs a source build into your home folder.
 - Linux AppImage: `packaging/build-appimage.sh` (needs `linuxdeploy`; see the script's header).
-- Omarchy: `scripts/install-omarchy.sh`.
+- .deb / .rpm: `packaging/nfpm.yaml` (see its header).
 
 ## Commands
 

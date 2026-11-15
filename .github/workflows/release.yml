@@ -25,7 +25,7 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             ver="${GITHUB_REF_NAME#v}"
-            sed -i "s/^version = \"0.0.0\"$/version = \"$ver\"/" Cargo.toml
+            sed -i.bak "s/^version = \"0.0.0\"$/version = \"$ver\"/" Cargo.toml && rm -f Cargo.toml.bak
           fi
       - name: Build the AppImage
         env:
@@ -43,13 +43,60 @@ jobs:
           files: dist/*.AppImage
 
   omarchy:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Build tools
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git rust pkgconf gtk3 fontconfig freetype2 vulkan-icd-loader libxkbcommon libxkbcommon-x11 wayland libxcb openssl dbus alsa-lib
+          useradd -m builder
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the package
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            ver="${GITHUB_REF_NAME#v}"; ver="${ver//-/_}"
+          else
+            ver="0.0.0.dev${GITHUB_SHA::7}"
+          fi
+          b=/home/builder/pkg
+          mkdir -p "$b"
+          git archive --format=tar.gz --prefix=lastai-src/ -o "$b/lastai-src.tar.gz" HEAD
+          sed -e "s/^pkgver=.*/pkgver=$ver/" \
+              -e 's/^_srcdir=.*/_srcdir=lastai-src/' \
+              -e 's/^source=.*/source=("lastai-src.tar.gz")/' \
+              packaging/aur/PKGBUILD > "$b/PKGBUILD"
+          cp packaging/aur/lastai.install "$b/"
+          # the version stamp in prepare() only applies to tags
+          [[ $GITHUB_REF == refs/tags/* ]] || sed -i '/^  sed -i "s\/^version/d' "$b/PKGBUILD"
+          mkdir -p "$GITHUB_WORKSPACE/target" "$HOME/.cargo"
+          chown -R builder "$b" "$GITHUB_WORKSPACE/target" "$HOME/.cargo"
+          chmod a+x "$HOME"
+          cd "$b"
+          sudo -u builder env CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" makepkg --nodeps --noconfirm
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for f in ./*.pkg.tar.zst; do cp "$f" "$GITHUB_WORKSPACE/dist/LastAI-${f#./lastai-}"; done
+          ls -l "$GITHUB_WORKSPACE/dist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omarchy
+          path: dist/*.pkg.tar.zst
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: dist/*.pkg.tar.zst
+
+  linux-packages:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: System libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libvulkan-dev libfontconfig-dev libssl-dev libdbus-1-dev libasound2-dev libgtk-3-dev
+          sudo apt-get install -y pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libvulkan-dev libfontconfig-dev libssl-dev libdbus-1-dev libasound2-dev libgtk-3-dev rpm
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Stamp version from tag
@@ -57,33 +104,40 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             ver="${GITHUB_REF_NAME#v}"
-            sed -i "s/^version = \"0.0.0\"$/version = \"$ver\"/" Cargo.toml
+            sed -i.bak "s/^version = \"0.0.0\"$/version = \"$ver\"/" Cargo.toml && rm -f Cargo.toml.bak
           fi
       - name: Build
         run: |
           cargo build --release -p lh-core -p lh-tui
-          cargo build --release -p lh-gui --features omarchy
+          cargo build --release -p lh-gui --no-default-features
+      - name: Get nfpm
+        run: |
+          curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.41.1/nfpm_2.41.1_Linux_x86_64.tar.gz | tar -xz nfpm
       - name: Package
         shell: bash
         run: |
-          ver="${GITHUB_REF_NAME#v}"
-          [[ $GITHUB_REF == refs/tags/* ]] || ver="dev-${GITHUB_SHA::7}"
-          name="LastAI-$ver-omarchy-x86_64"
-          d="dist/$name"
-          mkdir -p "$d"
-          for b in lastai-gui lastaid la lastai; do cp "target/release/$b" "$d/"; done
-          cp scripts/install-omarchy.sh packaging/omarchy/lastai-icon-refresh packaging/omarchy/theme-set-hook packaging/lastai.desktop packaging/omarchy/README.md LICENSE COMMERCIAL-LICENSING.md "$d/"
-          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          if [[ $GITHUB_REF == refs/tags/* ]]; then ver="${GITHUB_REF_NAME#v}"; else ver="0.0.0-dev${GITHUB_SHA::7}"; fi
+          mkdir -p dist
+          VERSION="$ver" ./nfpm package -f packaging/nfpm.yaml -p deb -t "dist/LastAI-$ver-amd64.deb"
+          VERSION="$ver" ./nfpm package -f packaging/nfpm.yaml -p rpm -t "dist/LastAI-$ver-x86_64.rpm"
+          dpkg-deb -I dist/*.deb
+          dpkg-deb -c dist/*.deb
+          rpm -qip dist/*.rpm
+          rpm -qlp dist/*.rpm
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
-          name: omarchy
-          path: dist/*.tar.gz
+          name: linux-packages
+          path: |
+            dist/*.deb
+            dist/*.rpm
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           prerelease: true
-          files: dist/*.tar.gz
+          files: |
+            dist/*.deb
+            dist/*.rpm
 
   windows:
     runs-on: windows-latest
@@ -96,7 +150,7 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             ver="${GITHUB_REF_NAME#v}"
-            sed -i "s/^version = \"0.0.0\"$/version = \"$ver\"/" Cargo.toml
+            sed -i.bak "s/^version = \"0.0.0\"$/version = \"$ver\"/" Cargo.toml && rm -f Cargo.toml.bak
           fi
       - name: Build
         run: |
@@ -162,7 +216,7 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             ver="${GITHUB_REF_NAME#v}"
-            sed -i "s/^version = \"0.0.0\"$/version = \"$ver\"/" Cargo.toml
+            sed -i.bak "s/^version = \"0.0.0\"$/version = \"$ver\"/" Cargo.toml && rm -f Cargo.toml.bak
           fi
       - name: Build
         run: |
@@ -205,7 +259,7 @@ jobs:
           cp -R "$app" "$stage/"
           cp README.md LICENSE COMMERCIAL-LICENSING.md "$stage/"
           ln -s /Applications "$stage/Applications"
-          hdiutil create -volname Last AI -srcfolder "$stage" -ov -format UDZO "LastAI-$ver-macos-arm64.dmg"
+          hdiutil create -volname "Last AI" -srcfolder "$stage" -ov -format UDZO "LastAI-$ver-macos-arm64.dmg"
           mv LastAI-*.dmg dist/
           ls -l dist
       - uses: actions/upload-artifact@v4
