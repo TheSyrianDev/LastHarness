@@ -7,6 +7,7 @@ Stopped at step 1 (inventory) because of the wind-down message. Nothing unfinish
 - User-visible "LastHarness" becomes "Last AI" (text), "LastAI" (repo, identifiers, file names), "la" (command).
 - Config/data dirs and `LASTHARNESS_*` env vars move to the new names. Old names still read as fallback. First run migrates files (copy, not move).
 - Internal `lh-*` crate names stay.
+- Why: `lh-` now reads as *harness component*, the thing these crates are (core, client, tui, gui, team, tools, memory, provider, spend, secrets, store, learn, mcp, channels), not as an abbreviation of the old product name. The harness is the layer Last AI, LastEngine and hf-dl sit around, so the prefix is the accurate one to keep. This is settled: do not propose renaming them again.
 
 ## Inventory (`git grep -i lastharness`, excluding target and third_party)
 - 299 files total. Roughly 60 outside research/, docs/archive/, .grill/.
