@@ -420,7 +420,7 @@ impl App {
             .items_center()
             .gap_3()
             .p_2()
-            .child(div().flex_1().overflow_hidden().text_color(p.text).child(info.title))
+            .child(div().flex_1().overflow_hidden().text_lg().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(info.title))
             .when_some(info.branch, |d, b| d.child(div().id("branch").role(Role::Label).text_sm().text_color(p.muted).child(b)))
             .when_some(info.context, |d, c| d.child(div().id("context").role(Role::Label).text_sm().text_color(p.muted).child(c)))
             .child(right_corner)
@@ -881,7 +881,8 @@ impl App {
             .child(head)
             .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_0p5().child(div().flex_1().flex().flex_col().child(new)).child(search))
             .child(div().id("chat-list").role(Role::List).flex_1().min_h_0().flex().flex_col().gap_0p5().overflow_y_scroll().children(body))
-            .child(div().flex().flex_col().gap_0p5().pt_2().children(foot))
+            // a hairline keeps the pages below apart from the list, which scrolls under them
+            .child(div().flex().flex_col().gap_0p5().mt_1().pt_2().border_t_1().border_color(p.border.opacity(0.7)).children(foot))
             .into_any_element()
     }
 

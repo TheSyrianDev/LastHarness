@@ -95,7 +95,7 @@ impl Default for RawColors {
     fn default() -> Self {
         // Calm light, so a theme file only has to say what it changes
         let d = |s: &str| s.to_string();
-        Self { background: d("#f5f5f3"), surface: d("#ffffff"), sunken: d("#ecece9"), text: d("#1d1d1b"), muted: d("#6d6d68"), accent: d("#3b6fd4"), accent_text: d("#ffffff"), button: d("#e8e8e4"), button_hover: d("#dcdcd6"), border: d("#dadad5"), danger: d("#c0392b"), warn: None, good: None, caution: None, bad: None, focus_ring: None, bubble: None }
+        Self { background: d("#f5f5f3"), surface: d("#ffffff"), sunken: d("#ecece9"), text: d("#1d1d1b"), muted: d("#6d6d68"), accent: d("#2c4a3a"), accent_text: d("#ffffff"), button: d("#e8e8e4"), button_hover: d("#dcdcd6"), border: d("#dadad5"), danger: d("#c0392b"), warn: None, good: None, caution: None, bad: None, focus_ring: None, bubble: None }
     }
 }
 

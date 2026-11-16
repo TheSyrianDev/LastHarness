@@ -1,5 +1,6 @@
-# Built-in look. Plain placeholder values, not a design. Copy this file to
-# ~/.config/lastai/themes/ and edit it; changes show up while the app runs.
+# Built-in look, and the one a fresh install uses: warm neutral surfaces with the
+# brand's forest ink as the accent. Copy this file to ~/.config/lastai/themes/ and
+# edit it; changes show up while the app runs.
 name = "Calm"
 mode = "light"          # light or dark
 
@@ -9,13 +10,13 @@ surface = "#ffffff"       # panels and bubbles
 sunken = "#ecece9"          # input fields
 text = "#1d1d1b"
 muted = "#63635e"
-accent = "#3b6fd4"
+accent = "#2c4a3a"
 accent_text = "#ffffff"
 button = "#e8e8e4"
 button_hover = "#dcdcd6"
 border = "#dadad5"
 danger = "#c0392b"
-focus_ring = "#3b6fd4"
+focus_ring = "#2c4a3a"
 warn = "#8a5a00"
 good = "#1e7a3c"
 

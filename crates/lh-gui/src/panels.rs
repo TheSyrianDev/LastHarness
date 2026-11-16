@@ -317,30 +317,86 @@ impl App {
         col.into_any_element()
     }
 
+    /// A titled group on the Appearance page. A rule above every group after the first, so the page reads as sections
+    /// rather than one long column of controls.
+    fn app_section(&self, first: bool, title: impl Into<SharedString>, hint: Option<SharedString>, body: AnyElement) -> AnyElement {
+        let p = &self.pal;
+        div().flex().flex_col().gap_3()
+            .when(!first, |d| d.border_t_1().border_color(p.border.opacity(0.7)).pt_5())
+            .child({
+                let mut head = div().flex().flex_col().gap_0p5().child(div().text_sm().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(title.into()));
+                if let Some(h) = hint {
+                    head = head.child(div().text_xs().text_color(p.muted).child(h));
+                }
+                head
+            })
+            .child(body)
+            .into_any_element()
+    }
+
+    /// A label on the left and its control on the right, so controls line up down the page instead of running after
+    /// labels of different lengths.
+    fn app_row(&self, label: impl Into<SharedString>, control: AnyElement) -> AnyElement {
+        let p = &self.pal;
+        let rtl = self.rtl;
+        div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_4().min_h(px(28.))
+            .child(div().w(px(200.)).flex_none().text_sm().text_color(p.text).child(label.into()))
+            .child(div().flex_1().min_w_0().flex().items_center().child(control))
+            .into_any_element()
+    }
+
+    /// One look in the Look row: the look's own accent as a dot, its name, and a tinted outline when it is the one in
+    /// use. Unknown colour means the family has no accent to show.
+    fn look_chip(&self, family: &str, on: bool, dot: Option<Hsla>, cx: &mut Context<Self>) -> AnyElement {
+        let p = &self.pal;
+        let name: SharedString = family.to_string().into();
+        let f = family.to_string();
+        div().id(SharedString::from(format!("look-{family}"))).role(Role::Button).aria_label(name.clone())
+            .flex().items_center().gap_2().pl_2().pr_3().py_1().rounded_full().cursor_pointer()
+            .border_1().border_color(if on { p.accent } else { p.border })
+            .bg(if on { p.accent.opacity(0.12) } else { hsla(0., 0., 0., 0.) })
+            .text_sm().text_color(if on { p.text } else { p.muted })
+            .hover(|s| s.bg(if on { p.accent.opacity(0.16) } else { p.button }))
+            .active(|s| s.opacity(0.85))
+            .on_click(cx.listener(move |a, _, w, cx| a.set_family(&f, w, cx)))
+            .children(dot.map(|c| div().size(px(12.)).flex_none().rounded_full().bg(c).border_1().border_color(p.text.opacity(if p.dark { 0.25 } else { 0.12 }))))
+            .child(name)
+            .into_any_element()
+    }
+
     /// The Appearance page: the app's own look, mode, direction and widths. It works when the core is away.
     fn appearance_block(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
         // a look is a family with a light and a dark variant; the mode below picks the variant for all of them
-        let mut looks = div().flex().flex_wrap().items_center().gap_1().child(div().text_sm().text_color(p.muted).child(if rtl { "المظهر" } else { "Look" }));
         let current = self.family();
-        for f in self.themes.families() {
-            let one_mode = !self.themes.has_both(&f);
-            let (name, label) = (f.clone(), if one_mode { format!("{f} ({})", if rtl { "نمط واحد" } else { "one mode only" }) } else { f.clone() });
-            looks = looks.child(self.button(format!("look-{f}"), label, if f == current { Kind::Primary } else { Kind::Normal }, cx, move |a, w, cx| a.set_family(&name, w, cx)));
+        let families = self.themes.families();
+        let one_mode: Vec<String> = families.iter().filter(|f| !self.themes.has_both(f)).cloned().collect();
+        let mut looks = div().flex().flex_wrap().items_center().gap_2();
+        for f in &families {
+            let dot = self.themes.resolve(f, self.dark());
+            let dot = Some(crate::style::hsla(self.themes.themes[dot].colors.accent));
+            looks = looks.child(self.look_chip(f, *f == current, dot, cx));
         }
+        let look_hint = if one_mode.is_empty() {
+            Some(SharedString::from(if rtl { "كل مظهر له نسخة فاتحة وداكنة." } else { "Every look has a light and a dark version." }))
+        } else if rtl {
+            Some(SharedString::from(format!("نمط واحد فقط: {}. مفتاح الوضع أدناه لا يغيّرها.", one_mode.join("، "))))
+        } else {
+            Some(SharedString::from(format!("One mode only: {}. The light and dark switch below does not change {}.", one_mode.join(", "), if one_mode.len() == 1 { "it" } else { "them" })))
+        };
         // light and dark are a switch; following the desktop is its own switch beneath it
         let reports = self.system_dark.is_some() || lh_gui::appearance::system_dark().is_some();
         let sw = lh_gui::appearance::switches(self.prefs.mode, self.system_dark, reports);
         let dark_note = if sw.dark_enabled { None } else { Some(if rtl { if sw.dark_on { "يتبع سطح المكتب: داكن الآن" } else { "يتبع سطح المكتب: فاتح الآن" } } else if sw.dark_on { "Following the desktop: dark now" } else { "Following the desktop: light now" }) };
-        let dark_switch = self.glass_switch("dark-mode-switch", sw.dark_on, sw.dark_enabled, if rtl { "الوضع الداكن" } else { "Dark mode" }, true, cx, |a, on, w, cx| a.set_appearance(lh_gui::appearance::after_dark_switch(on), w, cx));
-        let match_switch = self.glass_switch("match-desktop-switch", sw.match_on, sw.match_enabled, if rtl { "مطابقة سطح المكتب" } else { "Match the desktop" }, true, cx, |a, on, w, cx| {
+        let dark_switch = self.glass_switch("dark-mode-switch", sw.dark_on, sw.dark_enabled, if rtl { "الوضع الداكن" } else { "Dark mode" }, false, cx, |a, on, w, cx| a.set_appearance(lh_gui::appearance::after_dark_switch(on), w, cx));
+        let match_switch = self.glass_switch("match-desktop-switch", sw.match_on, sw.match_enabled, if rtl { "مطابقة سطح المكتب" } else { "Match the desktop" }, false, cx, |a, on, w, cx| {
             let dark = a.dark();
             a.set_appearance(lh_gui::appearance::after_match_switch(on, dark), w, cx)
         });
-        let modes = div().flex().flex_col().gap_1().id("mode-switches").role(Role::Group).aria_label(if rtl { "الوضع" } else { "Light or dark" })
-            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().child(dark_switch).children(dark_note.map(|n| div().text_xs().text_color(p.muted).child(n))))
-            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().child(match_switch).children((!reports && !sw.match_on).then(|| div().text_xs().text_color(p.muted).child(if rtl { "سطح المكتب لا يخبرنا بوضعه." } else { "This desktop does not say whether it is light or dark." }))));
+        let modes = div().flex().flex_col().gap_3().id("mode-switches").role(Role::Group).aria_label(if rtl { "الوضع" } else { "Light or dark" })
+            .child(self.app_row(if rtl { "الوضع الداكن" } else { "Dark mode" }, div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().child(dark_switch).children(dark_note.map(|n| div().text_xs().text_color(p.muted).child(n))).into_any_element()))
+            .child(self.app_row(if rtl { "مطابقة سطح المكتب" } else { "Match the desktop" }, div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().child(match_switch).children((!reports && !sw.match_on).then(|| div().text_xs().text_color(p.muted).child(if rtl { "سطح المكتب لا يخبرنا بوضعه." } else { "This desktop does not say whether it is light or dark." }))).into_any_element()));
         let dir = match self.prefs.direction {
             lh_gui::rtl::Direction::Auto => "Direction: follow the desktop language",
             lh_gui::rtl::Direction::Ltr => "Direction: left to right",
@@ -364,7 +420,7 @@ impl App {
             cx.notify();
         });
         let widths = self.width_controls(cx);
-        let fonts = div().flex().flex_col().gap_1()
+        let fonts = div().flex().flex_col().items_start().gap_2()
             .child(self.font_picker_row(crate::app::FontSlot::Latin, cx))
             .child(self.font_picker_row(crate::app::FontSlot::Arabic, cx))
             .child(self.added_fonts_block(cx));
@@ -375,25 +431,39 @@ impl App {
         });
         let pages_note = div().text_xs().text_color(p.muted).child(if rtl { "لا تستطيع أي صفحة تحميل شيء من الإنترنت أو من هذا الحاسوب. التطبيقات الصغيرة تعمل فيها سكربتات بلا اتصال بالشبكة. الصفحات الأكبر من 2 ميغابايت تظهر كبطاقة." } else { "No page can load anything from the internet or from this computer. Small apps run their scripts with no network. Pages over 2 MB show as a card instead." });
         let name_row = div().flex().flex_col().gap_1()
-            .child(div().child(if rtl { "اسمك في شاشة المحادثة الجديدة" } else { "Your name on the new-chat screen" }))
-            .child(div().w(px(220.)).child(Input::new(&self.name_input).aria_label("Your name")))
+            .child(self.app_row(if rtl { "اسمك" } else { "Your name" }, div().w(px(220.)).child(Input::new(&self.name_input).aria_label("Your name")).into_any_element()))
             .child(div().text_xs().text_color(p.muted).child(if rtl { "إن تركته فارغًا يُستخدم اسمك من النظام." } else { "Leave it empty to use your name from the system." }));
-        div().flex().flex_col().gap_2().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text)
+        let look_section = self.app_section(true, if rtl { "المظهر" } else { "Look" }, look_hint, div().flex().flex_col().gap_2().child(looks).into_any_element());
+        let mode_section = self.app_section(false, if rtl { "الوضع" } else { "Light and dark" }, None, modes.into_any_element());
+        // Glass brings its own colours; they sit right under the look they belong to
+        let glass_section = (current == "Glass").then(|| self.glass_colours_block(window, cx));
+        let rule_note = (current == lh_gui::omarchy::TRANSPARENT && self.themes.needs_window_rule()).then(|| {
+            div().flex().flex_col().gap_1().text_xs().text_color(p.muted)
+                .child(format!("No Hyprland window rule makes this app see-through yet, so this look is opaque. Add this line to your Hyprland config (window class {}) and it follows within a few seconds:", lh_gui::omarchy::APP_CLASS))
+                .child(div().font_family(p.mono.clone()).text_color(p.text).child(lh_gui::omarchy::RULE_HINT))
+                .into_any_element()
+        });
+        let width_section = self.app_section(false, if rtl { "عرض القراءة" } else { "Reading width" }, Some(SharedString::from(if rtl { "كم يتسع عمود المحادثة على الشاشات العريضة." } else { "How wide the conversation runs on a wide screen." })), widths);
+        let type_section = self.app_section(false, if rtl { "الخط" } else { "Type" }, Some(SharedString::from(if rtl { "الخطوط المستخدمة في النص والشيفرة." } else { "The faces used for text and for code." })), fonts.into_any_element());
+        let greeting_section = self.app_section(false, if rtl { "شاشة المحادثة الجديدة" } else { "New chat" }, None, name_row.into_any_element());
+        let pages_section = self.app_section(false, if rtl { "صفحات الويب" } else { "Web pages" }, None, div().flex().flex_col().gap_1().child(pages_switch).child(pages_note).into_any_element());
+        let window_body = div().flex().flex_col().gap_3()
+            .child(self.app_row(if rtl { "اتجاه الواجهة" } else { "Interface direction" }, dir_btn))
+            .child(self.app_row(if rtl { "قائمة المحادثات" } else { "Chat list width" }, div().flex().flex_wrap().gap_1().child(narrower).child(wider).into_any_element()))
+            .into_any_element();
+        let window_section = self.app_section(false, if rtl { "النافذة" } else { "Window" }, None, window_body);
+        div().flex().flex_col().gap_5().text_color(p.text)
                 .id("appearance").role(Role::Group).aria_label("Appearance")
-                .child(modes)
-                .child(looks)
-                .children((current == "Glass").then(|| self.glass_colours_block(window, cx)))
-                .children((current == lh_gui::omarchy::TRANSPARENT && self.themes.needs_window_rule()).then(|| {
-                    div().flex().flex_col().gap_1().text_xs().text_color(p.muted)
-                        .child(format!("No Hyprland window rule makes this app see-through yet, so this look is opaque. Add this line to your Hyprland config (window class {}) and it follows within a few seconds:", lh_gui::omarchy::APP_CLASS))
-                        .child(div().font_family(p.mono.clone()).text_color(p.text).child(lh_gui::omarchy::RULE_HINT))
-                }))
-                .child(widths)
-                .child(fonts)
-                .child(name_row)
-                .child(div().flex().flex_col().gap_1().child(pages_switch).child(pages_note))
-                .child(div().flex().flex_wrap().gap_1().child(dir_btn).child(narrower).child(wider))
-                .child(div().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))
+                .child(look_section)
+                .child(mode_section)
+                .children(glass_section)
+                .children(rule_note)
+                .child(width_section)
+                .child(type_section)
+                .child(greeting_section)
+                .child(pages_section)
+                .child(window_section)
+                .child(div().border_t_1().border_color(p.border.opacity(0.7)).pt_4().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))
                 .children(self.themes.problems.iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Theme file problem: {e}"))))
             .children(self.themes.notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
             .children(self.look_notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
