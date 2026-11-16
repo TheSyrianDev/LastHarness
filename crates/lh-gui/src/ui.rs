@@ -625,7 +625,8 @@ impl App {
                 .overflow_hidden()
                 .flex()
                 .flex_col()
-                .elevated(&p, 2)
+                // a menu this big sits over the conversation, so it lifts a level above the chat
+                .elevated(&p, 3)
                 .on_mouse_down_out(cx.listener(|a, _, _, cx| {
                     if a.ctx_drag.is_none() {
                         a.model_menu = false;
