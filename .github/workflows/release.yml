@@ -270,7 +270,7 @@ jobs:
         run: |
           cargo build --release -p lh-core -p lh-tui
           cargo build --release -p lh-gui --no-default-features
-      - name: Bundle the app and the disk image
+      - name: Bundle the app
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then ver="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA:0:7}"; fi
           app="dist/LastAI.app"
@@ -301,21 +301,19 @@ jobs:
           iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
           # Ad-hoc signature only. Not Developer ID signed and not notarised.
           codesign --force --deep --sign - "$app"
-          # Stage the disk image contents in a temp folder, not in dist/.
-          stage="$RUNNER_TEMP/dmg-stage"
-          rm -rf "$stage" && mkdir -p "$stage"
-          cp -R "$app" "$stage/"
-          cp README.md LICENSE COMMERCIAL-LICENSING.md "$stage/"
-          ln -s /Applications "$stage/Applications"
-          hdiutil create -volname "Last AI" -srcfolder "$stage" -ov -format UDZO "LastAI-$ver-macos-arm64.dmg"
-          mv LastAI-*.dmg dist/
+          # A zipped bundle is the standard way to hand out an unsigned macOS
+          # app: it survives a browser download as a real .app with its
+          # permissions and symlinks intact. ditto, not zip, or they are lost.
+          zip="LastAI-$ver-macos-arm64.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+          mv "$zip" dist/
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: dist/*.dmg
+          path: dist/*-macos-*.zip
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           prerelease: true
-          files: dist/*.dmg
+          files: dist/*-macos-*.zip

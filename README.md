@@ -80,7 +80,7 @@ Release downloads (prereleases on GitHub):
 - Arch / Omarchy: `sudo pacman -U LastAI-*.pkg.tar.zst`, then `lastai-omarchy-setup` (sets up the theme hook and icon for your user). This is the only build with the Omarchy looks.
 - Other Linux distributions: the AppImage.
 - Windows: the `LastAI-<version>-windows-x64.zip`.
-- macOS (Apple silicon, early alpha): the `LastAI-<version>-macos-arm64.dmg`.
+- macOS (Apple silicon, early alpha): the `LastAI-<version>-macos-arm64.zip`. Unzip it and drag `Last AI.app` to Applications; it is not signed, so the first launch is right-click → Open.
 
 Build it yourself:
 
