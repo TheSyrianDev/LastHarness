@@ -1,5 +1,7 @@
 # Maintainer: TheSyrianDev <215098066+TheSyrianDev@users.noreply.github.com>
-# Source build of Last AI with the Omarchy integration (theme-following looks and launcher icon).
+# Plain Arch family build: no Omarchy integration. Omarchy has its own package,
+# lastai-omarchy (packaging/omarchy/PKGBUILD), because it ships theme-following
+# looks and the theme-set hook that this build leaves out.
 # Release tags look like v0.1.0-alpha; pkgver cannot hold '-', so it uses '_' and _tag maps back.
 pkgname=lastai
 pkgver=0.1.0_alpha
@@ -11,14 +13,12 @@ license=('LicenseRef-LastAI')
 depends=('gtk3' 'fontconfig' 'freetype2' 'vulkan-icd-loader' 'libxkbcommon' 'libxkbcommon-x11'
          'wayland' 'libxcb' 'openssl' 'dbus' 'alsa-lib' 'glibc' 'gcc-libs')
 makedepends=('rust' 'cargo' 'pkgconf' 'git')
-optdepends=('librsvg: theme-coloured launcher icon (lastai-omarchy-setup)'
-            'gtk-update-icon-cache: refresh the icon cache after a theme change')
-install=lastai.install
 options=('!lto' '!debug')
 _tag="v${pkgver//_/-}"
 _srcdir="LastAI-${_tag#v}"
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 sha256sums=('SKIP')
+conflicts=('lastai-omarchy')
 
 prepare() {
   cd "$_srcdir"
@@ -30,7 +30,8 @@ prepare() {
 build() {
   cd "$_srcdir"
   export RUSTUP_TOOLCHAIN=stable
-  cargo build --release -p lh-core -p lh-tui -p lh-gui --features lh-gui/omarchy
+  cargo build --release -p lh-core -p lh-tui
+  cargo build --release -p lh-gui --no-default-features
 }
 
 package() {
@@ -39,14 +40,10 @@ package() {
   for b in lastai-gui lastaid la lastai; do
     install -Dm755 "$t/$b" "$pkgdir/usr/bin/$b"
   done
-  install -Dm755 packaging/omarchy/lastai-omarchy-setup "$pkgdir/usr/bin/lastai-omarchy-setup"
   install -Dm644 packaging/lastai.desktop "$pkgdir/usr/share/applications/lastai.desktop"
   grep -q '^StartupWMClass=' "$pkgdir/usr/share/applications/lastai.desktop" \
     || echo 'StartupWMClass=lastai-gui' >> "$pkgdir/usr/share/applications/lastai.desktop"
   install -Dm644 packaging/lastai.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/lastai.png"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 COMMERCIAL-LICENSING.md "$pkgdir/usr/share/licenses/$pkgname/COMMERCIAL-LICENSING.md"
-  install -Dm755 packaging/omarchy/theme-set-hook "$pkgdir/usr/share/lastai/omarchy/theme-set-hook"
-  install -Dm755 packaging/omarchy/lastai-icon-refresh "$pkgdir/usr/share/lastai/omarchy/lastai-icon-refresh"
-  install -Dm644 packaging/omarchy/README.md "$pkgdir/usr/share/lastai/omarchy/README.md"
 }

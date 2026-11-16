@@ -67,8 +67,8 @@ jobs:
           sed -e "s/^pkgver=.*/pkgver=$ver/" \
               -e 's/^_srcdir=.*/_srcdir=lastai-src/' \
               -e 's/^source=.*/source=("lastai-src.tar.gz")/' \
-              packaging/aur/PKGBUILD > "$b/PKGBUILD"
-          cp packaging/aur/lastai.install "$b/"
+              packaging/omarchy/PKGBUILD > "$b/PKGBUILD"
+          cp packaging/omarchy/lastai-omarchy.install "$b/"
           # the version stamp in prepare() only applies to tags
           [[ $GITHUB_REF == refs/tags/* ]] || sed -i '/^  sed -i "s\/^version/d' "$b/PKGBUILD"
           mkdir -p "$GITHUB_WORKSPACE/target" "$HOME/.cargo"
@@ -82,6 +82,54 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: omarchy
+          path: dist/*.pkg.tar.zst
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: dist/*.pkg.tar.zst
+
+  arch-package:
+    # The plain Arch family build. Omarchy has its own package and its own job,
+    # because it is compiled with the Omarchy integration and ships the hook.
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Build tools
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git rust pkgconf gtk3 fontconfig freetype2 vulkan-icd-loader libxkbcommon libxkbcommon-x11 wayland libxcb openssl dbus alsa-lib
+          useradd -m builder
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the package
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            ver="${GITHUB_REF_NAME#v}"; ver="${ver//-/_}"
+          else
+            ver="0.0.0.dev${GITHUB_SHA::7}"
+          fi
+          b=/home/builder/pkg
+          mkdir -p "$b"
+          git archive --format=tar.gz --prefix=lastai-src/ -o "$b/lastai-src.tar.gz" HEAD
+          sed -e "s/^pkgver=.*/pkgver=$ver/" \
+              -e 's/^_srcdir=.*/_srcdir=lastai-src/' \
+              -e 's/^source=.*/source=("lastai-src.tar.gz")/' \
+              packaging/aur/PKGBUILD > "$b/PKGBUILD"
+          # the version stamp in prepare() only applies to tags
+          [[ $GITHUB_REF == refs/tags/* ]] || sed -i '/^  sed -i "s\/^version/d' "$b/PKGBUILD"
+          mkdir -p "$GITHUB_WORKSPACE/target" "$HOME/.cargo"
+          chown -R builder "$b" "$GITHUB_WORKSPACE/target" "$HOME/.cargo"
+          chmod a+x "$HOME"
+          cd "$b"
+          sudo -u builder env CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" makepkg --nodeps --noconfirm
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for f in ./*.pkg.tar.zst; do cp "$f" "$GITHUB_WORKSPACE/dist/LastAI-${f#./lastai-}"; done
+          ls -l "$GITHUB_WORKSPACE/dist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
           path: dist/*.pkg.tar.zst
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
