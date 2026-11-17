@@ -45,9 +45,6 @@ pub struct Prefs {
     pub glass_colours: Vec<String>,
     /// How strongly the Glass colours show, 0 to 1. None means 0.5.
     pub glass_opacity: Option<f32>,
-    /// Do the Omarchy looks take the window's transparency from the desktop? `None` keeps each look's default:
-    /// the plain Omarchy look opaque, its see-through variant following the desktop.
-    pub follow_omarchy: Option<bool>,
     /// Liquid glass off, for anyone who wants flat surfaces: every surface takes its solid colour and its hairline
     /// instead of a lens. Each look still says which surfaces *would* be glass in its `[material]` table.
     pub glass_off: bool,

@@ -422,24 +422,6 @@ impl App {
             .child(self.font_picker_row(crate::app::FontSlot::Arabic, cx))
             .child(self.added_fonts_block(cx));
 
-        // the Omarchy look is the one that can take the window's transparency from the desktop; the plain one is
-        // opaque unless asked, so the desktop's window rule cannot make it see-through behind the person's back
-        let omarchy_look = current == "Omarchy" || current == lh_gui::omarchy::TRANSPARENT;
-        let follows = self.follows_omarchy();
-        let follow_row = (omarchy_look && self.themes.on_hyprland()).then(|| {
-            let sw = self.glass_switch("follow-omarchy", follows, true, if rtl { "شفافية النافذة من أومارشي" } else { "Follow Omarchy's window transparency" }, false, cx, |a, on, w, cx| a.set_follow_omarchy(on, w, cx));
-            let note = div().text_xs().text_color(p.muted).child(if follows {
-                if rtl { "الشفافية من قاعدة نافذة Hyprland لديك." } else { "The see-through level comes from your Hyprland window rule." }
-            } else if rtl {
-                "النافذة معتمة، مهما قالت قاعدة Hyprland."
-            } else {
-                "The window is opaque, whatever your Hyprland rule says."
-            });
-            div().flex().flex_col().gap_1()
-                .child(self.app_row(if rtl { "شفافية النافذة" } else { "Window transparency" }, div().flex().items_center().gap_3().child(sw).into_any_element()))
-                .child(note)
-                .into_any_element()
-        });
         let glass_switch = self.glass_switch("glass-master", !self.prefs.glass_off, true, if rtl { "الزجاج السائل" } else { "Liquid glass" }, true, cx, |a, on, _, cx| {
             a.prefs.glass_off = !on;
             a.persist();
@@ -491,19 +473,12 @@ impl App {
             .into_any_element();
         let look_body = div().flex().flex_col().gap_3()
             .child(looks)
-            .children(follow_row)
             .child(preview)
             .into_any_element();
         let look_section = self.app_section(true, if rtl { "المظهر" } else { "Look" }, look_hint, look_body);
         let mode_section = self.app_section(false, if rtl { "الوضع" } else { "Light and dark" }, None, modes.into_any_element());
         // Glass brings its own colours; they sit right under the look they belong to
         let glass_section = (current == "Glass").then(|| self.glass_colours_block(window, cx));
-        let rule_note = (current == lh_gui::omarchy::TRANSPARENT && follows && self.themes.needs_window_rule()).then(|| {
-            div().flex().flex_col().gap_1().text_xs().text_color(p.muted)
-                .child(format!("No Hyprland window rule makes this app see-through yet, so this look is opaque. Add this line to your Hyprland config (window class {}) and it follows within a few seconds:", lh_gui::omarchy::APP_CLASS))
-                .child(div().font_family(p.mono.clone()).text_color(p.text).child(lh_gui::omarchy::RULE_HINT))
-                .into_any_element()
-        });
         let type_section = self.app_section(false, if rtl { "الخط" } else { "Type" }, Some(SharedString::from(if rtl { "الخطوط المستخدمة في النص والشيفرة." } else { "The faces used for text and for code." })), fonts.into_any_element());
         let window_body = div().flex().flex_col().gap_3()
             .child(self.app_row(if rtl { "اتجاه الواجهة" } else { "Interface direction" }, dir_btn))
@@ -514,7 +489,6 @@ impl App {
                 .child(look_section)
                 .child(mode_section)
                 .children(glass_section)
-                .children(rule_note)
                 .child(self.app_section(false, if rtl { "الزجاج" } else { "Glass" }, None, glass_body))
                 .child(type_section)
                 .child(window_section)
@@ -612,7 +586,7 @@ impl App {
 
     /// The Themes page: every look as a row, with the folder behind it — copy it, rename it, take it out or bring one
     /// in. The person's own looks are folders in one place, so this page is the window onto that folder.
-    fn themes_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn themes_page(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.pal.clone();
         let rtl = self.rtl;
         let current = self.family();

@@ -47,11 +47,7 @@ target/release/lastai-gui # or the desktop app (needs the core running)
 
 The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: a look is a folder in `~/.config/lastai/themes/` with a `theme.toml` inside (and a `background.png` beside it if you want a picture), and the folder's name is the look's name. [docs/looks.md](docs/looks.md) lists every key; the built-in looks, each family in light and dark, are in `crates/lh-gui/themes/` as examples. Press Ctrl+N for a new chat.
 
-The Omarchy release (the Arch package `LastAI-<version>-x86_64.pkg.tar.zst`: `sudo pacman -U LastAI-*.pkg.tar.zst`, then `lastai-omarchy-setup`) also offers the desktop's own look, and an "Omarchy (transparent)" look that is liquid glass in the Omarchy colours. The transparent look is as see-through as the Hyprland window rule for the app's window (class `lastai-gui`) says; without a rule it stays opaque. Other builds (AppImage, Windows, macOS, or a source build with `--no-default-features`) leave the Omarchy looks out. To add one, put this line in `~/.config/hypr/hyprland.lua` (0.85 is how much of the window shows):
-
-```lua
-o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
-```
+The Omarchy edition of the desktop app (theme following, a see-through look in the desktop's colours, its own Arch package and setup script) lives on the `omarchy` branch of this repository, not here. This branch is LastAI Studio on its own: the same themes, `theme.toml` and folders, no desktop coupling.
 
 Check a built core without the desktop: `scripts/smoke-headless.sh` (starts `lhd` on a temp store and checks the HTTP API).
 
@@ -77,7 +73,7 @@ Release downloads (prereleases on GitHub):
 
 - Debian / Ubuntu: `sudo apt install ./LastAI-<version>-amd64.deb`.
 - Fedora / openSUSE: `sudo dnf install ./LastAI-<version>-x86_64.rpm`.
-- Arch / Omarchy: `sudo pacman -U LastAI-*.pkg.tar.zst`, then `lastai-omarchy-setup` (sets up the theme hook and icon for your user). This is the only build with the Omarchy looks.
+- Arch: `sudo pacman -U LastAI-*.pkg.tar.zst`. The Omarchy edition has its own package on the `omarchy` branch.
 - Other Linux distributions: the AppImage.
 - Windows: the `LastAI-<version>-windows-x64.zip`.
 - macOS (Apple silicon, early alpha): the `LastAI-<version>-macos-arm64.zip`. Unzip it and drag `Last AI.app` to Applications; it is not signed, so the first launch is right-click → Open.
@@ -85,7 +81,7 @@ Release downloads (prereleases on GitHub):
 Build it yourself:
 
 - Source: `cargo build --release` (needs Rust stable; on Linux the desktop app needs the usual GPUI and system libraries).
-- Arch package: `makepkg -si` in `packaging/aur`. `scripts/install-omarchy.sh` still installs a source build into your home folder.
+- Arch package: `makepkg -si` in `packaging/aur`.
 - Linux AppImage: `packaging/build-appimage.sh` (needs `linuxdeploy`; see the script's header).
 - .deb / .rpm: `packaging/nfpm.yaml` (see its header).
 

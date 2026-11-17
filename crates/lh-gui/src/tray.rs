@@ -3,14 +3,11 @@
 //!
 //! The icon is the brand mark alone, in one colour, on a clear background (the 16 px pixel mark from
 //! `brand/motion-kit/tools/tray16.js` at 16 px, the 64-unit mark from `brand.rs` at 22 and 32 px). Its colour:
-//! on Omarchy, the theme's foreground; elsewhere, light on a dark system scheme and dark on a light one. The colour
-//! is re-read every few seconds and when the Omarchy theme changes (the app's theme tick calls [`sync`]).
+//! light on a dark system scheme and dark on a light one. The colour is re-read every few seconds.
 
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 
-use lh_gui::omarchy;
-use lh_gui::theme::Color;
 
 /// What the icon shows: a flat colour as 0xRRGGBB, or the symbolic icon name when nothing can say what colour fits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,12 +27,8 @@ pub enum Scheme {
     Light,
 }
 
-/// The icon's colour rule: Omarchy's foreground when there is one, else a colour from the system scheme, else the
-/// symbolic name.
-pub fn pick(omarchy_fg: Option<Color>, scheme: Option<Scheme>) -> Pick {
-    if let Some(c) = omarchy_fg {
-        return Pick::Pixmap((c.r as u32) << 16 | (c.g as u32) << 8 | c.b as u32);
-    }
+/// The icon's colour rule: a colour from the system scheme, else the symbolic name.
+pub fn pick(scheme: Option<Scheme>) -> Pick {
     match scheme {
         Some(Scheme::Dark) => Pick::Pixmap(LIGHT_ICON),
         Some(Scheme::Light) => Pick::Pixmap(DARK_ICON),
@@ -79,9 +72,7 @@ fn read_scheme() -> Option<Scheme> {
 
 /// What the icon should show right now.
 fn current_pick() -> Pick {
-    let fg = omarchy::current_dir().and_then(|d| omarchy::foreground(&d));
-    let scheme = if fg.is_some() { None } else { read_scheme() };
-    pick(fg, scheme)
+    pick(read_scheme())
 }
 
 /// The mark as ARGB32 (network byte order) at `size` pixels square, filled with `rgb`, clear where there is no mark.
@@ -235,12 +226,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn omarchy_foreground_wins_then_the_system_scheme_then_the_symbolic_name() {
-        let fg = Color::parse("#e1e7d9").unwrap();
-        assert_eq!(pick(Some(fg), Some(Scheme::Light)), Pick::Pixmap(0xe1e7d9), "the Omarchy colour, whatever the scheme");
-        assert_eq!(pick(None, Some(Scheme::Dark)), Pick::Pixmap(LIGHT_ICON), "dark scheme: light icon");
-        assert_eq!(pick(None, Some(Scheme::Light)), Pick::Pixmap(DARK_ICON), "light scheme: dark icon");
-        assert_eq!(pick(None, None), Pick::Symbolic, "nothing known: the symbolic name, the last resort");
+    fn the_system_scheme_decides_the_colour_then_the_symbolic_name() {
+        assert_eq!(pick(Some(Scheme::Dark)), Pick::Pixmap(LIGHT_ICON), "dark scheme: light icon");
+        assert_eq!(pick(Some(Scheme::Light)), Pick::Pixmap(DARK_ICON), "light scheme: dark icon");
+        assert_eq!(pick(None), Pick::Symbolic, "nothing known: the symbolic name, the last resort");
     }
 
     #[test]

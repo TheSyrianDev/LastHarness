@@ -532,56 +532,12 @@ pub struct ThemeSet {
     dir: PathBuf,
     stamp: Option<SystemTime>,
     count: usize,
-    /// Omarchy's current-theme folder, when the app looks for one.
-    omarchy: Option<PathBuf>,
-    omarchy_stamp: crate::omarchy::Stamp,
-    /// Hyprland's rounding, opacity and blur as last read, and when they were last asked for (every 5 s at most).
-    hypr: Option<crate::omarchy::Hypr>,
-    hypr_asked: std::cell::Cell<std::time::Instant>,
-    /// The person's choice: do the Omarchy looks take their transparency from the desktop? `None` is the
-    /// default for each: the plain look opaque, its see-through variant following.
-    pub follow: Option<bool>,
-}
-
-/// How often the theme tick asks Hyprland again; each ask is one short `hyprctl` run.
-const HYPR_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
-
-/// Hyprland's settings when the Omarchy look is in play; never in unit tests, which must not see this machine.
-fn ask_hypr(omarchy: Option<&Path>) -> Option<crate::omarchy::Hypr> {
-    if cfg!(test) || omarchy.is_none() { None } else { crate::omarchy::Hypr::read() }
 }
 
 impl ThemeSet {
-    /// Built-in looks, the person's own, and the Omarchy look when the desktop has an Omarchy theme.
+    /// The built-in looks and the person's own.
     pub fn load(dir: &Path) -> ThemeSet {
-        // unit tests never pick up the desktop of the machine they run on
-        ThemeSet::load_with(dir, if cfg!(test) { None } else { crate::omarchy::current_dir() })
-    }
-
-    /// As [`ThemeSet::load`], with the person's choice about the desktop's transparency.
-    pub fn load_preferring(dir: &Path, follow: Option<bool>) -> ThemeSet {
-        ThemeSet::load_following(dir, if cfg!(test) { None } else { crate::omarchy::current_dir() }, follow)
-    }
-
-    /// As [`ThemeSet::load`], with Omarchy's current-theme folder given (`None`: never look for it).
-    pub fn load_with(dir: &Path, omarchy: Option<PathBuf>) -> ThemeSet {
-        ThemeSet::load_following(dir, omarchy, None)
-    }
-
-    /// As [`ThemeSet::load_with`], with the person's choice about the desktop's transparency. `None` means the
-    /// default for each Omarchy look: the plain one opaque, the see-through variant following the desktop.
-    pub fn load_following(dir: &Path, omarchy: Option<PathBuf>, follow: Option<bool>) -> ThemeSet {
         let mut themes = builtin();
-        // on Omarchy its look comes first, so a fresh install (no look chosen) matches the desktop
-        let omarchy_stamp = omarchy.as_deref().map(crate::omarchy::stamp).unwrap_or_default();
-        let hypr = ask_hypr(omarchy.as_deref());
-        if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load(d, hypr, follow.unwrap_or(false))) {
-            themes.insert(0, t);
-            // its see-through variant next to it, as see-through as Hyprland's window rule for this app says
-            if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load_transparent(d, hypr, follow.unwrap_or(true))) {
-                themes.insert(1, t);
-            }
-        }
         let mut problems = vec![];
         let mut old_things: Vec<(String, Vec<&'static str>)> = vec![];
         let mut stamp = None;
@@ -643,14 +599,14 @@ impl ThemeSet {
             let files: Vec<String> = old_things.iter().map(|(n, what)| format!("{n} ({})", what.join(", "))).collect();
             format!("{} {} something that no longer exists. It is ignored and the rest of the file still counts.", files.join(", "), if old_things.len() == 1 { "uses" } else { "use" })
         });
-        ThemeSet { themes, problems, notice, origins, dir: dir.to_path_buf(), stamp, count, omarchy, omarchy_stamp, hypr, hypr_asked: std::cell::Cell::new(std::time::Instant::now()), follow }
+        ThemeSet { themes, problems, notice, origins, dir: dir.to_path_buf(), stamp, count }
     }
 
     /// Has any look in the folder changed since the last load? That is a file, a folder's `theme.toml`, or the
     /// picture in a folder, so editing either shows up while the app runs.
     pub fn changed(&self) -> bool {
         let (newest, count) = newest_in(&self.dir);
-        newest != self.stamp || count != self.count || self.omarchy.as_deref().is_some_and(|d| crate::omarchy::stamp(d) != self.omarchy_stamp) || self.hypr_changed()
+        newest != self.stamp || count != self.count
     }
 
     /// Where this look lives: compiled in, one file, or a folder of its own.
@@ -658,34 +614,8 @@ impl ThemeSet {
         self.origins.get(label)
     }
 
-    /// Has Hyprland's rounding, opacity or blur changed? Asked at most every 5 s, only when Omarchy is there.
-    fn hypr_changed(&self) -> bool {
-        if self.omarchy.is_none() || self.hypr_asked.get().elapsed() < HYPR_EVERY {
-            return false;
-        }
-        self.hypr_asked.set(std::time::Instant::now());
-        ask_hypr(self.omarchy.as_deref()) != self.hypr
-    }
-
-    /// Is the app looking at a Hyprland desktop at all? Settings shows the transparency switch only when it is.
-    pub fn on_hyprland(&self) -> bool {
-        self.hypr.is_some()
-    }
-
-    /// For Settings: the transparent Omarchy look is chosen-able but no Hyprland window rule makes this app
-    /// see-through, so the look is opaque. False off Hyprland (nothing to add a rule to).
-    pub fn needs_window_rule(&self) -> bool {
-        self.hypr.is_some_and(|h| !h.has_see_through_rule())
-    }
-
-    /// Remember whether the Omarchy looks follow the desktop's transparency, and rebuild them to match.
-    pub fn set_follow(&mut self, follow: Option<bool>) {
-        self.follow = follow;
-        self.reload();
-    }
-
     pub fn reload(&mut self) {
-        *self = ThemeSet::load_following(&self.dir.clone(), self.omarchy.clone(), self.follow);
+        *self = ThemeSet::load(&self.dir.clone());
     }
 
     /// The families of looks, once each, in the order they first appear: "Calm", "Matte", "Glass",
@@ -1542,31 +1472,4 @@ mod tests {
         assert_eq!((old.colors.danger, old.colors.warn), (Color::parse("#aa0000").unwrap(), Color::parse("#aaaa00").unwrap()));
     }
 
-    #[test]
-    fn on_omarchy_its_look_comes_first_and_follows_a_theme_change() {
-        let root = std::env::temp_dir().join(format!("lh-theme-omarchy-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        let cur = root.join("current");
-        std::fs::create_dir_all(cur.join("theme")).unwrap();
-        std::fs::write(cur.join("theme.name"), "a").unwrap();
-        std::fs::write(cur.join("theme/colors.toml"), include_str!("../tests/fixtures/omarchy-dark.toml")).unwrap();
-        let mut set = ThemeSet::load_with(&root.join("none"), Some(cur.clone()));
-        assert_eq!(set.families()[0], "Omarchy");
-        assert_eq!(set.families()[1], crate::omarchy::TRANSPARENT, "the see-through variant sits next to it");
-        assert!(!set.needs_window_rule(), "no Hyprland in tests: no hint");
-        assert_eq!(set.themes[set.resolve("", false)].label(), "Omarchy dark", "no look chosen: the desktop's, in its own mode");
-        assert!(!set.changed());
-        std::fs::write(cur.join("theme.name"), "b").unwrap();
-        std::fs::write(cur.join("theme/colors.toml"), include_str!("../tests/fixtures/omarchy-light.toml")).unwrap();
-        assert!(set.changed(), "omarchy theme set is noticed");
-        set.reload();
-        assert_eq!(set.themes[0].label(), "Omarchy light");
-        // the theme folder goes away (not on Omarchy any more): the look is gone and Calm is first again
-        std::fs::remove_dir_all(&cur).unwrap();
-        assert!(set.changed());
-        set.reload();
-        assert_eq!(set.families()[0], "Calm");
-        assert!(missing_look_notice("Omarchy", &set.families()).is_some());
-        let _ = std::fs::remove_dir_all(&root);
-    }
 }

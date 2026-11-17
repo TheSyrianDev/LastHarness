@@ -1,6 +1,6 @@
 # Maintainer: TheSyrianDev <215098066+TheSyrianDev@users.noreply.github.com>
-# Plain Arch family build: no Omarchy integration. Omarchy has its own package,
-# lastai-omarchy (packaging/omarchy/PKGBUILD), because it ships theme-following
+# Plain Arch family build. The Omarchy edition of the desktop app lives on the
+# `omarchy` branch, which ships its own package (packaging/omarchy/PKGBUILD).
 # looks and the theme-set hook that this build leaves out.
 # Release tags look like v0.1.0-alpha; pkgver cannot hold '-', so it uses '_' and _tag maps back.
 pkgname=lastai
@@ -18,7 +18,6 @@ _tag="v${pkgver//_/-}"
 _srcdir="LastAI-${_tag#v}"
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 sha256sums=('SKIP')
-conflicts=('lastai-omarchy')
 
 prepare() {
   cd "$_srcdir"

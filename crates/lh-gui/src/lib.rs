@@ -16,7 +16,6 @@ pub mod layout;
 pub mod model;
 pub mod motion;
 pub mod models;
-pub mod omarchy;
 pub mod page_fetch;
 pub mod pages;
 pub mod pages_logic;

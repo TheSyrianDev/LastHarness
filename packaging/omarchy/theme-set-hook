@@ -1,3 +1,0 @@
-#!/bin/bash
-# Omarchy theme-set hook: recolour the Last AI launcher icon for the new theme.
-"${LASTAI_BIN:-$HOME/.local/bin}/lastai-icon-refresh" >/dev/null 2>&1 || true

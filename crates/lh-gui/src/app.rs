@@ -318,7 +318,7 @@ fn stored_to_chat(chats: &mut Chats, models: &ModelList, s: &StoredChat) {
 impl App {
     pub fn new(cfg: Config, window: &mut Window, cx: &mut Context<Self>) -> App {
         let mut prefs = Prefs::load(&cfg.prefs);
-        let themes = ThemeSet::load_preferring(&cfg.themes, prefs.follow_omarchy);
+        let themes = ThemeSet::load(&cfg.themes);
         // a saved look that no longer exists falls back to the first look, once, with a line saying so under Appearance
         let look_notice = lh_gui::theme::missing_look_notice(&prefs.theme, &themes.families());
         if look_notice.is_some() {
@@ -681,9 +681,6 @@ impl App {
     /// the look); `None` starts it in the middle of the window.
     pub fn reapply_look_from(&mut self, origin: Option<Point<Pixels>>, window: &mut Window, cx: &mut Context<Self>) {
         let from = self.pal.background.clone();
-        if self.themes.follow != self.prefs.follow_omarchy {
-            self.themes.set_follow(self.prefs.follow_omarchy);
-        }
         self.active_theme = self.themes.resolve(&self.prefs.theme, self.dark());
         self.refresh_pal(cx);
         self.apply_window(window);
@@ -712,19 +709,6 @@ impl App {
         }
     }
 
-    /// Does the look in use take its transparency from the desktop's window rule?
-    pub fn follows_omarchy(&self) -> bool {
-        let t = &self.themes.themes[self.active_theme];
-        let omarchy = t.name == "Omarchy" || t.name == lh_gui::omarchy::TRANSPARENT;
-        omarchy && self.prefs.follow_omarchy.unwrap_or(t.name == lh_gui::omarchy::TRANSPARENT)
-    }
-
-    /// Turn following the desktop's transparency on or off, and rebuild the Omarchy looks to match.
-    pub fn set_follow_omarchy(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.prefs.follow_omarchy = Some(on);
-        self.reapply_look(window, cx);
-    }
-
     /// Light, dark, or follow the desktop.
     pub fn set_appearance(&mut self, mode: lh_gui::appearance::ModeChoice, window: &mut Window, cx: &mut Context<Self>) {
         if mode == lh_gui::appearance::ModeChoice::System {
@@ -744,9 +728,6 @@ impl App {
     pub fn apply_window(&self, window: &mut Window) {
         let t = &self.themes.themes[self.active_theme];
         window.set_background_appearance(if t.blur { WindowBackgroundAppearance::Blurred } else if t.is_translucent() { WindowBackgroundAppearance::Transparent } else { WindowBackgroundAppearance::Opaque });
-        // the look paints its own transparency; the window stays opaque, so a leftover window rule cannot make an
-        // opaque look see-through (and the desktop's rule no longer doubles the look's own alpha)
-        lh_gui::omarchy::own_window_opacity();
     }
 
     /// Load the fonts that ship with the app, then every font in the added-fonts folder, into the window's text
