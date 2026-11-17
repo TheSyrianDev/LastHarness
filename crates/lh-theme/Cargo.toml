@@ -1,0 +1,11 @@
+[package]
+name = "lh-theme"
+description = "Tells the Last AI website which Omarchy theme is in use, over loopback"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "lastai-theme"
+path = "src/main.rs"

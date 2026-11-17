@@ -10,6 +10,9 @@ share="${LASTAI_SHARE:-/usr/share/lastai/omarchy}"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
 hook_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/hooks/theme-set.d"
 hook="$hook_dir/lastai-icon"
+unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+unit="$unit_dir/lastai-theme.service"
+website_port="${LASTAI_THEME_PORT:-8787}"
 
 dry=0; mode=install
 for a in "$@"; do
@@ -24,8 +27,13 @@ done
 
 run() { if (( dry )); then echo "would run: $*"; else "$@"; fi; }
 
+userctl() { command -v systemctl >/dev/null || return 0; run systemctl --user "$@" || true; }
+
 if [[ $mode == uninstall ]]; then
   [[ -e $hook ]] && run rm -f "$hook"
+  userctl disable --now lastai-theme.service
+  [[ -e $unit ]] && run rm -f "$unit"
+  userctl daemon-reload
   for f in "$data"/icons/hicolor/*/apps/lastai.{svg,png}; do
     [[ -e $f ]] && run rm -f "$f"
   done
@@ -34,7 +42,7 @@ if [[ $mode == uninstall ]]; then
   exit 0
 fi
 
-for f in theme-set-hook lastai-icon-refresh; do
+for f in theme-set-hook lastai-icon-refresh lastai-theme.service; do
   [[ -f $share/$f ]] || { echo "missing $share/$f; is the lastai package installed?" >&2; exit 1; }
 done
 
@@ -42,6 +50,19 @@ done
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
 sed "s|\${LASTAI_BIN:-\$HOME/.local/bin}|\${LASTAI_BIN:-$share}|" "$share/theme-set-hook" > "$tmp"
 run install -Dm755 "$tmp" "$hook"
+
+# the website reads your theme from this service; it answers on loopback only
+if [[ -x /usr/bin/lastai-theme ]]; then
+  tmp_unit="$(mktemp)"
+  sed "s|^ExecStart=.*|ExecStart=/usr/bin/lastai-theme|; s|^Environment=LASTAI_THEME_PORT=.*|Environment=LASTAI_THEME_PORT=$website_port|" \
+    "$share/lastai-theme.service" > "$tmp_unit"
+  run install -Dm644 "$tmp_unit" "$unit"
+  rm -f "$tmp_unit"
+  userctl daemon-reload
+  userctl enable --now lastai-theme.service
+else
+  echo "lastai-theme not found in /usr/bin; the website will use its own theme picker" >&2
+fi
 
 if command -v rsvg-convert >/dev/null; then
   run "$share/lastai-icon-refresh" || echo "icon refresh failed; it runs again on the next theme change" >&2
@@ -51,7 +72,10 @@ fi
 
 cat <<'MSG'
 
-Last AI is set up for Omarchy. For the see-through "Omarchy (transparent)" look, add this line to your
+Last AI is set up for Omarchy, and the website can now wear your theme: lastai-theme is running on
+http://127.0.0.1:$website_port (only this machine can reach it).
+
+For the see-through "Omarchy (transparent)" look, add this line to your
 Hyprland config yourself (this command does not touch it):
 
   o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })

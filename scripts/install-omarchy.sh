@@ -11,6 +11,7 @@ bin_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
 apps="$data/applications"
 hook_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/hooks/theme-set.d"
+unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 bins=(lastai-gui lastaid la lastai)
 
 dry=0; mode=install
@@ -42,9 +43,11 @@ find_bin() {
 }
 
 if [[ $mode == uninstall ]]; then
-  for b in "${bins[@]}" lastai-icon-refresh; do
+  for b in "${bins[@]}" lastai-icon-refresh lastai-theme; do
     [[ -e $bin_dir/$b ]] && run rm -f "$bin_dir/$b"
   done
+  command -v systemctl >/dev/null && run systemctl --user disable --now lastai-theme.service || true
+  [[ -e $unit_dir/lastai-theme.service ]] && run rm -f "$unit_dir/lastai-theme.service"
   [[ -e $apps/lastai.desktop ]] && run rm -f "$apps/lastai.desktop"
   [[ -e $hook_dir/lastai-icon ]] && run rm -f "$hook_dir/lastai-icon"
   for f in "$data"/icons/hicolor/*/apps/lastai.{svg,png}; do
@@ -64,6 +67,19 @@ done
 (( found )) || { echo "no Last AI binaries found next to $0" >&2; exit 1; }
 
 run install -Dm755 "$(find_file lastai-icon-refresh)" "$bin_dir/lastai-icon-refresh"
+
+# the website reads your theme from this small service; loopback only
+if theme_src="$(find_bin lastai-theme)"; then
+  run install -Dm755 "$theme_src" "$bin_dir/lastai-theme"
+  unit="$(mktemp)"
+  sed "s|^ExecStart=.*|ExecStart=$bin_dir/lastai-theme|" "$(find_file lastai-theme.service)" > "$unit"
+  run install -Dm644 "$unit" "$unit_dir/lastai-theme.service"
+  rm -f "$unit"
+  if command -v systemctl >/dev/null; then
+    run systemctl --user daemon-reload
+    run systemctl --user enable --now lastai-theme.service
+  fi
+fi
 run install -Dm755 "$(find_file theme-set-hook)" "$hook_dir/lastai-icon"
 
 desktop="$(mktemp)"; trap 'rm -f "$desktop"' EXIT
@@ -84,4 +100,6 @@ Last AI is installed. For the see-through "Omarchy (transparent)" look, add this
 Hyprland config yourself (this script does not touch it):
 
   o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
+
+The website can wear this theme too: lastai-theme is running on http://127.0.0.1:8787.
 MSG

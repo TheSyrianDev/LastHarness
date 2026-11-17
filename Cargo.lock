@@ -4504,6 +4504,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lh-theme"
+version = "0.0.0"
+
+[[package]]
 name = "lh-tools"
 version = "0.0.0"
 dependencies = [

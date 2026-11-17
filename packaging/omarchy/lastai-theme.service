@@ -1,0 +1,17 @@
+[Unit]
+Description=Last AI theme service: the live Omarchy theme, for the Last AI website
+Documentation=https://github.com/TheSyrianDev/LastAI/blob/omarchy/docs/website-theme.md
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/lastai-theme
+Environment=LASTAI_THEME_PORT=8787
+Restart=on-failure
+RestartSec=2
+# it reads ~/.local/state/omarchy/current and serves loopback; nothing else
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

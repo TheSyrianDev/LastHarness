@@ -17,6 +17,11 @@ what it would do. To build the package yourself, run `makepkg -si` in `packaging
 Or, on Omarchy, let the installer pick it: `curl -fsSL https://thesyriandev.github.io/lastsoft/install.sh | sh`
 reads `/etc/os-release`, sees Omarchy, and installs this package instead of the plain Arch one.
 
+On top of that, the package ships `lastai-theme`: a small user service that tells the Last AI website which
+theme you are using, so the site wears it and changes when you do. `lastai-omarchy-setup` enables it on
+`http://127.0.0.1:8787` (loopback only). See [docs/website-theme.md](../../docs/website-theme.md) for what it
+answers and how to check it; `systemctl --user status lastai-theme` shows whether it is running.
+
 `lastai-omarchy-setup` never edits your Hyprland config. For the see-through look, add this line yourself:
 
     o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })

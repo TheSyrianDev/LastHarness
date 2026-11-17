@@ -8,7 +8,7 @@
 pkgname=lastai-omarchy
 pkgver=0.1.0_alpha
 pkgrel=1
-pkgdesc="Last AI for Omarchy: theme-following looks, launcher icon hook"
+pkgdesc="Last AI for Omarchy: theme-following looks, launcher icon hook, website theme service"
 arch=('x86_64')
 url="https://github.com/TheSyrianDev/LastAI"
 license=('LicenseRef-LastAI')
@@ -36,15 +36,18 @@ prepare() {
 build() {
   cd "$_srcdir"
   export RUSTUP_TOOLCHAIN=stable
-  cargo build --release -p lh-core -p lh-tui -p lh-gui --features lh-gui/omarchy
+  cargo build --release -p lh-core -p lh-tui -p lh-gui -p lh-theme --features lh-gui/omarchy
 }
 
 package() {
   cd "$_srcdir"
   local t="${CARGO_TARGET_DIR:-target}/release" b
-  for b in lastai-gui lastaid la lastai; do
+  for b in lastai-gui lastaid la lastai lastai-theme; do
     install -Dm755 "$t/$b" "$pkgdir/usr/bin/$b"
   done
+  # the theme service the website reads, as a user unit
+  install -Dm644 packaging/omarchy/lastai-theme.service \
+    "$pkgdir/usr/lib/systemd/user/lastai-theme.service"
   # the Omarchy extras: the setup command, the theme hook and the icon refresh it runs
   install -Dm755 packaging/omarchy/lastai-omarchy-setup "$pkgdir/usr/bin/lastai-omarchy-setup"
   install -Dm755 packaging/omarchy/theme-set-hook "$pkgdir/usr/share/lastai/omarchy/theme-set-hook"
