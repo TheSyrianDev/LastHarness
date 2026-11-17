@@ -534,6 +534,9 @@ pub struct ThemeSet {
     /// Hyprland's rounding, opacity and blur as last read, and when they were last asked for (every 5 s at most).
     hypr: Option<crate::omarchy::Hypr>,
     hypr_asked: std::cell::Cell<std::time::Instant>,
+    /// The person's choice: do the Omarchy looks take their transparency from the desktop? `None` is the
+    /// default for each: the plain look opaque, its see-through variant following.
+    pub follow: Option<bool>,
 }
 
 /// How often the theme tick asks Hyprland again; each ask is one short `hyprctl` run.
@@ -551,16 +554,27 @@ impl ThemeSet {
         ThemeSet::load_with(dir, if cfg!(test) { None } else { crate::omarchy::current_dir() })
     }
 
+    /// As [`ThemeSet::load`], with the person's choice about the desktop's transparency.
+    pub fn load_preferring(dir: &Path, follow: Option<bool>) -> ThemeSet {
+        ThemeSet::load_following(dir, if cfg!(test) { None } else { crate::omarchy::current_dir() }, follow)
+    }
+
     /// As [`ThemeSet::load`], with Omarchy's current-theme folder given (`None`: never look for it).
     pub fn load_with(dir: &Path, omarchy: Option<PathBuf>) -> ThemeSet {
+        ThemeSet::load_following(dir, omarchy, None)
+    }
+
+    /// As [`ThemeSet::load_with`], with the person's choice about the desktop's transparency. `None` means the
+    /// default for each Omarchy look: the plain one opaque, the see-through variant following the desktop.
+    pub fn load_following(dir: &Path, omarchy: Option<PathBuf>, follow: Option<bool>) -> ThemeSet {
         let mut themes = builtin();
         // on Omarchy its look comes first, so a fresh install (no look chosen) matches the desktop
         let omarchy_stamp = omarchy.as_deref().map(crate::omarchy::stamp).unwrap_or_default();
         let hypr = ask_hypr(omarchy.as_deref());
-        if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load(d, hypr)) {
+        if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load(d, hypr, follow.unwrap_or(false))) {
             themes.insert(0, t);
             // its see-through variant next to it, as see-through as Hyprland's window rule for this app says
-            if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load_transparent(d, hypr)) {
+            if let Some(t) = omarchy.as_deref().and_then(|d| crate::omarchy::load_transparent(d, hypr, follow.unwrap_or(true))) {
                 themes.insert(1, t);
             }
         }
@@ -597,7 +611,7 @@ impl ThemeSet {
             let files: Vec<String> = old_things.iter().map(|(n, what)| format!("{n} ({})", what.join(", "))).collect();
             format!("{} {} something that no longer exists. It is ignored and the rest of the file still counts.", files.join(", "), if old_things.len() == 1 { "uses" } else { "use" })
         });
-        ThemeSet { themes, problems, notice, dir: dir.to_path_buf(), stamp, count, omarchy, omarchy_stamp, hypr, hypr_asked: std::cell::Cell::new(std::time::Instant::now()) }
+        ThemeSet { themes, problems, notice, dir: dir.to_path_buf(), stamp, count, omarchy, omarchy_stamp, hypr, hypr_asked: std::cell::Cell::new(std::time::Instant::now()), follow }
     }
 
     /// Has any file in the folder changed since the last load?
@@ -625,14 +639,25 @@ impl ThemeSet {
         ask_hypr(self.omarchy.as_deref()) != self.hypr
     }
 
+    /// Is the app looking at a Hyprland desktop at all? Settings shows the transparency switch only when it is.
+    pub fn on_hyprland(&self) -> bool {
+        self.hypr.is_some()
+    }
+
     /// For Settings: the transparent Omarchy look is chosen-able but no Hyprland window rule makes this app
     /// see-through, so the look is opaque. False off Hyprland (nothing to add a rule to).
     pub fn needs_window_rule(&self) -> bool {
         self.hypr.is_some_and(|h| !h.has_see_through_rule())
     }
 
+    /// Remember whether the Omarchy looks follow the desktop's transparency, and rebuild them to match.
+    pub fn set_follow(&mut self, follow: Option<bool>) {
+        self.follow = follow;
+        self.reload();
+    }
+
     pub fn reload(&mut self) {
-        *self = ThemeSet::load_with(&self.dir.clone(), self.omarchy.clone());
+        *self = ThemeSet::load_following(&self.dir.clone(), self.omarchy.clone(), self.follow);
     }
 
     /// The families of looks, once each, in the order they first appear: "Calm", "Matte", "Glass",

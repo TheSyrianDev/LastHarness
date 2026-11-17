@@ -90,6 +90,8 @@ fn screen_shots() {
     let look = |name: &'static str| move |a: &mut App, w: &mut Window, cx: &mut Context<App>| {
         a.prefs.theme = name.into();
         a.reapply_look(w, cx);
+        // no wipe in a still: the shot is of the finished look
+        a.sweep = None;
     };
     for theme in ["Calm", "Glass"] {
         let t = theme.to_lowercase();
@@ -139,3 +141,4 @@ fn screen_shots() {
         a.settings_page = Category::Appearance;
     });
 }
+

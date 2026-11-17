@@ -119,11 +119,6 @@ impl Hypr {
         (self.blur_size * self.blur_passes / 2.).clamp(0., 24.)
     }
 
-    /// The window background's opacity: the active window opacity.
-    pub fn background_alpha(&self) -> f32 {
-        self.active_opacity.clamp(0.3, 1.)
-    }
-
     /// How see-through the transparent Omarchy look is: what the window rule for this app gives, times
     /// `active_opacity` unless the rule says `override`, as Hyprland itself works it out. No window rule (or no
     /// window yet): 1, opaque.
@@ -178,23 +173,24 @@ pub fn stamp(current: &Path) -> Stamp {
 }
 
 /// The Omarchy look from the current theme folder, or `None` when there is no readable `colors.toml`.
-pub fn load(current: &Path, hypr: Option<Hypr>) -> Option<Theme> {
+/// `follow`: take the window's transparency from the desktop (see [`follow`]); false is opaque.
+pub fn load(current: &Path, hypr: Option<Hypr>, follow: bool) -> Option<Theme> {
     let src = std::fs::read_to_string(current.join("theme").join("colors.toml")).ok()?;
-    from_colors_with(&src, hypr).ok()
+    from_colors_with(&src, hypr, follow).ok()
 }
 
 /// The transparent Omarchy look from the current theme folder, as [`load`].
-pub fn load_transparent(current: &Path, hypr: Option<Hypr>) -> Option<Theme> {
+pub fn load_transparent(current: &Path, hypr: Option<Hypr>, follow: bool) -> Option<Theme> {
     let src = std::fs::read_to_string(current.join("theme").join("colors.toml")).ok()?;
-    transparent_from_colors(&src, hypr).ok()
+    transparent_from_colors(&src, hypr, follow).ok()
 }
 
 /// The see-through variant: Omarchy's colours, the window as see-through as Hyprland's window rule for this app
 /// makes it ([`Hypr::rule_alpha`]; opaque without a rule), Hyprland's rounding and blur, and the liquid glass
 /// material of the built-in Glass look in the same mode.
-pub fn transparent_from_colors(src: &str, hypr: Option<Hypr>) -> Result<Theme, String> {
+pub fn transparent_from_colors(src: &str, hypr: Option<Hypr>, follow: bool) -> Result<Theme, String> {
     let h = hypr.unwrap_or_default();
-    let mut t = build(src, &h, TRANSPARENT, h.rule_alpha())?;
+    let mut t = build(src, &h, TRANSPARENT, window_alpha(&h, follow))?;
     let glass = glass_material(t.mode);
     t.material = crate::theme::Material { blur: h.glass_blur(), ..glass };
     Ok(t)
@@ -210,14 +206,34 @@ pub fn glass_material(mode: Mode) -> crate::theme::Material {
 /// `background` and `foreground` are needed. Pairs that would be hard to read are nudged until they pass the same
 /// contrast rules as the built-in looks (text 4.5:1, marks 3:1).
 pub fn from_colors(src: &str) -> Result<Theme, String> {
-    from_colors_with(src, None)
+    from_colors_with(src, None, false)
 }
 
 /// As [`from_colors`], with the shape, opacity and blur taken from Hyprland (`None`: the defaults). The look is
 /// liquid glass throughout, like the Glass look.
-pub fn from_colors_with(src: &str, hypr: Option<Hypr>) -> Result<Theme, String> {
+pub fn from_colors_with(src: &str, hypr: Option<Hypr>, follow: bool) -> Result<Theme, String> {
     let h = hypr.unwrap_or_default();
-    build(src, &h, "Omarchy", h.background_alpha())
+    build(src, &h, "Omarchy", window_alpha(&h, follow))
+}
+
+/// How much of the window the look's own background covers. Following the desktop means what its window rule for
+/// this app gives (`rule_alpha`); not following means 1, opaque, whatever the rule or `active_opacity` say.
+pub fn window_alpha(h: &Hypr, follow: bool) -> f32 {
+    if follow { h.rule_alpha() } else { 1. }
+}
+
+/// Force this window's own opacity at the compositor, so a leftover Hyprland window rule cannot make an opaque look
+/// see-through. The app paints its own transparency (the look's background alpha), so the window itself is always
+/// fully opaque; `hyprctl` missing or Hyprland not running is simply nothing to do.
+pub fn own_window_opacity() {
+    use std::process::{Command, Stdio};
+    let pid = std::process::id();
+    let _ = Command::new("hyprctl")
+        .args(["setprop", &format!("pid:{pid}"), "opacity", "1.0 override 1.0 override"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 /// The look from `colors.toml`, named `name`, with the window background covered `window` (0 to 1).
@@ -409,19 +425,19 @@ mod tests {
     fn a_theme_change_shows_in_the_stamp_and_a_missing_folder_gives_no_look() {
         let dir = std::env::temp_dir().join(format!("lh-omarchy-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        assert!(load(&dir, None).is_none());
+        assert!(load(&dir, None, false).is_none());
         let empty = stamp(&dir);
         std::fs::create_dir_all(dir.join("theme")).unwrap();
         std::fs::write(dir.join("theme.name"), "one\n").unwrap();
         std::fs::write(dir.join("theme/colors.toml"), DARK).unwrap();
         let a = stamp(&dir);
         assert_ne!(a, empty);
-        assert_eq!(load(&dir, None).unwrap().mode, Mode::Dark);
+        assert_eq!(load(&dir, None, false).unwrap().mode, Mode::Dark);
         std::fs::write(dir.join("theme.name"), "two\n").unwrap();
         std::fs::write(dir.join("theme/colors.toml"), LIGHT).unwrap();
         let b = stamp(&dir);
         assert_ne!(a, b, "a new theme name changes the stamp");
-        assert_eq!(load(&dir, None).unwrap().mode, Mode::Light);
+        assert_eq!(load(&dir, None, false).unwrap().mode, Mode::Light);
         assert_eq!(stamp(&dir), b, "nothing changed, same stamp");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -441,12 +457,15 @@ mod tests {
 
     #[test]
     fn hyprland_sets_the_roundness_opacity_and_glass_blur_and_the_look_is_glass() {
-        let h = Hypr { rounding: 24., active_opacity: 0.9, inactive_opacity: 0.8, blur_size: 8., blur_passes: 3., window_opacity: None };
-        let t = from_colors_with(DARK, Some(h)).unwrap();
+        let h = Hypr { rounding: 24., active_opacity: 0.9, inactive_opacity: 0.8, blur_size: 8., blur_passes: 3., window_opacity: Some((0.9, true)) };
+        let t = from_colors_with(DARK, Some(h), true).unwrap();
         assert_eq!(t.roundness, 24.);
         assert_eq!(t.material.blur, 12., "size 8 times 3 passes, halved");
         assert!(t.colors.background.a < 255 && t.blur, "a see-through desktop: a see-through window, blurred behind");
         assert!(t.colors.surface.a < 200, "panels see-through enough for the glass");
+        // the same look, not following: opaque, whatever the desktop says
+        let o = from_colors_with(DARK, Some(h), false).unwrap();
+        assert_eq!((o.colors.background.a, o.blur), (255, false), "opaque means opaque");
         use crate::theme::GlassKind as K;
         assert_ne!(t.material.panels, K::None);
         assert_ne!(t.material.popups, K::None);
@@ -478,9 +497,20 @@ mod tests {
     }
 
     #[test]
+    fn the_window_follows_the_desktop_only_when_asked() {
+        let ruled = Hypr { active_opacity: 0.9, window_opacity: Some((0.75, false)), ..Hypr::default() };
+        assert!((window_alpha(&ruled, true) - 0.675).abs() < 1e-5, "following: the rule times the active opacity");
+        assert_eq!(window_alpha(&ruled, false), 1., "not following: opaque");
+        assert_eq!(window_alpha(&Hypr::default(), true), 1., "nothing see-through to follow");
+        // `active_opacity` alone no longer makes an opaque look see-through
+        let dim = Hypr { active_opacity: 0.6, window_opacity: None, ..Hypr::default() };
+        assert_eq!(window_alpha(&dim, false), 1.);
+    }
+
+    #[test]
     fn the_transparent_look_follows_the_rule_and_takes_the_glass_material() {
         let h = Hypr { window_opacity: Some((0.75, true)), blur_size: 8., blur_passes: 3., rounding: 14., ..Hypr::default() };
-        let t = transparent_from_colors(DARK, Some(h)).unwrap();
+        let t = transparent_from_colors(DARK, Some(h), true).unwrap();
         assert_eq!(t.name, TRANSPARENT);
         assert_eq!(t.colors.background.a, (0.75f32 * 255.).round() as u8, "the window rule's level");
         assert!(t.blur, "see-through: blurred behind");
@@ -491,13 +521,13 @@ mod tests {
         assert_eq!(t.material.blur, 12., "blur still from Hyprland");
         readable_everywhere(&t);
         // the colours are Omarchy's, not Glass's
-        let o = from_colors_with(DARK, Some(h)).unwrap();
+        let o = from_colors_with(DARK, Some(h), true).unwrap();
         assert_eq!((t.colors.text, t.colors.accent), (o.colors.text, o.colors.accent));
         // no rule: opaque, no blur behind
-        let f = transparent_from_colors(DARK, Some(Hypr::default())).unwrap();
+        let f = transparent_from_colors(DARK, Some(Hypr::default()), true).unwrap();
         assert_eq!((f.colors.background.a, f.blur), (255, false));
         // a light Omarchy theme takes the light Glass material
-        let l = transparent_from_colors(include_str!("../tests/fixtures/omarchy-light.toml"), None).unwrap();
+        let l = transparent_from_colors(include_str!("../tests/fixtures/omarchy-light.toml"), None, true).unwrap();
         assert_eq!(l.mode, Mode::Light);
         assert_eq!(l.material.panels, glass_material(Mode::Light).panels);
     }

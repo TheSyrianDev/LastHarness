@@ -13,6 +13,14 @@ pub fn press(theme: Duration) -> Duration {
     if theme.is_zero() { Duration::ZERO } else { Duration::from_millis(PRESS_MS) }
 }
 
+/// How long the circle of a new background takes to cover the window when the look changes.
+pub const SWEEP_MS: u64 = 420;
+
+/// How long a look change takes to wipe its new background across the window.
+pub fn sweep(theme: Duration) -> Duration {
+    if theme.is_zero() { Duration::ZERO } else { Duration::from_millis(SWEEP_MS) }
+}
+
 /// How long a panel takes to open or close.
 pub fn panel(theme: Duration) -> Duration {
     if theme.is_zero() { Duration::ZERO } else { Duration::from_millis(PANEL_MS) }

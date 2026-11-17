@@ -48,7 +48,7 @@ pub struct Pal {
     pub series: Vec<Hsla>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Background {
     Solid(Hsla),
     Gradient { angle: f32, from: Hsla, to: Hsla, via: Option<Hsla> },

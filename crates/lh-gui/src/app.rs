@@ -27,6 +27,18 @@ pub enum FontSlot {
     Arabic,
 }
 
+/// A look change in progress. `from` is the background still painted under the circle, `origin` where the circle
+/// starts (the click, or the middle of the window), and `dur` how long it takes to cover the window.
+#[derive(Clone)]
+pub struct Sweep {
+    pub from: crate::style::Background,
+    pub origin: Point<Pixels>,
+    pub started: std::time::Instant,
+    pub dur: Duration,
+    /// Which look change this is, so two in a row are two animations.
+    pub id: u64,
+}
+
 /// A question about continuing a chat that the user has to answer: the warning the core gave.
 #[derive(Clone, Debug)]
 pub struct Pending {
@@ -120,6 +132,11 @@ pub struct App {
     pub prefs: Prefs,
     pub window_radius: Option<f32>,
     pub pal: Pal,
+    /// A look change in progress: the circle of the new background growing out of `origin`, while the window still
+    /// shows the old background under it. The colours have already changed.
+    pub sweep: Option<Sweep>,
+    /// Counts look changes, so each wipe is its own animation.
+    pub sweep_no: u64,
     pub scroll: ScrollHandle,
     /// Whether the conversation follows new text, or the person scrolled up and is reading.
     pub follow: lh_gui::follow::Follow,
@@ -293,7 +310,7 @@ fn stored_to_chat(chats: &mut Chats, models: &ModelList, s: &StoredChat) {
 impl App {
     pub fn new(cfg: Config, window: &mut Window, cx: &mut Context<Self>) -> App {
         let mut prefs = Prefs::load(&cfg.prefs);
-        let themes = ThemeSet::load(&cfg.themes);
+        let themes = ThemeSet::load_preferring(&cfg.themes, prefs.follow_omarchy);
         // a saved look that no longer exists falls back to the first look, once, with a line saying so under Appearance
         let look_notice = lh_gui::theme::missing_look_notice(&prefs.theme, &themes.families());
         if look_notice.is_some() {
@@ -477,6 +494,8 @@ impl App {
             prefs,
             window_radius,
             pal,
+            sweep: None,
+            sweep_no: 0,
             scroll: ScrollHandle::new(),
             follow: Default::default(),
             think_scroll: ScrollHandle::new(),
@@ -639,19 +658,55 @@ impl App {
     /// Pick the look for the saved family and mode and show it. The window itself must be transparent when the look
     /// lets the desktop show through.
     pub fn reapply_look(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.reapply_look_from(None, window, cx);
+    }
+
+    /// As [`App::reapply_look`], with the circle of the new background starting at `origin` (the click that chose
+    /// the look); `None` starts it in the middle of the window.
+    pub fn reapply_look_from(&mut self, origin: Option<Point<Pixels>>, window: &mut Window, cx: &mut Context<Self>) {
+        let from = self.pal.background.clone();
+        if self.themes.follow != self.prefs.follow_omarchy {
+            self.themes.set_follow(self.prefs.follow_omarchy);
+        }
         self.active_theme = self.themes.resolve(&self.prefs.theme, self.dark());
         self.refresh_pal(cx);
         self.apply_window(window);
+        // the colours change at once; the background arrives as a circle, so a light look does not flash the window
+        let dur = lh_gui::motion::sweep(self.pal.anim);
+        if !dur.is_zero() && from != self.pal.background {
+            let size = window.viewport_size();
+            let origin = origin.unwrap_or_else(|| point(size.width / 2., size.height / 2.));
+            self.sweep_no += 1;
+            self.sweep = Some(Sweep { from, origin, started: std::time::Instant::now(), dur, id: self.sweep_no });
+        }
         self.persist();
         cx.notify();
     }
 
     /// Choose a family of looks (Calm, Matte, Glass, or one of the person's own).
     pub fn set_family(&mut self, family: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.set_family_at(family, None, window, cx);
+    }
+
+    /// Choose a family of looks, with the circle of the new background starting where the person clicked.
+    pub fn set_family_at(&mut self, family: &str, origin: Option<Point<Pixels>>, window: &mut Window, cx: &mut Context<Self>) {
         if self.themes.families().iter().any(|f| f == family) {
             self.prefs.theme = family.to_string();
-            self.reapply_look(window, cx);
+            self.reapply_look_from(origin, window, cx);
         }
+    }
+
+    /// Does the look in use take its transparency from the desktop's window rule?
+    pub fn follows_omarchy(&self) -> bool {
+        let t = &self.themes.themes[self.active_theme];
+        let omarchy = t.name == "Omarchy" || t.name == lh_gui::omarchy::TRANSPARENT;
+        omarchy && self.prefs.follow_omarchy.unwrap_or(t.name == lh_gui::omarchy::TRANSPARENT)
+    }
+
+    /// Turn following the desktop's transparency on or off, and rebuild the Omarchy looks to match.
+    pub fn set_follow_omarchy(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.prefs.follow_omarchy = Some(on);
+        self.reapply_look(window, cx);
     }
 
     /// Light, dark, or follow the desktop.
@@ -673,6 +728,9 @@ impl App {
     pub fn apply_window(&self, window: &mut Window) {
         let t = &self.themes.themes[self.active_theme];
         window.set_background_appearance(if t.blur { WindowBackgroundAppearance::Blurred } else if t.is_translucent() { WindowBackgroundAppearance::Transparent } else { WindowBackgroundAppearance::Opaque });
+        // the look paints its own transparency; the window stays opaque, so a leftover window rule cannot make an
+        // opaque look see-through (and the desktop's rule no longer doubles the look's own alpha)
+        lh_gui::omarchy::own_window_opacity();
     }
 
     /// Load the fonts that ship with the app, then every font in the added-fonts folder, into the window's text

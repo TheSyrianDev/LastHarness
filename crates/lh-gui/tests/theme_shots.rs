@@ -31,7 +31,7 @@ fn every_look_renders_offscreen() {
     };
     let shots = std::env::var_os("LH_THEME_SHOTS").map(std::path::PathBuf::from);
     // plus the Omarchy look from this machine's current Omarchy theme, when there is one
-    let omarchy = lh_gui::omarchy::current_dir().and_then(|d| lh_gui::omarchy::load(&d, lh_gui::omarchy::Hypr::read()));
+    let omarchy = lh_gui::omarchy::current_dir().and_then(|d| lh_gui::omarchy::load(&d, lh_gui::omarchy::Hypr::read(), false));
     for t in builtin().into_iter().chain(omarchy) {
         let c = &t.colors;
         let dark = t.mode == Mode::Dark;

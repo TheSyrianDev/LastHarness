@@ -969,6 +969,43 @@ impl App {
     }
 
     /// Settings as a window over the app: the rest is dimmed, the window is centred, a click outside or Escape closes it.
+    /// The circle of the new background wiping a look change across the window: it grows out of where the look was
+    /// chosen, clipped to a circle, and carries the new background inside it. The words and controls have already
+    /// changed colour underneath. `None` once it covers the window.
+    fn sweep_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let sweep = self.sweep.clone()?;
+        if sweep.started.elapsed() >= sweep.dur {
+            self.sweep = None;
+            // one more frame, now without the circle, so the window is painted from the new background alone
+            window.request_animation_frame();
+            return None;
+        }
+        let _ = cx;
+        let p = self.pal.clone();
+        let size = window.viewport_size();
+        let (w, h) = (f32::from(size.width), f32::from(size.height));
+        let (ox, oy) = (f32::from(sweep.origin.x), f32::from(sweep.origin.y));
+        // past the furthest corner, with room to spare: the last frames must not leave a sliver of the old
+        // background in the corners while the curve is still settling
+        let far = [(0., 0.), (w, 0.), (0., h), (w, h)].iter().fold(0f32, |m, (x, y)| m.max((x - ox).powi(2) + (y - oy).powi(2))).sqrt() + 24.;
+        let key = SharedString::from(format!("look-sweep-{}", sweep.id));
+        Some(
+            div()
+                .with_animation(key, Animation::new(sweep.dur).with_easing(motion::ease_out), move |el, t| {
+                    let r = far * t;
+                    let inner = {
+                        let mut pal = p.clone();
+                        pal.paint_background(div().absolute().left(px(r - ox)).top(px(r - oy)).w(px(w)).h(px(h)))
+                            .children(p.image_layer())
+                    };
+                    el.absolute().left(px(ox - r)).top(px(oy - r)).w(px(2. * r)).h(px(2. * r))
+                        .rounded_full().overflow_hidden()
+                        .child(inner)
+                })
+                .into_any_element(),
+        )
+    }
+
     fn settings_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.settings_open {
             return None;
@@ -1686,7 +1723,12 @@ impl Render for App {
             div().relative().h_full().flex().flex_none().child(body).child(edge).into_any_element()
         });
         let (right, over) = if overlay { (None, right) } else { (right, None) };
-        let mut root = p.paint_background(div().size_full().relative().overflow_hidden().text_color(p.text));
+        // while a look change is wiping in, the window still shows the old background and the circle carries the new
+        // one, so the colours change first and the picture follows
+        let base = self.sweep.as_ref().map(|s| s.from.clone()).unwrap_or_else(|| p.background.clone());
+        let mut base_pal = p.clone();
+        base_pal.background = base;
+        let mut root = base_pal.paint_background(div().size_full().relative().overflow_hidden().text_color(p.text));
         // the main font is the Latin one; the Arabic font is its explicit fallback for Arabic script
         // order: font chosen in Settings, then the theme's own font, then the default
         let theme_fonts = self.themes.themes[self.active_theme].fonts.clone();
@@ -1846,7 +1888,8 @@ impl Render for App {
         let main = div().relative().flex().flex_col().flex_1().h_full().overflow_hidden().child(top).child(div().flex().flex_col().flex_1().overflow_hidden().child(middle));
         let settings = self.settings_view(window, cx);
         let palette = self.palette_view(cx);
-        root.children(p.image_layer())
+        let sweep = self.sweep_view(window, cx);
+        root.children(base_pal.image_layer())
             .child(
                 div().size_full().flex().when(rtl, |d| d.flex_row_reverse()).gap_2().p_2().overflow_hidden().child(left).child(main).children(right),
             )
@@ -1856,5 +1899,6 @@ impl Render for App {
                 .child(div().h_full().flex().rounded(p.radius).shadow(vec![BoxShadow { color: hsla(0., 0., 0., if p.dark { 0.5 } else { 0.18 }), offset: point(px(0.), px(8.)), blur_radius: px(28.), spread_radius: px(0.), inset: false }]).child(o))))
             .children(settings)
             .children(palette)
+            .children(sweep)
     }
 }

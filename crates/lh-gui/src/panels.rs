@@ -358,7 +358,7 @@ impl App {
             .text_sm().text_color(if on { p.text } else { p.muted })
             .hover(|s| s.bg(if on { p.accent.opacity(0.14) } else { p.button }))
             .active(|s| s.opacity(0.85))
-            .on_click(cx.listener(move |a, _, w, cx| a.set_family(&f, w, cx)))
+            .on_click(cx.listener(move |a, ev: &ClickEvent, w, cx| a.set_family_at(&f, Some(ev.position()), w, cx)))
             // the look's own colour as a small square, so a name can be judged before it is applied
             .children(dot.map(|c| div().size(px(12.)).flex_none().rounded(px(3.)).bg(c).border_1().border_color(p.text.opacity(if p.dark { 0.25 } else { 0.12 }))))
             .child(name)
@@ -434,11 +434,33 @@ impl App {
         let name_row = div().flex().flex_col().gap_1()
             .child(self.app_row(if rtl { "اسمك" } else { "Your name" }, div().w(px(220.)).child(Input::new(&self.name_input).aria_label("Your name")).into_any_element()))
             .child(div().text_xs().text_color(p.muted).child(if rtl { "إن تركته فارغًا يُستخدم اسمك من النظام." } else { "Leave it empty to use your name from the system." }));
-        let look_section = self.app_section(true, if rtl { "المظهر" } else { "Look" }, look_hint, div().flex().flex_col().gap_2().child(looks).into_any_element());
+        // the Omarchy look is the one that can take the window's transparency from the desktop; the plain one is
+        // opaque unless asked, so the desktop's window rule cannot make it see-through behind the person's back
+        let omarchy_look = current == "Omarchy" || current == lh_gui::omarchy::TRANSPARENT;
+        let follows = self.follows_omarchy();
+        let follow_row = (omarchy_look && self.themes.on_hyprland()).then(|| {
+            let sw = self.glass_switch("follow-omarchy", follows, true, if rtl { "شفافية النافذة من أومارشي" } else { "Follow Omarchy's window transparency" }, false, cx, |a, on, w, cx| a.set_follow_omarchy(on, w, cx));
+            let note = div().text_xs().text_color(p.muted).child(if follows {
+                if rtl { "الشفافية من قاعدة نافذة Hyprland لديك." } else { "The see-through level comes from your Hyprland window rule." }
+            } else if rtl {
+                "النافذة معتمة، مهما قالت قاعدة Hyprland."
+            } else {
+                "The window is opaque, whatever your Hyprland rule says."
+            });
+            div().flex().flex_col().gap_1()
+                .child(self.app_row(if rtl { "شفافية النافذة" } else { "Window transparency" }, div().flex().items_center().gap_3().child(sw).into_any_element()))
+                .child(note)
+                .into_any_element()
+        });
+        let look_body = div().flex().flex_col().gap_3()
+            .child(looks)
+            .children(follow_row)
+            .into_any_element();
+        let look_section = self.app_section(true, if rtl { "المظهر" } else { "Look" }, look_hint, look_body);
         let mode_section = self.app_section(false, if rtl { "الوضع" } else { "Light and dark" }, None, modes.into_any_element());
         // Glass brings its own colours; they sit right under the look they belong to
         let glass_section = (current == "Glass").then(|| self.glass_colours_block(window, cx));
-        let rule_note = (current == lh_gui::omarchy::TRANSPARENT && self.themes.needs_window_rule()).then(|| {
+        let rule_note = (current == lh_gui::omarchy::TRANSPARENT && follows && self.themes.needs_window_rule()).then(|| {
             div().flex().flex_col().gap_1().text_xs().text_color(p.muted)
                 .child(format!("No Hyprland window rule makes this app see-through yet, so this look is opaque. Add this line to your Hyprland config (window class {}) and it follows within a few seconds:", lh_gui::omarchy::APP_CLASS))
                 .child(div().font_family(p.mono.clone()).text_color(p.text).child(lh_gui::omarchy::RULE_HINT))
