@@ -45,7 +45,7 @@ target/release/la              # chat
 target/release/lastai-gui # or the desktop app (needs the core running)
 ```
 
-The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: put a `.toml` file in `~/.config/lastai/themes/` (the six built-in ones, three families each in light and dark, are in `crates/lh-gui/themes/` as examples). Press Ctrl+N for a new chat.
+The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: a look is a folder in `~/.config/lastai/themes/` with a `theme.toml` inside (and a `background.png` beside it if you want a picture), and the folder's name is the look's name. [docs/looks.md](docs/looks.md) lists every key; the built-in looks, each family in light and dark, are in `crates/lh-gui/themes/` as examples. Press Ctrl+N for a new chat.
 
 The Omarchy release (the Arch package `LastAI-<version>-x86_64.pkg.tar.zst`: `sudo pacman -U LastAI-*.pkg.tar.zst`, then `lastai-omarchy-setup`) also offers the desktop's own look, and an "Omarchy (transparent)" look that is liquid glass in the Omarchy colours. The transparent look is as see-through as the Hyprland window rule for the app's window (class `lastai-gui`) says; without a rule it stays opaque. Other builds (AppImage, Windows, macOS, or a source build with `--no-default-features`) leave the Omarchy looks out. To add one, put this line in `~/.config/hypr/hyprland.lua` (0.85 is how much of the window shows):
 
