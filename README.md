@@ -14,6 +14,10 @@
 <p align="center"><em>The last harness you'll need.</em><br>
 A local-first AI harness built around a team: departments, and the workers in them.</p>
 
+> **This branch is LastHarness**, the Omarchy edition of the desktop app: it follows the desktop's theme, offers the
+> desktop's own look and a see-through one, and ships an Arch package of its own. The plain desktop app, Last AI Studio,
+> is on `main`, with the same looks and no desktop coupling.
+
 > [!WARNING]
 > **Alpha, version 0.1.0-alpha.** See [CHANGELOG.md](CHANGELOG.md) for what works and the known gaps. Last AI is early software and is only used on one machine so far. Expect rough edges and breaking changes. Last AI (the desktop app and the `la` terminal app) is tested on Linux (Omarchy) and Windows (author-tested). The macOS build is early alpha: it starts in CI, but no one has used it day to day yet.
 
