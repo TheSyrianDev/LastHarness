@@ -40,8 +40,10 @@ pub struct Pal {
     pub mono: SharedString,
     /// The theme's own icons by name (most looks bring none).
     pub icons: std::sync::Arc<lh_gui::icons::IconSet>,
-    /// Which surfaces are liquid glass.
+    /// Which surfaces are liquid glass. Always filled; `glass` says whether any of it is drawn.
     pub material: lh_gui::theme::Material,
+    /// Liquid glass switched on for the app. Off means every surface is flat, whatever the look asks for.
+    pub glass: bool,
     /// The brand mark's colours: the look's own (Omarchy) or the brand kit's for the mode.
     pub mark: lh_gui::brand::Colours,
     /// Chart series colours the look brings; empty uses the app's own.
@@ -98,6 +100,7 @@ impl Pal {
             mono: lh_gui::fonts::mono_font(&t.fonts.mono, installed_fonts).into(),
             icons: std::sync::Arc::new(t.icons.clone()),
             material: t.material,
+            glass: true,
             mark: t.mark.unwrap_or_else(|| lh_gui::brand::Colours::for_mode(t.mode == Mode::Dark)),
             series: t.series.iter().map(|c| hsla(*c)).collect(),
         }
@@ -180,6 +183,9 @@ pub fn glass_variant(k: lh_gui::theme::GlassKind) -> Option<GlassVariant> {
 /// surface's own colour at its own opacity, so the glass reads like the colour the contrast test measured; a pop-up
 /// is never less than nine tenths covered, so the words in a menu stay clear over busy content.
 pub fn surface_glass(p: &Pal, s: Surface) -> Option<GlassParams> {
+    if !p.glass {
+        return None;
+    }
     let m = &p.material;
     let kind = match s {
         Surface::Panel => m.panels,

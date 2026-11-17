@@ -2,6 +2,7 @@
 //! with the app in five families (Calm, Matte, Glass, Grove, Cobalt), each light and dark; users add their own in a folder and
 //! changes are picked up while the app runs. This module knows nothing about the window toolkit.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -522,6 +523,9 @@ const BUILTIN_ICONS: &[(&str, &str, &[u8])] = &[];
 pub struct ThemeSet {
     pub themes: Vec<Theme>,
     pub problems: Vec<String>,
+    /// Where each look came from: compiled in, a file, or a folder of its own. Renaming, exporting and removing a
+    /// look work on that place.
+    origins: HashMap<String, Origin>,
     /// One line for the person when theme files use something that no longer exists (a painted background, glass panes,
     /// gel buttons, a focus border, drifting bubbles), naming each file; `None` when all is well. Shown once in Settings.
     pub notice: Option<String>,
@@ -582,18 +586,46 @@ impl ThemeSet {
         let mut old_things: Vec<(String, Vec<&'static str>)> = vec![];
         let mut stamp = None;
         let mut count = 0;
-        let mut files: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
-        files.sort();
-        for p in files {
+        // the person's own looks: a folder per look (`Ember/theme.toml` and its background), and the older way, a
+        // file per look, which still loads. The folder's name is the look's name.
+        let mut origins: HashMap<String, Origin> = BUILTIN.iter().filter_map(|(file, src)| {
+            let t = Theme::parse(src, Path::new("")).ok()?;
+            Some((t.label(), Origin::Builtin(file)))
+        }).collect();
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path())
+            .filter(|p| p.is_dir() || p.extension().is_some_and(|x| x == "toml"))
+            .collect();
+        entries.sort();
+        for p in entries {
             count += 1;
-            let m = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
+            let entry_name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let folder = p.is_dir();
+            let file = if folder { p.join(THEME_FILE) } else { p.clone() };
+            if folder && !file.is_file() {
+                problems.push(format!("{entry_name}/: no {THEME_FILE} in it"));
+                continue;
+            }
+            let m = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
             if m > stamp {
                 stamp = m;
             }
-            let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            match std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|s| Theme::parse(&s, p.parent().unwrap_or(dir))) {
-                Ok(t) => {
-                    problems.extend(t.icon_problems.iter().map(|e| format!("{name}: {e}")));
+            let base = if folder { p.as_path() } else { p.parent().unwrap_or(dir) };
+            match std::fs::read_to_string(&file).map_err(|e| e.to_string()).and_then(|s| Theme::parse(&s, base)) {
+                Ok(mut t) => {
+                    problems.extend(t.icon_problems.iter().map(|e| format!("{entry_name}: {e}")));
+                    if folder {
+                        // the folder is the name, and the picture sitting beside the file is the background
+                        t.name = entry_name.clone();
+                        if let Some(img) = background_in(&p) {
+                            if t.background.image.is_none() {
+                                t.background.kind = BackgroundKind::Image;
+                                t.background.image = Some(img);
+                            }
+                        }
+                        origins.insert(t.label(), Origin::Folder(p.clone()));
+                    } else {
+                        origins.insert(t.label(), Origin::File(p.clone()));
+                    }
                     if !t.ignored.is_empty() && !old_things.iter().any(|(n, _)| *n == t.name) {
                         old_things.push((t.name.clone(), t.ignored.clone()));
                     }
@@ -604,30 +636,26 @@ impl ThemeSet {
                         themes.push(t);
                     }
                 }
-                Err(e) => problems.push(format!("{name}: {e}")),
+                Err(e) => problems.push(format!("{entry_name}: {e}")),
             }
         }
         let notice = (!old_things.is_empty()).then(|| {
             let files: Vec<String> = old_things.iter().map(|(n, what)| format!("{n} ({})", what.join(", "))).collect();
             format!("{} {} something that no longer exists. It is ignored and the rest of the file still counts.", files.join(", "), if old_things.len() == 1 { "uses" } else { "use" })
         });
-        ThemeSet { themes, problems, notice, dir: dir.to_path_buf(), stamp, count, omarchy, omarchy_stamp, hypr, hypr_asked: std::cell::Cell::new(std::time::Instant::now()), follow }
+        ThemeSet { themes, problems, notice, origins, dir: dir.to_path_buf(), stamp, count, omarchy, omarchy_stamp, hypr, hypr_asked: std::cell::Cell::new(std::time::Instant::now()), follow }
     }
 
-    /// Has any file in the folder changed since the last load?
+    /// Has any look in the folder changed since the last load? That is a file, a folder's `theme.toml`, or the
+    /// picture in a folder, so editing either shows up while the app runs.
     pub fn changed(&self) -> bool {
-        let mut newest = None;
-        let mut count = 0;
-        for e in std::fs::read_dir(&self.dir).into_iter().flatten().flatten() {
-            if e.path().extension().is_some_and(|x| x == "toml") {
-                count += 1;
-                let m = e.metadata().and_then(|m| m.modified()).ok();
-                if m > newest {
-                    newest = m;
-                }
-            }
-        }
+        let (newest, count) = newest_in(&self.dir);
         newest != self.stamp || count != self.count || self.omarchy.as_deref().is_some_and(|d| crate::omarchy::stamp(d) != self.omarchy_stamp) || self.hypr_changed()
+    }
+
+    /// Where this look lives: compiled in, one file, or a folder of its own.
+    pub fn origin(&self, label: &str) -> Option<&Origin> {
+        self.origins.get(label)
     }
 
     /// Has Hyprland's rounding, opacity or blur changed? Asked at most every 5 s, only when Omarchy is there.
@@ -850,6 +878,223 @@ pub fn contrast(a: Color, b: Color) -> f64 {
 }
 
 /// The user's theme folder: `$XDG_CONFIG_HOME/lastai/themes` or `~/.config/lastai/themes`.
+/// The file inside a theme folder.
+pub const THEME_FILE: &str = "theme.toml";
+/// A picture beside it is the look's background; the first of these that exists.
+pub const BACKGROUND_FILES: [&str; 4] = ["background.png", "background.jpg", "background.jpeg", "background.webp"];
+
+/// Where a look lives, so Settings can name it, copy it out or remove it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Origin {
+    /// Compiled in, named by its file in `themes/`.
+    Builtin(&'static str),
+    /// An older look: one `.toml` file in the themes folder.
+    File(PathBuf),
+    /// A look folder: `theme.toml` and, if it has one, its background beside it.
+    Folder(PathBuf),
+}
+
+impl Origin {
+    /// The folder holding this look, when it is a folder.
+    pub fn folder(&self) -> Option<&Path> {
+        match self {
+            Origin::Folder(p) => Some(p),
+            _ => None,
+        }
+    }
+}
+
+/// The picture in a look folder, if it has one.
+pub fn background_in(dir: &Path) -> Option<PathBuf> {
+    BACKGROUND_FILES.iter().map(|f| dir.join(f)).find(|p| p.is_file())
+}
+
+/// The built-in look with that file name, as it is written in the app.
+pub fn builtin_source(file: &str) -> Option<&'static str> {
+    BUILTIN.iter().find(|(n, _)| *n == file).map(|(_, s)| *s)
+}
+
+/// The newest change in a themes folder, and how many looks it holds. A folder counts by its `theme.toml` and its
+/// background, a loose file by itself.
+fn newest_in(dir: &Path) -> (Option<SystemTime>, usize) {
+    let mut newest = None;
+    let mut count = 0;
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        let mut look_at: Vec<PathBuf> = vec![];
+        if p.is_dir() {
+            look_at.push(p.join(THEME_FILE));
+            look_at.extend(BACKGROUND_FILES.iter().map(|f| p.join(f)));
+        } else if p.extension().is_some_and(|x| x == "toml") {
+            look_at.push(p.clone());
+        } else {
+            continue;
+        }
+        count += 1;
+        for f in look_at {
+            let m = std::fs::metadata(&f).and_then(|m| m.modified()).ok();
+            if m > newest {
+                newest = m;
+            }
+        }
+    }
+    (newest, count)
+}
+
+/// A name a look folder can have: trimmed, one line, nothing that walks out of the folder.
+pub fn clean_look_name(name: &str) -> Result<String, String> {
+    let clean: String = name.trim().chars().filter(|c| *c != '/' && *c != '\\' && !c.is_control()).collect();
+    let clean = clean.trim().to_string();
+    if clean.is_empty() {
+        return Err("Give the look a name first.".into());
+    }
+    if clean == "." || clean == ".." {
+        return Err("That is not a name a folder can have.".into());
+    }
+    Ok(clean.chars().take(64).collect())
+}
+
+/// The look's name written into a theme file, so a copied folder says its own name in the file too.
+fn with_name(src: &str, name: &str) -> String {
+    let mut out = String::with_capacity(src.len() + name.len());
+    let mut done = false;
+    for line in src.lines() {
+        if !done && line.trim_start().starts_with("name") && line.contains('=') {
+            out.push_str(&format!("name = \"{name}\"\n"));
+            done = true;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !done {
+        out = format!("name = \"{name}\"\n{out}");
+    }
+    out
+}
+
+/// Copy one look's files into `to`, which must not exist yet.
+fn fill_folder(to: &Path, from: &Origin, image: Option<&Path>) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
+    match from {
+        Origin::Builtin(file) => {
+            let src = builtin_source(file).ok_or("That built-in look has no file with it.")?;
+            std::fs::write(to.join(THEME_FILE), src).map_err(|e| e.to_string())?;
+        }
+        Origin::File(path) => {
+            std::fs::copy(path, to.join(THEME_FILE)).map_err(|e| e.to_string())?;
+        }
+        Origin::Folder(path) => {
+            std::fs::copy(path.join(THEME_FILE), to.join(THEME_FILE)).map_err(|e| e.to_string())?;
+            if let Some(bg) = background_in(path) {
+                let f = bg.file_name().unwrap_or_default();
+                std::fs::copy(&bg, to.join(f)).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    // a look that names its own picture keeps it, under the same file name
+    if let Some(img) = image {
+        if img.is_file() {
+            let f = img.file_name().unwrap_or_default();
+            if !to.join(f).exists() {
+                std::fs::copy(img, to.join(f)).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Write a look out as a folder of its own: a built-in from the file compiled in, a loose file as `theme.toml`, a
+/// folder as it is. `image` is the look's background when it lives outside the folder being copied.
+pub fn make_folder(dir: &Path, name: &str, from: &Origin, image: Option<&Path>) -> Result<PathBuf, String> {
+    let name = clean_look_name(name)?;
+    let to = dir.join(&name);
+    if to.exists() {
+        return Err(format!("\"{name}\" is already in {}.", dir.display()));
+    }
+    fill_folder(&to, from, image)?;
+    // the folder is the name, but the file should say it too, for anyone who opens it
+    let file = to.join(THEME_FILE);
+    if let Ok(src) = std::fs::read_to_string(&file) {
+        let _ = std::fs::write(&file, with_name(&src, &name));
+    }
+    Ok(to)
+}
+
+/// Copy a look folder somewhere else, as a folder of the same name (a number added when that name is taken).
+pub fn export_folder(from: &Path, to_parent: &Path) -> Result<PathBuf, String> {
+    let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Look".into());
+    let mut to = to_parent.join(&name);
+    let mut n = 2;
+    while to.exists() {
+        to = to_parent.join(format!("{name} {n}"));
+        n += 1;
+    }
+    fill_folder(&to, &Origin::Folder(from.to_path_buf()), None)?;
+    Ok(to)
+}
+
+/// Bring a look in from anywhere: a folder with a `theme.toml` in it, or a single `.toml` file, which becomes a
+/// folder of its own. Returns the name it was given.
+pub fn import_look(dir: &Path, from: &Path) -> Result<String, String> {
+    let (origin, name, image) = if from.is_dir() {
+        let file = from.join(THEME_FILE);
+        if !file.is_file() {
+            return Err(format!("That folder has no {THEME_FILE} in it."));
+        }
+        let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        (Origin::Folder(from.to_path_buf()), name, None)
+    } else {
+        if from.extension().is_none_or(|x| x != "toml") {
+            return Err("That is not a look folder or a .toml file.".into());
+        }
+        let name = from.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        // a loose file's picture sits beside it; it comes along when it exists
+        let image = std::fs::read_to_string(from).ok()
+            .and_then(|s| Theme::parse(&s, from.parent().unwrap_or(dir)).ok())
+            .and_then(|t| t.background.image);
+        (Origin::File(from.to_path_buf()), name, image)
+    };
+    // a name already in the folder gets a number, so importing twice never overwrites a look
+    let base = clean_look_name(&name)?;
+    let mut name = base.clone();
+    let mut n = 2;
+    while dir.join(&name).exists() {
+        name = format!("{base} {n}");
+        n += 1;
+    }
+    make_folder(dir, &name, &origin, image.as_deref())?;
+    Ok(name)
+}
+
+/// Give a look folder another name. Returns the name it has now.
+pub fn rename_folder(dir: &Path, old: &str, new: &str) -> Result<String, String> {
+    let new = clean_look_name(new)?;
+    let from = dir.join(old);
+    let to = dir.join(&new);
+    if !from.is_dir() {
+        return Err("That look is not a folder, so it cannot be renamed here.".into());
+    }
+    if to.exists() {
+        return Err(format!("\"{new}\" is already there."));
+    }
+    std::fs::rename(&from, &to).map_err(|e| e.to_string())?;
+    let file = to.join(THEME_FILE);
+    if let Ok(src) = std::fs::read_to_string(&file) {
+        let _ = std::fs::write(&file, with_name(&src, &new));
+    }
+    Ok(new)
+}
+
+/// Remove a look folder and everything in it. Only a folder: a compiled-in look has nothing to remove.
+pub fn remove_folder(dir: &Path, name: &str) -> Result<(), String> {
+    let p = dir.join(name);
+    if !p.is_dir() {
+        return Err("That look is not a folder, so it cannot be removed here.".into());
+    }
+    std::fs::remove_dir_all(&p).map_err(|e| e.to_string())
+}
+
 pub fn user_dir() -> PathBuf {
     lh_config::appdir::config_dir().join("themes")
 }
@@ -1087,6 +1332,58 @@ mod tests {
         assert_eq!(t.panel_radius(None), 10., "and the theme's value is the fallback");
         assert_eq!(parse_hypr_rounding("{\"option\": \"decoration:rounding\", \"int\": 15, \"set\": true }"), Some(15.));
         assert_eq!(parse_hypr_rounding("garbage"), None);
+    }
+
+    #[test]
+    fn a_look_is_a_folder_named_after_it_and_its_picture_is_the_background() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-lookfolders-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Ember")).unwrap();
+        // the folder name wins over the name written in the file
+        std::fs::write(dir.join("Ember").join(THEME_FILE), "name = \"Something else\"\n[colors]\naccent = \"#cc5500\"\n").unwrap();
+        std::fs::write(dir.join("Ember").join("background.png"), b"not really a picture").unwrap();
+        // a folder with no theme.toml says so, and does not stop the rest
+        std::fs::create_dir_all(dir.join("Empty")).unwrap();
+        let set = ThemeSet::load(&dir);
+        let t = set.find("Ember light").expect("the folder is the look");
+        assert_eq!(t.background.kind, BackgroundKind::Image, "the picture beside the file is the background");
+        assert!(t.background.image.as_ref().unwrap().ends_with("background.png"));
+        assert!(matches!(set.origin("Ember light"), Some(Origin::Folder(_))));
+        assert!(set.problems.iter().any(|p| p.contains("Empty/")), "{:?}", set.problems);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn looks_are_copied_in_renamed_out_and_removed_as_folders() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-lookops-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // a built-in becomes a folder of its own, with its own name in the file
+        let made = make_folder(&dir, "Mine", &Origin::Builtin("calm-light"), None).unwrap();
+        let src = std::fs::read_to_string(made.join(THEME_FILE)).unwrap();
+        assert!(src.contains("name = \"Mine\""), "the copied file says its own name");
+        assert!(ThemeSet::load(&dir).find("Mine light").is_some());
+        // importing the same look again gets a number instead of overwriting the first
+        let imported = import_look(&dir, &made).unwrap();
+        assert_eq!(imported, "Mine 2");
+        // renaming moves the folder and the name in the file
+        assert_eq!(rename_folder(&dir, "Mine 2", "Ember").unwrap(), "Ember");
+        assert!(!dir.join("Mine 2").exists() && dir.join("Ember").is_dir());
+        assert!(std::fs::read_to_string(dir.join("Ember").join(THEME_FILE)).unwrap().contains("name = \"Ember\""));
+        // exporting writes a copy somewhere else, never over what is there
+        let out = std::env::temp_dir().join(format!("lh-gui-lookexport-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&out);
+        std::fs::create_dir_all(&out).unwrap();
+        let exported = make_folder(&out, "Ember", &Origin::Folder(dir.join("Ember")), None).unwrap();
+        assert!(exported.join(THEME_FILE).is_file());
+        // removing takes the folder away; a compiled-in look has nothing to remove
+        remove_folder(&dir, "Ember").unwrap();
+        assert!(!dir.join("Ember").exists());
+        assert!(remove_folder(&dir, "Calm").is_err());
+        assert!(clean_look_name("  my/look  ").unwrap() == "mylook", "no slashes in a name");
+        assert!(clean_look_name("   ").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&out);
     }
 
     #[test]

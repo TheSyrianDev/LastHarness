@@ -32,8 +32,8 @@ pub const NAMES: &[&str] = &[
     "new-chat", "search", "send", "attach", "stop", "sidebar-collapse", "sidebar-expand", "lock", "panel", "close",
     "widen", "popout", "chevron-right", "chevron-left", "chevron-down",
     // the rail and the pages of Settings
-    "chats", "departments", "memory", "settings", "appearance", "models", "learning", "permissions", "spending", "web",
-    "tools", "channels", "data", "activity", "hooks", "schedules", "updates", "other",
+    "chats", "departments", "memory", "settings", "appearance", "themes", "chat", "models", "learning", "permissions",
+    "spending", "web", "tools", "channels", "data", "activity", "hooks", "schedules", "updates", "other",
 ];
 
 /// The SVGs a theme brings, by icon name.

@@ -201,6 +201,14 @@ impl App {
     /// energy (rest, hover, pressed) eases between states instead of jumping, and so do the lift and the clearing.
     pub(crate) fn glass(&self, d: Div, id: &str, held: bool, radius: f32) -> Div {
         let p = &self.pal;
+        // glass off: the same control, as a flat piece of the surface with a hairline and a soft shadow. It keeps its
+        // size, its radius and its place, so nothing moves when the switch is flipped.
+        if !p.glass {
+            let _ = (id, held, radius);
+            return d.bg(p.surface).border_1().border_color(gpui::Hsla { h: 0., s: 0., l: 1., a: if p.dark { 0.22 } else { 0.8 } }).shadow(vec![
+                BoxShadow { color: hsla(0., 0., 0., if p.dark { 0.4 } else { 0.1 }), offset: point(px(0.), px(2.)), blur_radius: px(5.), spread_radius: px(0.), inset: false },
+            ]);
+        }
         let dur = motion::press(p.anim);
         let key = format!("{id}/energy");
         let place = format!("{id}/place");

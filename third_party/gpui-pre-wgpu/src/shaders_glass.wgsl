@@ -59,6 +59,24 @@ fn glass_lens(depth: f32, bezel: f32) -> vec2<f32> {
     return vec2<f32>(1.0 - nz, nz);
 }
 
+// Snell, honestly: at a surface tilted `theta` from flat, light entering glass of
+// index `eta` leaves at a shallower angle, and a thick slab displaces the ray by
+// the *difference of the tangents* of the two angles. Scaling the tilt (`slope *
+// (1 - 1/eta)`) overestimates the peak by a fifth and the grazing edge by more
+// than double, which is what made rims look like a smear instead of a lens.
+// Returns displacement in units of the slab's thickness, 0 flat out to 1 at the
+// extreme that can actually happen (`theta` = 90 degrees).
+fn glass_refract(cos_theta: f32, eta: f32) -> f32 {
+    let theta = acos(clamp(cos_theta, 0.0, 1.0));
+    let bent = asin(clamp(sin(theta) / eta, 0.0, 1.0));
+    return tan(clamp(theta - bent, 0.0, 1.2));
+}
+
+// The bend at the extreme, so the result can be normalised to 0..1.
+fn glass_refract_max(eta: f32) -> f32 {
+    return tan(clamp(1.5707963 - asin(1.0 / eta), 0.0, 1.2));
+}
+
 @vertex
 fn vs_glass(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> GlassVarying {
     let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
@@ -105,15 +123,23 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
     let tinted = glass.variant >= 2u;
     let energy = saturate(glass.energy);
 
-    // Lens. The bevel is wide enough to bend whole letters behind the rim:
-    // three times the refraction, at least 12 px, at most the half size.
+    // Lens. The bevel scales with the piece: a 16 px knob gets a 3 px curve, a
+    // whole panel all the refraction asks for. A fixed 12 px floor turned every
+    // small control into one smeared edge.
     let depth = max(-d, 0.0);
     let min_half = min(half_size.x, half_size.y);
-    let bezel = min(min_half, max(glass.refraction * 3.0, 12.0));
+    let bezel = clamp(min_half * 0.42, 2.0, max(glass.refraction * 2.0, 3.0));
     let lens = glass_lens(depth, bezel);
     let edge = lens.x;
-    let strength = select(1.6, 2.2, clear) * (1.0 + 0.35 * energy);
-    let shift = glass.refraction * strength * lens.x;
+    // Where the surface is actually tilted. Inside the bevel a letter bends; the
+    // flat middle magnifies instead, which is the difference between a lens and
+    // a blur radius.
+    let tilt = select(0.0, 1.0 - lens.y, bezel > 0.0);
+    let refract = glass_refract(lens.y, 1.55) / glass_refract_max(1.55);
+    let strength = select(1.25, 1.75, clear) * (1.0 + 0.3 * energy);
+    // The bevel's own width is the slab thickness: the shift can never be wider
+    // than the curve it comes from.
+    let shift = bezel * strength * refract * saturate(tilt + 0.15 * edge * edge);
     // The flat middle magnifies a little too, so what is behind reads as seen
     // through a thick lens and not only at the rim.
     let magnify = select(0.035, 0.05, clear) * min(glass.refraction / 8.0, 1.5);
@@ -126,20 +152,29 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
     let lo = max(glass.bounds.origin - margin, vec2<f32>(0.5));
     let hi = min(glass.bounds.origin + glass.bounds.size + margin, globals.viewport_size - 0.5);
 
-    // Small blur: the centre plus two rings of four taps.
-    var color = glass_backdrop(center, lo, hi);
+    // Blur: a Gaussian on two rings of eight taps, the rings turned to a different
+    // angle than the pixel grid. Nine taps on the axes left square cells that read
+    // as a grid through the glass; a rotated two-ring sample does not.
+    var color = glass_backdrop(center, lo, hi) * 0.12;
     if (glass.blur > 0.0) {
         let b = glass.blur;
-        let h = b * 0.5;
-        color += glass_backdrop(center + vec2<f32>(b, 0.0), lo, hi);
-        color += glass_backdrop(center - vec2<f32>(b, 0.0), lo, hi);
-        color += glass_backdrop(center + vec2<f32>(0.0, b), lo, hi);
-        color += glass_backdrop(center - vec2<f32>(0.0, b), lo, hi);
-        color += glass_backdrop(center + vec2<f32>(h, h), lo, hi);
-        color += glass_backdrop(center + vec2<f32>(-h, h), lo, hi);
-        color += glass_backdrop(center + vec2<f32>(h, -h), lo, hi);
-        color += glass_backdrop(center + vec2<f32>(-h, -h), lo, hi);
-        color /= 9.0;
+        // a per-piece turn, so a row of knobs does not all sample the same grid
+        let turn = fract((glass.bounds.origin.x + glass.bounds.origin.y) * 0.0073) * 6.2831853;
+        let r1 = b * 0.55;
+        let r2 = b * 1.15;
+        // 0.12 centre, 8 x 0.075 near, 8 x 0.04 far: sums to 1, tails included
+        let near = 0.075;
+        let far = 0.04;
+        var i = 0;
+        loop {
+            if (i >= 8) { break; }
+            let a = turn + f32(i) * 0.7853982;
+            let dir = vec2<f32>(cos(a), sin(a));
+            color += glass_backdrop(center + dir * r1, lo, hi) * near;
+            color += glass_backdrop(center + dir * r2, lo, hi) * far;
+            i = i + 1;
+        }
+        color *= 1.0 / 1.04;
     }
     if (shift > 0.5) {
         // Two extra taps, only near the rim: red from less bend, blue from more.
@@ -163,7 +198,13 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
         tint *= vec3<f32>(1.0, 1.0 - 0.067 * warmth, 1.0 - 0.165 * warmth);
     }
     let inner_glow = pow(edge, 1.2) * select(0.03, 0.01, clear);
-    var ta = saturate(input.tint.a + inner_glow + energy * 0.025);
+    // Adaptive fill: over a dark backdrop the glass leans opaque so the words on
+    // it stay readable; over a bright one it thins, so a bright page is not
+    // milked. This is why one fill value never looked right on both.
+    let adapt = saturate(1.15 - 1.3 * luma);
+    // Never thinner than the look asked for: a menu over a bright page must stay
+    // a menu. It only thickens, over a dark backdrop.
+    var ta = saturate(input.tint.a * (0.95 + 0.3 * adapt) + inner_glow + energy * 0.025);
     if (tinted) {
         tint *= 0.6 + 0.6 * luma;
         ta = 0.35 + 0.65 * ta;
@@ -189,13 +230,13 @@ fn fs_glass(input: GlassVarying) -> @location(0) vec4<f32> {
     // A broad sheen across the lit part of the bevel, like light caught in the
     // curve, reaching well inside the rim and not only the last pixel.
     let sheen = pow(edge, 0.6) * pow(facing, 1.5) * 0.32 + pow(edge, 0.8) * away * away * 0.1;
-    // Thin rim line at the very edge, two pixels wide.
-    let band = saturate(1.0 - depth / 2.0);
-    let line = band * (0.45 + 0.8 * facing + 0.4 * away);
-    let rim = saturate(lit * (line + spec + sheen));
+    // One rim: the Fresnel glow of the curve, brightest where it faces the light,
+    // with no separate two-pixel line drawn on top. Stacking a line, a spec, a
+    // sheen and a ring gave every control a chrome outline.
+    let rim = saturate(lit * (spec * 0.85 + sheen * 0.65));
     // Inner shadow: a soft dark ring just inside the rim, deeper away from the light.
-    let ring = saturate(1.0 - abs(depth - 3.0) / 3.0) * saturate(depth / 1.0);
-    let shade = ring * (0.05 + 0.10 * (1.0 - facing)) * select(1.0, 1.4, clear) * saturate(glass.rim * 1.5);
+    let ring = saturate(1.0 - abs(depth - 3.0) / 3.5) * saturate(depth / 1.5);
+    let shade = ring * (0.04 + 0.08 * (1.0 - facing)) * select(1.0, 1.3, clear) * saturate(glass.rim * 1.2);
     rgb = (rgb * (1.0 - rim) + vec3<f32>(rim)) * (1.0 - shade);
     alpha = alpha * (1.0 - rim) + rim;
 

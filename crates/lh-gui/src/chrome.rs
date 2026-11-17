@@ -376,6 +376,8 @@ pub fn category_icon_name(c: crate::setting_names::Category) -> &'static str {
     use crate::setting_names::Category as C;
     match c {
         C::Appearance => "appearance",
+        C::Themes => "themes",
+        C::Chat => "chat",
         C::Models => "models",
         C::Chats => "chats",
         C::Memory => "memory",
@@ -404,6 +406,10 @@ pub fn category_icon(c: crate::setting_names::Category) -> Vec<Vec<(f32, f32)>> 
     match c {
         // a circle split down the middle: light and dark
         C::Appearance => vec![circle(12., 12., 8.), vec![(12., 4.), (12., 20.)]],
+        // a column of text, with a rule down its side
+        C::Chat => vec![vec![(4., 6.), (20., 6.), (20., 10.), (4., 10.), (4., 6.)], vec![(4., 13.), (15., 13.), (15., 17.), (4., 17.), (4., 13.)], vec![(3., 3.), (3., 21.)]],
+        // a swatch set: a square with a picture corner
+        C::Themes => vec![vec![(5., 5.), (19., 5.), (19., 19.), (5., 19.), (5., 5.)], vec![(5., 13.), (10., 8.5), (14., 12.5), (17., 10.), (19., 12.)]],
         // a chip with pins
         C::Models => vec![vec![(7., 7.), (17., 7.), (17., 17.), (7., 17.), (7., 7.)], vec![(10., 4.), (10., 7.)], vec![(14., 4.), (14., 7.)], vec![(10., 17.), (10., 20.)], vec![(14., 17.), (14., 20.)], vec![(4., 10.), (7., 10.)], vec![(4., 14.), (7., 14.)], vec![(17., 10.), (20., 10.)], vec![(17., 14.), (20., 14.)]],
         C::Chats => RailItem::Chats.icon(),

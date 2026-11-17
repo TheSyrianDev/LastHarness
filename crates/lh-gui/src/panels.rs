@@ -408,32 +408,12 @@ impl App {
             a.set_direction(n);
             cx.notify();
         });
-        let narrower = self.button("left-narrower", "Chat list narrower", Kind::Ghost, cx, |a, _, cx| {
-            let w = a.layout().left_width - 30.;
-            a.layout_mut().resize_left(w);
-            a.persist();
-            cx.notify();
-        });
-        let wider = self.button("left-wider", "Chat list wider", Kind::Ghost, cx, |a, _, cx| {
-            let w = a.layout().left_width + 30.;
-            a.layout_mut().resize_left(w);
-            a.persist();
-            cx.notify();
-        });
-        let widths = self.width_controls(cx);
+
         let fonts = div().flex().flex_col().items_start().gap_2()
             .child(self.font_picker_row(crate::app::FontSlot::Latin, cx))
             .child(self.font_picker_row(crate::app::FontSlot::Arabic, cx))
             .child(self.added_fonts_block(cx));
-        let pages_switch = self.glass_switch("pages-inside-switch", !self.prefs.pages_off, true, if rtl { "عرض صفحات الويب داخل التطبيق" } else { "Show web pages inside the app" }, true, cx, |a, on, _, cx| {
-            a.prefs.pages_off = !on;
-            a.persist();
-            cx.notify();
-        });
-        let pages_note = div().text_xs().text_color(p.muted).child(if rtl { "لا تستطيع أي صفحة تحميل شيء من الإنترنت أو من هذا الحاسوب. التطبيقات الصغيرة تعمل فيها سكربتات بلا اتصال بالشبكة. الصفحات الأكبر من 2 ميغابايت تظهر كبطاقة." } else { "No page can load anything from the internet or from this computer. Small apps run their scripts with no network. Pages over 2 MB show as a card instead." });
-        let name_row = div().flex().flex_col().gap_1()
-            .child(self.app_row(if rtl { "اسمك" } else { "Your name" }, div().w(px(220.)).child(Input::new(&self.name_input).aria_label("Your name")).into_any_element()))
-            .child(div().text_xs().text_color(p.muted).child(if rtl { "إن تركته فارغًا يُستخدم اسمك من النظام." } else { "Leave it empty to use your name from the system." }));
+
         // the Omarchy look is the one that can take the window's transparency from the desktop; the plain one is
         // opaque unless asked, so the desktop's window rule cannot make it see-through behind the person's back
         let omarchy_look = current == "Omarchy" || current == lh_gui::omarchy::TRANSPARENT;
@@ -452,9 +432,18 @@ impl App {
                 .child(note)
                 .into_any_element()
         });
+        let glass_switch = self.glass_switch("glass-master", !self.prefs.glass_off, true, if rtl { "الزجاج السائل" } else { "Liquid glass" }, true, cx, |a, on, _, cx| {
+            a.prefs.glass_off = !on;
+            a.persist();
+            a.refresh_pal(cx);
+            cx.notify();
+        });
+        let glass_note = div().text_xs().text_color(p.muted).child(if rtl { "الزجاج يخصّ الطبقات العائمة فقط: مقابض وأقراص وقوائم. الألواح المسطحة تبقى مسطحة. المظهر يقرّر أي سطح زجاجي في جدول material." } else { "Glass belongs to floating layers only: thumbs, knobs, menus. Flat panels stay flat. Each look says which surfaces are glass in its material table." });
+        let glass_body = div().flex().flex_col().gap_2().child(glass_switch).child(glass_note).into_any_element();
         let look_body = div().flex().flex_col().gap_3()
             .child(looks)
             .children(follow_row)
+            .child(self.look_preview(cx))
             .into_any_element();
         let look_section = self.app_section(true, if rtl { "المظهر" } else { "Look" }, look_hint, look_body);
         let mode_section = self.app_section(false, if rtl { "الوضع" } else { "Light and dark" }, None, modes.into_any_element());
@@ -466,13 +455,9 @@ impl App {
                 .child(div().font_family(p.mono.clone()).text_color(p.text).child(lh_gui::omarchy::RULE_HINT))
                 .into_any_element()
         });
-        let width_section = self.app_section(false, if rtl { "عرض القراءة" } else { "Reading width" }, Some(SharedString::from(if rtl { "كم يتسع عمود المحادثة على الشاشات العريضة." } else { "How wide the conversation runs on a wide screen." })), widths);
         let type_section = self.app_section(false, if rtl { "الخط" } else { "Type" }, Some(SharedString::from(if rtl { "الخطوط المستخدمة في النص والشيفرة." } else { "The faces used for text and for code." })), fonts.into_any_element());
-        let greeting_section = self.app_section(false, if rtl { "شاشة المحادثة الجديدة" } else { "New chat" }, None, name_row.into_any_element());
-        let pages_section = self.app_section(false, if rtl { "صفحات الويب" } else { "Web pages" }, None, div().flex().flex_col().gap_1().child(pages_switch).child(pages_note).into_any_element());
         let window_body = div().flex().flex_col().gap_3()
             .child(self.app_row(if rtl { "اتجاه الواجهة" } else { "Interface direction" }, dir_btn))
-            .child(self.app_row(if rtl { "قائمة المحادثات" } else { "Chat list width" }, div().flex().flex_wrap().gap_1().child(narrower).child(wider).into_any_element()))
             .into_any_element();
         let window_section = self.app_section(false, if rtl { "النافذة" } else { "Window" }, None, window_body);
         div().flex().flex_col().gap_5().text_color(p.text)
@@ -481,15 +466,165 @@ impl App {
                 .child(mode_section)
                 .children(glass_section)
                 .children(rule_note)
-                .child(width_section)
+                .child(self.app_section(false, if rtl { "الزجاج" } else { "Glass" }, None, glass_body))
                 .child(type_section)
-                .child(greeting_section)
-                .child(pages_section)
                 .child(window_section)
                 .child(div().border_t_1().border_color(p.border.opacity(0.7)).pt_4().text_xs().text_color(p.muted).child(format!("Your own looks go in {} as .toml files; changes show at once.", self.cfg.themes.display())))
                 .children(self.themes.problems.iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Theme file problem: {e}"))))
             .children(self.themes.notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
             .children(self.look_notice.clone().map(|n| div().text_xs().text_color(p.muted).child(n)))
+            .into_any_element()
+    }
+
+    /// A small picture of the app in the look in use: a rail, a title, one of your messages and the message box, in
+    /// the look's own colours, surfaces and radius. This is what a look is judged by, so the person does not have to
+    /// read seven names and guess.
+    fn look_preview(&self, _cx: &mut Context<Self>) -> AnyElement {
+        let p = &self.pal;
+        let line = |w: f32, c: Hsla, h: f32| div().h(px(h)).w(px(w)).rounded(px(h / 2.)).bg(c);
+        div().id("look-preview").role(Role::Label).aria_label("A small picture of the app in this look")
+            .h(px(132.)).w_full().flex().rounded(p.inner).border_1().border_color(p.border).overflow_hidden()
+            .child(div().w(px(86.)).h_full().flex_none().bg(p.bg).p_2().flex().flex_col().gap(px(7.))
+                .child(line(46., p.text.opacity(0.55), 6.))
+                .child(line(58., p.muted.opacity(0.3), 4.))
+                .child(line(52., p.muted.opacity(0.3), 4.))
+                .child(line(40., p.muted.opacity(0.3), 4.)))
+            .child(div().flex_1().min_w_0().h_full().bg(p.bg).p_3().flex().flex_col().gap(px(8.))
+                .child(line(104., p.text.opacity(0.6), 6.))
+                .child(div().flex().justify_end().child(div().px_2().py_1().rounded(p.inner).bg(p.surface).border_1().border_color(p.border).child(line(120., p.text.opacity(0.55), 5.))))
+                .child(line(150., p.muted.opacity(0.3), 4.))
+                .child(line(122., p.muted.opacity(0.3), 4.))
+                .child(div().mt_auto().h(px(22.)).w_full().rounded(px(6.)).bg(p.surface).border_1().border_color(p.border).px_2().flex().items_center().child(line(64., p.muted.opacity(0.35), 4.))))
+            .into_any_element()
+    }
+
+    /// The Chat page: reading width and its presets, the chat list, the name the new-chat screen uses, and the pages
+    /// shown inside the app. It works with the core down, like Appearance.
+    fn chat_block(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let widths = self.width_controls(cx);
+        let narrower = self.button("left-narrower", if rtl { "أضيق" } else { "Narrower" }, Kind::Ghost, cx, |a, _, cx| {
+            let w = a.layout().left_width - 30.;
+            a.layout_mut().resize_left(w);
+            a.persist();
+            cx.notify();
+        });
+        let wider = self.button("left-wider", if rtl { "أعرض" } else { "Wider" }, Kind::Ghost, cx, |a, _, cx| {
+            let w = a.layout().left_width + 30.;
+            a.layout_mut().resize_left(w);
+            a.persist();
+            cx.notify();
+        });
+        let list_row = self.app_row(if rtl { "عرض القائمة" } else { "Chat list width" }, div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(narrower).child(wider).into_any_element());
+        let name_row = div().flex().flex_col().gap_1()
+            .child(self.app_row(if rtl { "اسمك" } else { "Your name" }, div().w(px(220.)).child(Input::new(&self.name_input).aria_label("Your name")).into_any_element()))
+            .child(div().text_xs().text_color(p.muted).child(if rtl { "إن تركته فارغًا يُستخدم اسمك من النظام." } else { "Leave it empty to use your name from the system." }));
+        let pages_switch = self.glass_switch("pages-inside-switch", !self.prefs.pages_off, true, if rtl { "عرض صفحات الويب داخل التطبيق" } else { "Show web pages inside the app" }, true, cx, |a, on, _, cx| {
+            a.prefs.pages_off = !on;
+            a.persist();
+            cx.notify();
+        });
+        let pages_note = div().text_xs().text_color(p.muted).child(if rtl { "لا تستطيع أي صفحة تحميل شيء من الإنترنت أو من هذا الحاسوب. التطبيقات الصغيرة تعمل فيها سكربتات بلا اتصال بالشبكة. الصفحات الأكبر من 2 ميغابايت تظهر كبطاقة." } else { "No page can load anything from the internet or from this computer. Small apps run their scripts with no network. Pages over 2 MB show as a card instead." });
+        div().flex().flex_col().gap_4().text_color(p.text).id("chat-page").role(Role::Group).aria_label("Chat")
+            .child(self.app_section(true, if rtl { "عرض القراءة" } else { "Reading width" }, Some(SharedString::from(if rtl { "كم يتسع عمود المحادثة على الشاشات العريضة." } else { "How wide the conversation runs on a wide screen." })), widths))
+            .child(self.app_section(false, if rtl { "قائمة المحادثات" } else { "The chat list" }, None, list_row))
+            .child(self.app_section(false, if rtl { "شاشة المحادثة الجديدة" } else { "New chat" }, None, name_row.into_any_element()))
+            .child(self.app_section(false, if rtl { "صفحات الويب" } else { "Web pages" }, None, div().flex().flex_col().gap_1().child(pages_switch).child(pages_note).into_any_element()))
+            .into_any_element()
+    }
+
+    /// One look as a small picture: its background image, its gradient, or its plain colour, with a hairline. The
+    /// person can see what a folder holds before opening the file.
+    fn look_swatch(&self, family: &str) -> AnyElement {
+        use lh_gui::theme::BackgroundKind;
+        let p = &self.pal;
+        let t = &self.themes.themes[self.themes.resolve(family, self.dark())];
+        let base = div().size(px(26.)).flex_none().rounded(px(4.)).border_1().border_color(p.border).overflow_hidden().bg(crate::style::hsla(t.colors.background));
+        let b = &t.background;
+        match (&b.image, b.kind) {
+            (Some(path), _) => base.child(img(path.clone()).size_full().object_fit(ObjectFit::Cover)).into_any_element(),
+            (None, BackgroundKind::Gradient) => base.bg(linear_gradient(b.angle, linear_color_stop(crate::style::hsla(b.from), 0.), linear_color_stop(crate::style::hsla(b.to), 1.))).into_any_element(),
+            _ => base.into_any_element(),
+        }
+    }
+
+    /// The Themes page: every look as a row, with the folder behind it — copy it, rename it, take it out or bring one
+    /// in. The person's own looks are folders in one place, so this page is the window onto that folder.
+    fn themes_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.pal.clone();
+        let rtl = self.rtl;
+        let current = self.family();
+        let families = self.themes.families();
+        let mut rows = div().flex().flex_col();
+        for f in &families {
+            let family = f.clone();
+            let on = *f == current;
+            let origin = self.themes.origin(&self.themes.themes[self.themes.resolve(f, self.dark())].label()).cloned();
+            let folder = origin.as_ref().and_then(|o| o.folder()).is_some();
+            let place = match &origin {
+                Some(lh_gui::theme::Origin::Builtin(_)) => if rtl { "مدمج" } else { "built in" },
+                Some(lh_gui::theme::Origin::File(_)) => if rtl { "ملف مفرد" } else { "a single file" },
+                Some(lh_gui::theme::Origin::Folder(_)) => if rtl { "مجلدك" } else { "your folder" },
+                // the two Omarchy looks come from the desktop's own theme, not from a file here
+                None => if rtl { "سطح المكتب" } else { "this desktop" },
+            };
+            let swatch = self.look_swatch(&family);
+            let name_area: AnyElement = if self.look_rename.as_deref() == Some(family.as_str()) {
+                let save = self.button(format!("look-rename-save-{family}"), if rtl { "احفظ" } else { "Save" }, Kind::Normal, cx, |a, w, cx| a.commit_rename_look(w, cx));
+                let cancel = self.button(format!("look-rename-cancel-{family}"), if rtl { "ألغِ" } else { "Cancel" }, Kind::Ghost, cx, |a, _, cx| a.cancel_rename_look(cx));
+                div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1()
+                    .child(div().w(px(210.)).child(Input::new(&self.look_name)))
+                    .child(save)
+                    .child(cancel)
+                    .into_any_element()
+            } else {
+                div().flex().flex_col().gap_0p5()
+                    .child(div().text_sm().text_color(p.text).child(family.clone()))
+                    .child(div().text_xs().text_color(p.muted).child(format!("{} · {}", t_mode_label(&self.themes, f, self.dark()), place)))
+                    .into_any_element()
+            };
+            let use_btn = (!on).then(|| {
+                let f = family.clone();
+                self.button(format!("look-use-{family}"), if rtl { "استخدم" } else { "Use" }, Kind::Normal, cx, move |a, w, cx| a.set_family(&f, w, cx))
+            });
+            let dup = {
+                let f = family.clone();
+                self.button(format!("look-dup-{family}"), if rtl { "انسخ" } else { "Duplicate" }, Kind::Ghost, cx, move |a, w, cx| a.duplicate_look(&f, w, cx))
+            };
+            let rename = folder.then(|| {
+                let f = family.clone();
+                self.button(format!("look-rename-{family}"), if rtl { "أعد التسمية" } else { "Rename" }, Kind::Ghost, cx, move |a, w, cx| a.begin_rename_look(&f, w, cx))
+            });
+            let export = {
+                let f = family.clone();
+                self.button(format!("look-export-{family}"), if rtl { "صدّر" } else { "Export" }, Kind::Ghost, cx, move |a, _, cx| a.export_look(&f, cx))
+            };
+            let remove = folder.then(|| {
+                let f = family.clone();
+                let armed = self.look_remove_armed.as_deref() == Some(family.as_str());
+                let label = if armed { if rtl { "أكّد الحذف" } else { "Remove for good" } } else if rtl { "احذف" } else { "Remove" };
+                self.button(format!("look-remove-{family}"), label, if armed { Kind::Danger } else { Kind::Ghost }, cx, move |a, w, cx| a.remove_look(&f, w, cx))
+            });
+            let row = div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_3().py_2p5().border_b_1().border_color(p.border.opacity(0.6))
+                .child(swatch)
+                .child(div().flex_1().min_w_0().child(name_area))
+                .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().children(use_btn).child(dup).children(rename).child(export).children(remove));
+            rows = rows.child(row);
+        }
+        let import = self.button("look-import", if rtl { "استورد مظهرًا" } else { "Import a look" }, Kind::Normal, cx, |a, w, cx| a.import_look(w, cx));
+        let reveal = self.button("look-reveal", if rtl { "افتح المجلد" } else { "Open the folder" }, Kind::Ghost, cx, |a, _, cx| a.show_looks_folder(cx));
+        let note = self.look_note.clone().map(|n| div().text_xs().text_color(p.muted).child(n));
+        let problems: Vec<String> = self.themes.problems.clone();
+        div().flex().flex_col().gap_4().text_color(p.text)
+            .id("themes-page").role(Role::Group).aria_label("Themes")
+            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_2().child(import).child(reveal))
+            .child(rows)
+            .children(note)
+            .child(div().flex().flex_col().gap_1().pt_2().text_xs().text_color(p.muted)
+                .child(if rtl { "مظهر واحد لكل مجلد: بداخله theme.toml وصورة اختيارية باسم background.png. اسم المجلد هو اسم المظهر." } else { "One look per folder: a theme.toml inside, and a background.png beside it if you want a picture. The folder's name is the look's name." })
+                .child(div().font_family(p.mono.clone()).child(self.cfg.themes.display().to_string())))
+            .children(problems.into_iter().map(|e| div().text_xs().text_color(p.danger).child(format!("Look problem: {e}"))))
             .into_any_element()
     }
 
@@ -1022,8 +1157,13 @@ impl App {
         use lh_gui::setting_names::{appearance_matches, describe, matches, Category};
         let p = self.pal.clone();
         let mut col = div().flex().flex_col();
+        // a core that is away is one quiet line with a way to try again, not a red box over the page
         if let Some(e) = self.panels.settings_error.clone() {
-            col = col.child(div().mb_4().px_3().py_2().rounded(px(6.)).bg(p.danger.opacity(0.08)).border_1().border_color(p.danger.opacity(0.35)).text_sm().text_color(p.danger).child(e));
+            let retry = self.button("settings-retry", if self.rtl { "حاول مرة أخرى" } else { "Try again" }, Kind::Ghost, cx, |a, _, cx| {
+                a.backend.send(lh_gui::api::Cmd::Refresh);
+                cx.notify();
+            });
+            col = col.child(div().mb_4().flex().items_center().gap_3().text_xs().text_color(p.muted).child(div().flex_1().min_w_0().child(e)).child(retry));
         }
         let query = self.settings_search.read(cx).value().to_string();
         let searching = !query.trim().is_empty();
@@ -1050,6 +1190,14 @@ impl App {
         if show_appearance {
             col = col.child(self.appearance_block(window, cx));
         }
+        // the chat itself: width and presets, the list, the name, the pages inside
+        if !searching && page == Category::Chat {
+            return col.child(self.chat_block(window, cx)).into_any_element();
+        }
+        // the person's own looks: their folders, their backgrounds, and the ways to move one in or out
+        if !searching && page == Category::Themes {
+            return col.child(self.themes_page(window, cx)).into_any_element();
+        }
         if !searching {
             if let Some(body) = self.pg_page(page, window, cx) {
                 return col.child(div().pt_2().child(body)).into_any_element();
@@ -1071,7 +1219,7 @@ impl App {
                 }
             }
         }
-        if !self.connected && !show_appearance {
+        if !self.connected && !show_appearance && !matches!(page, Category::Themes | Category::Chat) {
             return col.child(div().pt_4().child(self.note("The core is not running, so these settings cannot be shown."))).into_any_element();
         }
         for i in shown.iter().copied() {
@@ -1121,7 +1269,14 @@ impl App {
                 a.set_settings_page(next, w, cx);
                 cx.stop_propagation();
             }));
+        // the pages come in three groups, so eighteen of them do not read as one long list
+        let mut group = None;
         for c in list {
+            let g = rail_group(c);
+            if group != Some(g) {
+                group = Some(g);
+                nav = nav.child(div().px_3().pt_3().pb_1().text_xs().text_color(p.muted).child(rail_group_title(g, rtl)));
+            }
             let on = c == self.settings_page && !searching;
             let danger = lh_gui::setting_names::page_is_risky(c, self.panels.settings.iter().map(|s| (s.key.as_str(), s.value.as_str())));
             nav = nav.child(
@@ -1640,4 +1795,35 @@ impl App {
 /// Whether the open chat has no memory steps.
 fn col_is_empty(chats: &lh_gui::model::Chats, _rtl: bool) -> bool {
     chats.current().map_or(true, |c| !c.blocks.iter().any(|b| matches!(b, Block::Tool { name, .. } if name == "recall" || name == "remember")))
+}
+
+/// What modes a look brings: a family with both is one look in two modes.
+fn t_mode_label(themes: &lh_gui::theme::ThemeSet, family: &str, _dark: bool) -> String {
+    let (has_dark, has_light) = (themes.variant(family, true).is_some(), themes.variant(family, false).is_some());
+    match (has_dark, has_light) {
+        (true, true) => "light and dark".into(),
+        (true, false) => "dark".into(),
+        _ => "light".into(),
+    }
+}
+
+/// Which rail group a page belongs to: the app itself, the assistant's work, or this computer.
+fn rail_group(c: lh_gui::setting_names::Category) -> u8 {
+    use lh_gui::setting_names::Category as C;
+    match c {
+        C::Appearance | C::Themes | C::Chat => 0,
+        C::Models | C::Chats | C::Memory | C::Learning | C::Departments | C::Permissions | C::Spending | C::Web | C::Tools | C::Channels => 1,
+        _ => 2,
+    }
+}
+
+fn rail_group_title(group: u8, rtl: bool) -> &'static str {
+    match (group, rtl) {
+        (0, false) => "This app",
+        (1, false) => "Assistant",
+        (2, false) => "This computer",
+        (0, true) => "هذا التطبيق",
+        (1, true) => "المساعد",
+        _ => "هذا الحاسوب",
+    }
 }

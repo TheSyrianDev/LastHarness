@@ -222,6 +222,12 @@ pub struct App {
     pub centre_reveal: lh_gui::motion::Reveal,
     /// The name typed in Appearance for the new-chat greeting.
     pub name_input: Entity<InputState>,
+    /// The Themes page: the look being renamed and the name typed for it, a word about the last thing tried, and the
+    /// look whose Remove was clicked once.
+    pub look_rename: Option<String>,
+    pub look_name: Entity<InputState>,
+    pub look_note: Option<String>,
+    pub look_remove_armed: Option<String>,
     /// The Settings window, while it is up, and where keyboard focus lives inside it.
     pub settings_open: bool,
     pub settings_focus: FocusHandle,
@@ -457,6 +463,7 @@ impl App {
         })
         .detach();
         let name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Your name").default_value(prefs.name.clone()));
+        let look_name = cx.new(|cx| InputState::new(window, cx).placeholder("Look name"));
         cx.subscribe_in(&name_input, window, |this: &mut App, input, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::Change) {
                 this.prefs.name = input.read(cx).value().to_string();
@@ -550,6 +557,10 @@ impl App {
             right_reveal: Default::default(),
             centre_reveal: Default::default(),
             name_input,
+            look_rename: None,
+            look_name,
+            look_note: None,
+            look_remove_armed: None,
             settings_open: false,
             settings_focus,
             tab_buttons: false,
@@ -642,6 +653,7 @@ impl App {
         self.window_radius = theme::window_radius();
         let t = glass_tinted(&self.themes.themes[self.active_theme], &self.prefs);
         self.pal = Pal::from(&t, self.window_radius, lh_gui::config::reduce_motion(), &self.fonts);
+        self.pal.glass = !self.prefs.glass_off;
         apply_component_theme(&self.pal, cx);
     }
 

@@ -690,6 +690,7 @@ mod tests {
         assert_eq!(l.presets[0].name, "Wide reading");
     }
 
+    #[test]
     fn presets_are_saved_applied_renamed_and_deleted() {
         let mut l = Layout { column: ColumnWidth::Px(1000.), ..Layout::default() };
         assert_eq!(l.save_preset("  Reading  "), Ok(0));

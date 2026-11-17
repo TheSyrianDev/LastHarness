@@ -9,6 +9,10 @@
 pub enum Category {
     /// The app's own look and layout. Not a core setting; it works when the core is away.
     Appearance,
+    /// The person's own looks: folders with a theme.toml and a background. Not a core setting either.
+    Themes,
+    /// The chat itself: how wide it runs, the chat list, the person's name, the pages shown inside it. Not core either.
+    Chat,
     Models,
     Chats,
     Memory,
@@ -33,8 +37,10 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Category; 17] = [
+    pub const ALL: [Category; 19] = [
         Category::Appearance,
+        Category::Themes,
+        Category::Chat,
         Category::Models,
         Category::Chats,
         Category::Memory,
@@ -57,6 +63,8 @@ impl Category {
     pub fn id(self) -> &'static str {
         match self {
             Category::Appearance => "appearance",
+            Category::Themes => "themes",
+            Category::Chat => "chat",
             Category::Models => "models",
             Category::Chats => "chats",
             Category::Memory => "memory",
@@ -84,6 +92,8 @@ impl Category {
     pub fn title(self) -> &'static str {
         match self {
             Category::Appearance => "Appearance",
+            Category::Themes => "Themes",
+            Category::Chat => "Chat",
             Category::Models => "Models and keys",
             Category::Chats => "Chats and speed",
             Category::Memory => "Memory",
@@ -106,7 +116,9 @@ impl Category {
     /// One line under the page title.
     pub fn blurb(self) -> &'static str {
         match self {
-            Category::Appearance => "How the window looks and how wide the chat is",
+            Category::Appearance => "The look, the light or dark, the glass and the type",
+            Category::Themes => "Your own looks: a folder each, with its own background",
+            Category::Chat => "How wide the conversation runs, the chat list, your name, and the pages shown inside",
             Category::Models => "Where your models come from, and the key to reach them",
             Category::Chats => "How chats are kept, shortened and resumed",
             Category::Memory => "What the app remembers about you, and how much of it goes with a message",
@@ -364,7 +376,7 @@ pub fn appearance_matches(query: &str) -> bool {
 impl Category {
     /// Pages the app draws itself, listed even when the core has no setting for them.
     pub fn always_listed(self) -> bool {
-        matches!(self, Category::Appearance | Category::Tools | Category::Channels | Category::Data | Category::Activity | Category::Hooks | Category::Schedules)
+        matches!(self, Category::Appearance | Category::Themes | Category::Chat | Category::Tools | Category::Channels | Category::Data | Category::Activity | Category::Hooks | Category::Schedules)
     }
 }
 
@@ -508,16 +520,16 @@ mod tests {
         let keys: Vec<&str> = lh_config::SCHEMA.iter().map(|d| d.key).collect();
         let p = pages(keys.iter().copied());
         assert_eq!(p[0], Category::Appearance);
-        assert_eq!(p.len(), 16, "nine pages with settings, Learning, six the app draws, and More only when something is unnamed: {p:?}");
+        assert_eq!(p.len(), 18, "nine pages with settings, Learning, eight the app draws, and More only when something is unnamed: {p:?}");
         assert!(!p.contains(&Category::Other));
-        assert_eq!(pages(std::iter::empty()), vec![Category::Appearance, Category::Tools, Category::Channels, Category::Data, Category::Activity, Category::Hooks, Category::Schedules], "with the core away only the pages the app draws show");
+        assert_eq!(pages(std::iter::empty()), vec![Category::Appearance, Category::Themes, Category::Chat, Category::Tools, Category::Channels, Category::Data, Category::Activity, Category::Hooks, Category::Schedules], "with the core away only the pages the app draws show");
         assert_eq!(neighbour(&p, Category::Appearance, false), Category::Appearance, "stops at the top");
         assert_eq!(neighbour(&p, Category::Appearance, true), p[1]);
         assert_eq!(neighbour(&p, *p.last().unwrap(), true), *p.last().unwrap(), "stops at the bottom");
         assert_eq!(neighbour(&p, p[3], false), p[2]);
         assert_eq!(neighbour(&[], Category::Models, true), Category::Appearance);
         // permissions are no more than a few steps from the top
-        assert!(p.iter().position(|c| *c == Category::Permissions).unwrap() <= 6);
+        assert!(p.iter().position(|c| *c == Category::Permissions).unwrap() <= 8);
     }
 
     #[test]
