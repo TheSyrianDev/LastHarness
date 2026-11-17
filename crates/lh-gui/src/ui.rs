@@ -994,7 +994,7 @@ impl App {
                 .with_animation(key, Animation::new(sweep.dur).with_easing(motion::ease_out), move |el, t| {
                     let r = far * t;
                     let inner = {
-                        let mut pal = p.clone();
+                        let pal = p.clone();
                         pal.paint_background(div().absolute().left(px(r - ox)).top(px(r - oy)).w(px(w)).h(px(h)))
                             .children(p.image_layer())
                     };

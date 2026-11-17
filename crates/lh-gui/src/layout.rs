@@ -209,8 +209,11 @@ pub struct Preset {
     pub width: ColumnWidth,
 }
 
-/// Widths that are always in the list, labelled by their number.
-pub const BUILT_IN_WIDTHS: [ColumnWidth; 4] = [ColumnWidth::Px(700.), ColumnWidth::Px(900.), ColumnWidth::Px(1100.), ColumnWidth::Full];
+/// The one width a fresh install keeps, so the presets row is never empty and never a pile of numbers the person
+/// did not choose. It is an ordinary preset: rename it, change it, remove it, or put it back.
+pub fn default_preset() -> Preset {
+    Preset { name: "Default".into(), width: ColumnWidth::Px(1000.) }
+}
 
 /// Why a preset could not be saved or renamed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -338,6 +341,13 @@ impl Layout {
             return Err(PresetError::NoSuchPreset);
         }
         self.presets.remove(at);
+        Ok(())
+    }
+
+    /// Give a kept preset a new width, without renaming it.
+    pub fn set_preset_width(&mut self, at: usize, width: ColumnWidth) -> Result<(), PresetError> {
+        let p = self.presets.get_mut(at).ok_or(PresetError::NoSuchPreset)?;
+        p.width = width;
         Ok(())
     }
 
@@ -633,11 +643,8 @@ mod tests {
         assert_eq!(ColumnWidth::Px(860.).label(false), "860 px");
         assert_eq!(ColumnWidth::Px(860.).label(true), "860 px");
         assert_eq!(ColumnWidth::Full.label(false), "Full");
-        for w in BUILT_IN_WIDTHS {
-            let l = w.label(false);
-            assert!(l == "Full" || l.ends_with(" px"), "{l}");
-        }
-        assert_eq!(BUILT_IN_WIDTHS.iter().filter(|w| **w == ColumnWidth::Full).count(), 1);
+        let d = default_preset();
+        assert_eq!((d.name.as_str(), d.width), ("Default", ColumnWidth::Px(1000.)));
     }
 
     #[test]
@@ -669,6 +676,20 @@ mod tests {
     }
 
     #[test]
+    fn a_preset_can_be_renamed_re_measured_and_removed() {
+        let mut l = Layout::default();
+        l.presets = vec![default_preset()];
+        l.column = ColumnWidth::Px(1010.);
+        assert_eq!(l.save_preset("Reading").unwrap(), 1);
+        l.rename_preset(1, "Wide reading").unwrap();
+        l.set_preset_width(1, ColumnWidth::Px(1120.)).unwrap();
+        assert_eq!((l.presets[1].name.as_str(), l.presets[1].width), ("Wide reading", ColumnWidth::Px(1120.)));
+        assert!(l.rename_preset(1, "Default").is_err(), "no two presets with one name");
+        l.delete_preset(0).unwrap();
+        assert_eq!(l.presets.len(), 1);
+        assert_eq!(l.presets[0].name, "Wide reading");
+    }
+
     fn presets_are_saved_applied_renamed_and_deleted() {
         let mut l = Layout { column: ColumnWidth::Px(1000.), ..Layout::default() };
         assert_eq!(l.save_preset("  Reading  "), Ok(0));

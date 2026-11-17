@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use crate::app::App;
 use crate::ui::Kind;
-use lh_gui::layout::{slider_max, ColumnWidth, BUILT_IN_WIDTHS, COLUMN_MIN, COLUMN_STEP};
+use lh_gui::layout::{slider_max, ColumnWidth, COLUMN_MIN, COLUMN_STEP};
 
 /// Everything the width controls remember between frames.
 pub struct WidthControls {
@@ -26,8 +26,9 @@ pub struct WidthControls {
     pub focus: FocusHandle,
     /// Pixels in the middle of the window for the column, as of the last frame.
     pub room: f32,
-    /// The box for naming a preset, and the saved preset it is about.
+    /// The box for naming a preset, the box for its width, and the saved preset they are about.
     pub preset_name: Entity<InputState>,
+    pub preset_width: Entity<InputState>,
     pub selected: Option<usize>,
     /// A word about the last thing tried, such as a name that is taken.
     pub note: Option<String>,
@@ -45,7 +46,8 @@ impl WidthControls {
         })
         .detach();
         let preset_name = cx.new(|cx| InputState::new(window, cx).placeholder("Name this width"));
-        WidthControls { track: Rc::new(Cell::new((0., 1.))), dragging: false, input, focus: cx.focus_handle(), room, preset_name, selected: None, note: None }
+        let preset_width = cx.new(|cx| InputState::new(window, cx).placeholder("1000 px"));
+        WidthControls { track: Rc::new(Cell::new((0., 1.))), dragging: false, input, focus: cx.focus_handle(), room, preset_name, preset_width, selected: None, note: None }
     }
 }
 
@@ -119,10 +121,43 @@ impl App {
     pub fn choose_width(&mut self, w: ColumnWidth, saved: Option<usize>, window: &mut Window, cx: &mut Context<Self>) {
         self.set_column(w, window, cx);
         self.width.selected = saved;
-        if let Some(p) = saved.and_then(|i| self.layout().presets.get(i)) {
-            let name = p.name.clone();
-            self.width.preset_name.update(cx, |s, cx| s.set_value(name, window, cx));
+        let room = self.width.room;
+        if let Some(p) = saved.and_then(|i| self.layout().presets.get(i)).cloned() {
+            let text = p.width.input_text(room);
+            self.width.preset_name.update(cx, |s, cx| s.set_value(p.name.clone(), window, cx));
+            self.width.preset_width.update(cx, |s, cx| s.set_value(text, window, cx));
         }
+    }
+
+    /// Save the name and the width of the chosen preset at once: this is how a preset is renamed or its number
+    /// changed, the two things a kept width needs.
+    pub fn save_preset_edits(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(i) = self.width.selected else {
+            self.width.note = Some(lh_gui::layout::PresetError::NoSuchPreset.message(self.rtl).into());
+            return cx.notify();
+        };
+        let (room, text) = (self.width.room, self.width.preset_width.read(cx).value().to_string());
+        let name = self.width.preset_name.read(cx).value().to_string();
+        let Some(w) = ColumnWidth::parse(&text, room) else {
+            self.width.note = Some(if self.rtl { "اكتب رقمًا من 480 فما فوق، أو Full." } else { "Type a number from 480 up, or Full." }.into());
+            return cx.notify();
+        };
+        let r = self.layout_mut().rename_preset(i, &name).and_then(|_| self.layout_mut().set_preset_width(i, w));
+        self.preset_result(r.map(|_| i), cx);
+        // the box shows the width in its own words ("1000 px", "Full"), not what was typed
+        let back = w.input_text(room);
+        self.width.preset_width.update(cx, |s, cx| s.set_value(back, window, cx));
+    }
+
+    /// Put the one default width back, for a person who removed every preset.
+    pub fn restore_default_preset(&mut self, cx: &mut Context<Self>) {
+        if !self.layout().presets.iter().any(|p| p.name == "Default") {
+            self.layout_mut().presets.push(lh_gui::layout::default_preset());
+            self.width.selected = self.layout().presets.len().checked_sub(1);
+            self.width.note = None;
+            self.persist();
+        }
+        cx.notify();
     }
 
     fn preset_result(&mut self, r: Result<usize, lh_gui::layout::PresetError>, cx: &mut Context<Self>) {
@@ -276,25 +311,34 @@ impl App {
             .child(div().w(px(84.)).child(Input::new(&self.width.input)))
             .child(unit);
 
-        // the presets: built-in numbers first, then the ones the person made, each labelled by its number
+        // the widths the person keeps. There is one to begin with (Default · 1000 px) and it is an ordinary preset:
+        // clicking it applies it, the boxes below rename it or change its number, and Remove takes it away
+        let preset_list: Vec<(usize, String, ColumnWidth)> = self.layout().presets.iter().enumerate().map(|(i, s)| (i, s.name.clone(), s.width)).collect();
         let mut chips = div().flex_1().flex().flex_wrap().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1();
-        for (i, w) in BUILT_IN_WIDTHS.iter().copied().enumerate() {
-            let kind = if col == w { Kind::Primary } else { Kind::Normal };
-            chips = chips.child(self.button(format!("width-built-in-{i}"), w.label(rtl), kind, cx, move |a, window, cx| a.choose_width(w, None, window, cx)));
+        if preset_list.is_empty() {
+            chips = chips.child(div().text_sm().text_color(p.muted).child(if rtl { "لا توجد إعدادات محفوظة." } else { "No saved widths." }));
         }
-        let saved: Vec<(usize, String, ColumnWidth)> = self.layout().presets.iter().enumerate().map(|(i, s)| (i, s.name.clone(), s.width)).collect();
-        for (i, name, w) in saved {
-            let chosen = self.width.selected == Some(i);
-            let kind = if col == w || chosen { Kind::Primary } else { Kind::Normal };
+        for (i, name, w) in &preset_list {
+            let (i, w, chosen) = (*i, *w, self.width.selected == Some(*i));
+            let kind = if chosen { Kind::Primary } else if col == w { Kind::Primary } else { Kind::Normal };
             chips = chips.child(self.button(format!("width-preset-{i}"), format!("{name} · {}", w.label(rtl)), kind, cx, move |a, window, cx| a.choose_width(w, Some(i), window, cx)));
         }
-        let save = self.button("width-preset-save", if rtl { "احفظ العرض الحالي" } else { "Save this width" }, Kind::Normal, cx, |a, _, cx| a.save_width_preset(cx));
-        let mut manage = div().flex().flex_wrap().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1().child(div().w(px(180.)).child(Input::new(&self.width.preset_name))).child(save);
-        if self.width.selected.is_some() {
-            manage = manage
-                .child(self.button("width-preset-rename", if rtl { "إعادة تسمية" } else { "Rename" }, Kind::Normal, cx, |a, _, cx| a.rename_width_preset(cx)))
-                .child(self.button("width-preset-delete", if rtl { "حذف" } else { "Delete" }, Kind::Danger, cx, |a, window, cx| a.delete_width_preset(window, cx)));
-        }
+        let selected = self.width.selected.filter(|i| *i < preset_list.len());
+        let name_box = div().w(px(180.)).child(Input::new(&self.width.preset_name));
+        let width_box = div().w(px(110.)).child(Input::new(&self.width.preset_width));
+        let manage = match selected {
+            // a chosen preset: both its name and its number, then Save, and Remove right next to it
+            Some(_) => div().flex().flex_wrap().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1()
+                .child(name_box)
+                .child(width_box)
+                .child(self.button("width-preset-save-edits", if rtl { "احفظ التعديل" } else { "Save" }, Kind::Normal, cx, |a, w, cx| a.save_preset_edits(w, cx)))
+                .child(self.button("width-preset-delete", if rtl { "احذف" } else { "Remove" }, Kind::Danger, cx, |a, window, cx| a.delete_width_preset(window, cx))),
+            // nothing chosen: keep the width in use under the name typed here
+            None => div().flex().flex_wrap().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1()
+                .child(name_box)
+                .child(self.button("width-preset-save", if rtl { "احفظ العرض الحالي" } else { "Save this width" }, Kind::Normal, cx, |a, _, cx| a.save_width_preset(cx))),
+        };
+        let restore = self.button("width-preset-restore", if rtl { "أعد الإعداد الافتراضي" } else { "Restore default" }, Kind::Ghost, cx, |a, _, cx| a.restore_default_preset(cx));
         let note = self.width.note.clone().map(|n| div().text_xs().text_color(p.danger).child(n));
         div()
             .flex()
@@ -306,7 +350,7 @@ impl App {
             .child(slider_row)
             .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_4().child(label_of(if rtl { "إعدادات مسبقة".into() } else { "Presets".into() })).child(chips))
             .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_4().child(div().w(px(200.)).flex_none()).child(manage))
-            .children(note)
+            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_4().child(div().w(px(200.)).flex_none().child(restore)).children(note))
             .into_any_element()
     }
 }

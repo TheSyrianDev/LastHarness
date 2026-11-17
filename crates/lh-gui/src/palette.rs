@@ -4,7 +4,7 @@
 
 use crate::chrome::{panel_label, DOCK_TABS};
 use crate::appearance::ModeChoice;
-use crate::layout::{ColumnWidth, Panel, Preset, BUILT_IN_WIDTHS};
+use crate::layout::{ColumnWidth, Panel, Preset};
 use crate::rtl::Direction;
 
 /// What choosing a row does.
@@ -131,8 +131,9 @@ pub fn entries(s: &Snapshot) -> Vec<Entry> {
     }
     let g_width = if ar { "عرض" } else { "Width" };
     let width_title = |w: ColumnWidth| if ar { format!("عرض المحادثة: {}", w.label(true)) } else { format!("Chat width: {}", w.label(false)) };
-    for w in BUILT_IN_WIDTHS {
-        v.push(entry(Command::Width(w), g_width, width_title(w), if w == s.column { current } else { "" }));
+    // the widths the person keeps; there is one to begin with, and it can be renamed or removed
+    if s.presets.is_empty() {
+        v.push(entry(Command::Width(s.column), g_width, width_title(s.column), current));
     }
     for p in &s.presets {
         let title = if ar { format!("عرض المحادثة: {} ({})", p.name, p.width.label(true)) } else { format!("Chat width: {} ({})", p.name, p.width.label(false)) };
@@ -268,26 +269,31 @@ mod tests {
     fn the_chat_widths_are_listed_by_number_and_presets_by_name_with_their_number() {
         let e = entries(&snap());
         let ts = titles(&e, &filter(&e, "width"));
-        assert_eq!(ts, ["Chat width: 700 px", "Chat width: 900 px", "Chat width: 1100 px", "Chat width: Full", "Chat width: Reading (1010 px)", "Chat width: Whole screen (Full)"]);
+        assert_eq!(ts, ["Chat width: Reading (1010 px)", "Chat width: Whole screen (Full)"], "the widths the person keeps, by name and number");
         // choosing a row hands over the exact width
         let pick = |t: &str| e.iter().find(|x| x.title == t).unwrap().command.clone();
         assert_eq!(pick("Chat width: Reading (1010 px)"), Command::Width(ColumnWidth::Px(1010.)));
-        assert_eq!(pick("Chat width: Full"), Command::Width(ColumnWidth::Full));
+        assert_eq!(pick("Chat width: Whole screen (Full)"), Command::Width(ColumnWidth::Full));
         // a number typed finds the rows with that number
         assert_eq!(titles(&e, &filter(&e, "1010")), ["Chat width: Reading (1010 px)"]);
         assert_eq!(titles(&e, &filter(&e, "reading")), ["Chat width: Reading (1010 px)"]);
         // the width in use is marked, and no width row is marked when none matches
         let mut s = snap();
-        s.column = ColumnWidth::Px(900.);
+        s.column = ColumnWidth::Px(1010.);
         let e = entries(&s);
-        assert_eq!(e.iter().find(|x| x.title == "Chat width: 900 px").unwrap().hint, "current");
+        assert_eq!(e.iter().find(|x| x.title == "Chat width: Reading (1010 px)").unwrap().hint, "current");
         assert_eq!(e.iter().filter(|x| x.group == "Width" && x.hint == "current").count(), 1);
         s.column = ColumnWidth::Px(777.);
         assert_eq!(entries(&s).iter().filter(|x| x.group == "Width" && x.hint == "current").count(), 0);
+        // with every preset removed, the current width is still there to choose
+        s.presets.clear();
+        let only = entries(&s);
+        assert_eq!(titles(&only, &filter(&only, "width")), ["Chat width: 777 px"]);
         // Arabic names the group and keeps the numbers
+        let mut s = snap();
         s.rtl = true;
         let ar = entries(&s);
-        assert!(ar.iter().any(|x| x.group == "عرض" && x.title == "عرض المحادثة: 900 px"));
+        assert!(ar.iter().any(|x| x.group == "عرض" && x.title == "عرض المحادثة: Reading (1010 px)"));
     }
 
     #[test]

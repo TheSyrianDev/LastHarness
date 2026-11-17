@@ -75,7 +75,7 @@ fn screen_shots() {
     let app = app_entity.unwrap();
     let any: AnyWindowHandle = win.into();
 
-    let mut snap = |cx: &mut gpui::HeadlessAppContext, name: &str, set: &dyn Fn(&mut App, &mut Window, &mut Context<App>)| {
+    let snap = |cx: &mut gpui::HeadlessAppContext, name: &str, set: &dyn Fn(&mut App, &mut Window, &mut Context<App>)| {
         cx.update_window(any, |_, window, cx| app.update(cx, |a, cx| set(a, window, cx))).unwrap();
         // two draws: the first lays out, the second has the measured sizes; reveals are let finish in between
         for _ in 0..2 {

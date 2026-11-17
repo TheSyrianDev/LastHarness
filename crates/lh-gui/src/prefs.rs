@@ -57,8 +57,13 @@ pub fn path() -> PathBuf {
 impl Prefs {
     /// A missing or unreadable file gives the defaults; the app must always start.
     pub fn load(p: &Path) -> Prefs {
-        let Some(text) = std::fs::read_to_string(p).ok() else { return Prefs::default() };
-        let Ok(mut prefs) = toml::from_str::<Prefs>(&text) else { return Prefs::default() };
+        let text = std::fs::read_to_string(p).unwrap_or_default();
+        // no file, or one that makes no sense: the defaults, with the one width a fresh install keeps
+        let Ok(mut prefs) = toml::from_str::<Prefs>(&text) else {
+            let mut prefs = Prefs::default();
+            prefs.layout.presets.push(crate::layout::default_preset());
+            return prefs;
+        };
         // before light and dark became one switch, the look was saved as one word such as "Calm dark"
         let has_mode = text.parse::<toml::Table>().is_ok_and(|t| t.contains_key("mode"));
         if let (false, Some((family, mode))) = (has_mode, split_legacy(&prefs.theme)) {
@@ -66,6 +71,12 @@ impl Prefs {
             prefs.mode = mode;
         }
         prefs.layout.tidy();
+        // a file from before presets were seeded gets the one default width; a person who removed every preset
+        // keeps none, because then the list is there and empty
+        let seeded = text.parse::<toml::Table>().is_ok_and(|t| t.get("layout").and_then(|l| l.get("presets")).is_some());
+        if !seeded && prefs.layout.presets.is_empty() {
+            prefs.layout.presets.push(crate::layout::default_preset());
+        }
         prefs
     }
 
@@ -83,18 +94,39 @@ mod tests {
     use crate::layout::Panel;
 
     #[test]
+    fn a_file_without_presets_gets_the_one_default_width_and_an_empty_list_stays_empty() {
+        let dir = std::env::temp_dir().join(format!("lh-gui-presets-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        // a file from before presets were seeded
+        std::fs::write(&p, "theme = \"Calm\"\n[layout]\nleft_width = 280.0\n").unwrap();
+        let a = Prefs::load(&p);
+        assert_eq!(a.layout.presets.len(), 1);
+        assert_eq!((a.layout.presets[0].name.as_str(), a.layout.presets[0].width), ("Default", crate::layout::ColumnWidth::Px(1000.)));
+        // a person who removed every preset keeps none: the list is there, and empty
+        std::fs::write(&p, "theme = \"Calm\"\n[layout]\npresets = []\n").unwrap();
+        assert!(Prefs::load(&p).layout.presets.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn preferences_survive_a_restart_and_a_bad_file_gives_the_defaults() {
         let dir = std::env::temp_dir().join(format!("lh-gui-prefs-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let p = dir.join("sub").join("gui.toml");
-        assert_eq!(Prefs::load(&p), Prefs::default(), "no file yet");
+        let fresh = Prefs::load(&p);
+        assert_eq!(fresh.layout.presets, vec![crate::layout::default_preset()], "no file yet: the one default width");
+        assert_eq!(Prefs { layout: Default::default(), ..fresh.clone() }, Prefs::default(), "no file yet: everything else is the default");
         let mut a = Prefs { theme: "Glass".into(), mode: ModeChoice::Dark, direction: Direction::Rtl, model: "Qwen".into(), ..Default::default() };
         a.layout.show_panel(Panel::Memory);
         a.layout.resize_left(300.);
         a.save(&p).unwrap();
         assert_eq!(Prefs::load(&p), a);
         std::fs::write(&p, "this is [not toml").unwrap();
-        assert_eq!(Prefs::load(&p), Prefs::default());
+        let broken = Prefs::load(&p);
+        assert_eq!(broken.layout.presets, vec![crate::layout::default_preset()], "a broken file starts like a fresh one");
+        assert_eq!(Prefs { layout: Default::default(), ..broken }, Prefs::default());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -150,7 +182,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("gui.toml");
         let missing = dir.join("nothing-here.toml");
-        assert_eq!(Prefs::load(&missing), Prefs::default());
+        let defaults = || Prefs { layout: crate::layout::Layout { presets: vec![crate::layout::default_preset()], ..Default::default() }, ..Default::default() };
+        assert_eq!(Prefs::load(&missing), defaults());
         let cases: [(&str, Option<ColumnWidth>); 14] = [
             ("", Some(ColumnWidth::Px(860.))),
             ("[layout]\ncolumn = \"wide\"\n", Some(ColumnWidth::Px(860.))),
@@ -175,7 +208,7 @@ mod tests {
                     (ColumnWidth::Px(a), ColumnWidth::Px(b)) if b == f32::MAX => assert!(a.is_finite() && a >= 480., "{text:?}"),
                     (a, b) => assert_eq!(a, b, "{text:?}"),
                 },
-                None => assert_eq!(got, Prefs::default(), "{text:?} gives the defaults"),
+                None => assert_eq!(got, defaults(), "{text:?} gives the defaults"),
             }
             // whatever was read, the controls can be built from it
             let room = 1200.;
