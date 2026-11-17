@@ -264,19 +264,20 @@ impl App {
             }))
             .child(self.width_track(cx));
         let unit = div().text_sm().text_color(p.muted).child(if col == ColumnWidth::Full { if rtl { "الكامل" } else { "Full" } } else { "px" });
+        // the same label column the rest of Appearance uses, so these rows line up with it
+        let label_of = |t: String| div().w(px(200.)).flex_none().text_sm().text_color(p.text).child(t);
         let slider_row = div()
             .flex()
             .when(rtl, |d| d.flex_row_reverse())
             .items_center()
-            .gap_2()
-            .child(div().text_sm().text_color(p.muted).child(label))
+            .gap_4()
+            .child(label_of(label.to_string()))
             .child(row)
             .child(div().w(px(84.)).child(Input::new(&self.width.input)))
             .child(unit);
 
         // the presets: built-in numbers first, then the ones the person made, each labelled by its number
-        let mut chips = div().flex().flex_wrap().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1();
-        chips = chips.child(div().text_sm().text_color(p.muted).child(if rtl { "إعدادات مسبقة" } else { "Presets" }));
+        let mut chips = div().flex_1().flex().flex_wrap().when(rtl, |d| d.flex_row_reverse()).items_center().gap_1();
         for (i, w) in BUILT_IN_WIDTHS.iter().copied().enumerate() {
             let kind = if col == w { Kind::Primary } else { Kind::Normal };
             chips = chips.child(self.button(format!("width-built-in-{i}"), w.label(rtl), kind, cx, move |a, window, cx| a.choose_width(w, None, window, cx)));
@@ -303,8 +304,8 @@ impl App {
             .role(Role::Group)
             .aria_label(label)
             .child(slider_row)
-            .child(chips)
-            .child(manage)
+            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_4().child(label_of(if rtl { "إعدادات مسبقة".into() } else { "Presets".into() })).child(chips))
+            .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_4().child(div().w(px(200.)).flex_none()).child(manage))
             .children(note)
             .into_any_element()
     }

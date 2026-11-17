@@ -352,14 +352,15 @@ impl App {
         let name: SharedString = family.to_string().into();
         let f = family.to_string();
         div().id(SharedString::from(format!("look-{family}"))).role(Role::Button).aria_label(name.clone())
-            .flex().items_center().gap_2().pl_2().pr_3().py_1().rounded_full().cursor_pointer()
+            .flex().items_center().gap_2().pl_2().pr_3().py_1().rounded(px(6.)).cursor_pointer()
             .border_1().border_color(if on { p.accent } else { p.border })
-            .bg(if on { p.accent.opacity(0.12) } else { hsla(0., 0., 0., 0.) })
+            .bg(if on { p.accent.opacity(0.1) } else { hsla(0., 0., 0., 0.) })
             .text_sm().text_color(if on { p.text } else { p.muted })
-            .hover(|s| s.bg(if on { p.accent.opacity(0.16) } else { p.button }))
+            .hover(|s| s.bg(if on { p.accent.opacity(0.14) } else { p.button }))
             .active(|s| s.opacity(0.85))
             .on_click(cx.listener(move |a, _, w, cx| a.set_family(&f, w, cx)))
-            .children(dot.map(|c| div().size(px(12.)).flex_none().rounded_full().bg(c).border_1().border_color(p.text.opacity(if p.dark { 0.25 } else { 0.12 }))))
+            // the look's own colour as a small square, so a name can be judged before it is applied
+            .children(dot.map(|c| div().size(px(12.)).flex_none().rounded(px(3.)).bg(c).border_1().border_color(p.text.opacity(if p.dark { 0.25 } else { 0.12 }))))
             .child(name)
             .into_any_element()
     }
@@ -945,32 +946,34 @@ impl App {
         let differs = !settings::is_default(&s.value, &s.default);
         // red only while the value is a risky one; the same setting at a safe value is a plain card
         let risky = d.careful && lh_gui::setting_names::is_risky(&s.key, &s.value);
+        // a settings form, not a stack of cards: the title and its sentence on the left, the control on the right,
+        // and a hairline between one setting and the next
         let title = div()
             .flex_1()
-            .min_w(px(180.))
+            .min_w(px(220.))
             .flex()
             .flex_col()
-            .child(div().min_w_0().child(d.title.clone()))
-            .when(!s.live, |c| c.child(div().text_xs().text_color(p.muted).child(if rtl { "يحتاج إعادة تشغيل" } else { "Needs a restart" })));
+            .gap_0p5()
+            .child(div().flex().items_center().gap_2().child(div().min_w_0().text_sm().text_color(p.text).child(d.title.clone()))
+                .when(!s.live, |c| c.child(div().text_xs().text_color(p.muted).child(if rtl { "يحتاج إعادة تشغيل" } else { "Needs a restart" }))))
+            .child(div().min_w_0().text_xs().text_color(p.muted).child(d.about.clone()));
         let mut control = Some(control);
-        let mut head = div().flex().flex_wrap().when(rtl, |r| r.flex_row_reverse()).items_center().gap_2().child(title);
+        let mut head = div().flex().when(rtl, |r| r.flex_row_reverse()).items_start().gap_4().child(title);
         if !wide {
-            head = head.child(div().flex_none().max_w_full().flex().when(rtl, |r| r.flex_row_reverse()).children(control.take()));
+            head = head.child(div().flex_none().max_w_full().flex().when(rtl, |r| r.flex_row_reverse()).items_center().children(control.take()));
         }
-        let mut card = div().flex().flex_col().gap_1().p_2().rounded(p.inner).bg(p.sunken).text_color(p.text).overflow_hidden()
-            .when(risky, |c| c.border_1().border_color(p.danger.opacity(0.55)))
+        let mut row = div().flex().flex_col().gap_2().py_3().border_b_1().border_color(p.border.opacity(0.6)).text_color(p.text)
             .id(SharedString::from(format!("setting-{}", s.key))).role(Role::Group).aria_label(aria).aria_description(d.about.clone())
             .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx))
-            .child(head)
-            .child(div().min_w_0().text_xs().text_color(p.muted).child(d.about.clone()));
+            .child(head);
         if wide {
-            card = card.children(control.take());
+            row = row.children(control.take());
         }
         for b in below {
-            card = card.child(b);
+            row = row.child(b);
         }
         if let Some(e) = self.panels.setting_errors.get(&s.key) {
-            card = card.child(div().text_xs().text_color(p.danger).child(e.clone()));
+            row = row.child(div().text_xs().text_color(p.danger).child(e.clone()));
         }
         if differs && s.kind.editable() {
             let key = s.key.clone();
@@ -978,12 +981,12 @@ impl App {
             let reset = self.button(format!("reset-{}", s.key), if rtl { "إعادة إلى الافتراضي" } else { "Reset to default" }, Kind::Ghost, cx, move |a, _, cx| {
                 a.change_setting(&key, default.clone(), cx);
             });
-            card = card.child(div().id(SharedString::from(format!("reset-tip-{}", s.key))).flex().when(rtl, |r| r.flex_row_reverse()).tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(reset_tip.clone()).build(window, cx)).child(reset));
+            row = row.child(div().id(SharedString::from(format!("reset-tip-{}", s.key))).flex().when(rtl, |r| r.flex_row_reverse()).tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(reset_tip.clone()).build(window, cx)).child(reset));
         }
-        card = card
+        row = row
             .when(d.careful, |c| c.child(div().text_xs().text_color(if risky { p.danger } else { p.muted }).child(if rtl { "إعداد حساس، غيّره بحذر." } else { "Take care with this one." })))
             .when(!s.kind.editable(), |c| c.child(div().text_xs().text_color(p.muted).child("The app does not know this kind of setting yet. Use lh settings in a terminal.")));
-        card.into_any_element()
+        row.into_any_element()
     }
 
     /// A short scrolling list of options under a setting.
@@ -996,9 +999,9 @@ impl App {
     pub fn settings_body(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         use lh_gui::setting_names::{appearance_matches, describe, matches, Category};
         let p = self.pal.clone();
-        let mut col = div().flex().flex_col().gap_2();
+        let mut col = div().flex().flex_col();
         if let Some(e) = self.panels.settings_error.clone() {
-            col = col.child(div().px_3().py_2().rounded(p.inner).bg(p.danger.opacity(0.08)).border_1().border_color(p.danger.opacity(0.35)).text_sm().text_color(p.danger).child(e));
+            col = col.child(div().mb_4().px_3().py_2().rounded(px(6.)).bg(p.danger.opacity(0.08)).border_1().border_color(p.danger.opacity(0.35)).text_sm().text_color(p.danger).child(e));
         }
         let query = self.settings_search.read(cx).value().to_string();
         let searching = !query.trim().is_empty();
@@ -1020,14 +1023,14 @@ impl App {
         if searching {
             col = col.child(div().text_sm().text_color(p.muted).child(format!("Results for \"{}\"", query.trim())));
         } else {
-            col = col.child(div().flex().flex_col().gap_0p5().pb_1().child(div().text_lg().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(page.title())).child(div().text_sm().text_color(p.muted).child(page.blurb())));
+            col = col.child(div().flex().flex_col().gap_1().pb_5().child(div().text_lg().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(page.title())).child(div().text_sm().text_color(p.muted).child(page.blurb())));
         }
         if show_appearance {
             col = col.child(self.appearance_block(window, cx));
         }
         if !searching {
             if let Some(body) = self.pg_page(page, window, cx) {
-                return col.child(body).into_any_element();
+                return col.child(div().pt_2().child(body)).into_any_element();
             }
         }
         // Models and keys: the providers come first, then the slider and the cards below
@@ -1047,7 +1050,7 @@ impl App {
             }
         }
         if !self.connected && !show_appearance {
-            return col.child(self.note("The core is not running, so these settings cannot be shown.")).into_any_element();
+            return col.child(div().pt_4().child(self.note("The core is not running, so these settings cannot be shown."))).into_any_element();
         }
         for i in shown.iter().copied() {
             col = col.child(self.setting_card(i, window, cx));
@@ -1056,10 +1059,10 @@ impl App {
             col = col.child(self.pg_devices(window, cx));
         }
         if searching && !show_appearance && shown.is_empty() {
-            col = col.child(self.note("No setting matches. Try fewer or different words."));
+            col = col.child(div().pt_4().child(self.note("No setting matches. Try fewer or different words.")));
         }
         if !self.connected && show_appearance {
-            col = col.child(self.note("The core is not running, so the other settings cannot be shown."));
+            col = col.child(div().pt_4().child(self.note("The core is not running, so the other settings cannot be shown.")));
         }
         col.into_any_element()
     }

@@ -1003,21 +1003,26 @@ impl App {
                         .aria_label(if rtl { "الإعدادات" } else { "Settings" })
                         .track_focus(&self.settings_focus)
                         .w_full()
-                        .max_w(px(1080.))
-                        .h(px(760.))
-                        .max_h_full()
+                        .max_w(px(980.))
+                        .h_full()
+                        .max_h(px(720.))
                         .flex()
                         .flex_col()
-                        .gap_2()
-                        .p_3()
-                        .elevated(&p, 3)
+                        // a settings window, not a card in a card: one flat surface, a ruled title bar, and a rail.
+                        // the surface is flattened to opaque: a see-through look would put the chat behind the form
+                        .rounded(p.radius)
+                        .border_1()
+                        .border_color(p.border)
+                        .bg(hsla(p.surface.h, p.surface.s, p.surface.l, 1.))
+                        .overflow_hidden()
+                        .shadow(self.pal.shadow.clone())
                         // clicks inside must not reach the dimmed area behind and close the window
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_2().child(div().flex_1().text_base().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(if rtl { "الإعدادات" } else { "Settings" })).child(div().id("esc-keycap").role(Role::Label).aria_label(if rtl { "Esc للرجوع" } else { "Esc goes back" }).px_1p5().rounded(px(4.)).border_1().border_color(p.border).bg(p.button).text_xs().font_family(p.mono.clone()).text_color(p.muted).child("Esc")).child(close))
+                        .child(div().flex().when(rtl, |d| d.flex_row_reverse()).items_center().gap_2().px_4().py_2p5().border_b_1().border_color(p.border).child(div().flex_1().text_sm().font_weight(gpui::FontWeight::MEDIUM).text_color(p.text).child(if rtl { "الإعدادات" } else { "Settings" })).child(div().id("esc-keycap").role(Role::Label).aria_label(if rtl { "Esc للرجوع" } else { "Esc goes back" }).px_1p5().rounded(px(4.)).border_1().border_color(p.border).bg(p.button).text_xs().font_family(p.mono.clone()).text_color(p.muted).child("Esc")).child(close))
                         .child(
-                            div().flex().flex_1().min_h_0().when(rtl, |d| d.flex_row_reverse()).gap_3()
-                                .child(div().flex().flex_col().flex_none().gap_2().child(div().w(px(220.)).child(Input::new(&self.settings_search))).child(sidebar))
-                                .child(div().id("settings-body").flex_1().min_w_0().overflow_y_scroll().flex().flex_col().gap_2().child(body)),
+                            div().flex().flex_1().min_h_0().when(rtl, |d| d.flex_row_reverse())
+                                .child(div().w(px(244.)).flex_none().flex().flex_col().gap_3().p_3().when(rtl, |d| d.border_l_1()).when(!rtl, |d| d.border_r_1()).border_color(p.border).bg(hsla(p.bg.h, p.bg.s, p.bg.l, 1.)).child(Input::new(&self.settings_search)).child(sidebar))
+                                .child(div().id("settings-body").flex_1().min_w_0().overflow_y_scroll().px_8().py_6().child(body)),
                         ),
                 )
                 , "settings"),

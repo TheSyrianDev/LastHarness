@@ -298,10 +298,11 @@ impl App {
         div().text_sm().text_color(self.pal.muted).child(t.into()).into_any_element()
     }
 
-    /// A raised box for one thing: a server, a channel, a device.
+    /// One thing on a settings page: a server, a channel, a device. A ruled section rather than a raised box, so the
+    /// page stays a form and not a stack of cards.
     fn xp_card(&self, children: Vec<AnyElement>) -> Div {
         let p = &self.pal;
-        div().flex().flex_col().gap_1p5().p_3().rounded(p.inner).bg(p.sunken).text_color(p.text).min_w_0().children(children)
+        div().flex().flex_col().gap_2().pt_4().pb_1().border_t_1().border_color(p.border.opacity(0.6)).text_color(p.text).min_w_0().children(children)
     }
 
     fn pg_title(&self, t: impl Into<SharedString>) -> AnyElement {

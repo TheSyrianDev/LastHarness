@@ -246,9 +246,11 @@ impl App {
 
     // ---- parts ---------------------------------------------------------------------------------
 
+    /// A section of a settings page: a rule above, the words and controls on the window itself. No box: a settings
+    /// page is a form, and a form made of boxes reads as boxes inside a box.
     pub fn pg_card(&self) -> Div {
         let p = &self.pal;
-        div().flex().flex_col().gap_2().p_3().rounded(p.inner).bg(p.sunken).text_color(p.text)
+        div().flex().flex_col().gap_2().pt_4().pb_1().border_t_1().border_color(p.border.opacity(0.6)).text_color(p.text)
     }
 
     pub fn pg_heading(&self, t: impl Into<SharedString>) -> Div {
