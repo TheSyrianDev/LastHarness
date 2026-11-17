@@ -225,6 +225,8 @@ pub struct App {
     /// The Themes page: the look being renamed and the name typed for it, a word about the last thing tried, and the
     /// look whose Remove was clicked once.
     pub look_rename: Option<String>,
+    /// The look the pointer is over on the Appearance page; the preview shows it before it is chosen.
+    pub look_hover: Option<String>,
     pub look_name: Entity<InputState>,
     pub look_note: Option<String>,
     pub look_remove_armed: Option<String>,
@@ -558,6 +560,7 @@ impl App {
             centre_reveal: Default::default(),
             name_input,
             look_rename: None,
+            look_hover: None,
             look_name,
             look_note: None,
             look_remove_armed: None,
@@ -654,6 +657,7 @@ impl App {
         let t = glass_tinted(&self.themes.themes[self.active_theme], &self.prefs);
         self.pal = Pal::from(&t, self.window_radius, lh_gui::config::reduce_motion(), &self.fonts);
         self.pal.glass = !self.prefs.glass_off;
+        self.apply_glass_prefs();
         apply_component_theme(&self.pal, cx);
     }
 

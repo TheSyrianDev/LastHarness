@@ -358,7 +358,15 @@ impl App {
             .text_sm().text_color(if on { p.text } else { p.muted })
             .hover(|s| s.bg(if on { p.accent.opacity(0.14) } else { p.button }))
             .active(|s| s.opacity(0.85))
-            .on_click(cx.listener(move |a, ev: &ClickEvent, w, cx| a.set_family_at(&f, Some(ev.position()), w, cx)))
+            .on_click(cx.listener({ let f = f.clone(); move |a, ev: &ClickEvent, w, cx| a.set_family_at(&f, Some(ev.position()), w, cx) }))
+            // the preview follows the pointer: judging a look should not mean applying it
+            .on_hover(cx.listener(move |a, over: &bool, _, cx| {
+                let next = over.then(|| f.clone());
+                if a.look_hover != next {
+                    a.look_hover = next;
+                    cx.notify();
+                }
+            }))
             // the look's own colour as a small square, so a name can be judged before it is applied
             .children(dot.map(|c| div().size(px(12.)).flex_none().rounded(px(3.)).bg(c).border_1().border_color(p.text.opacity(if p.dark { 0.25 } else { 0.12 }))))
             .child(name)
@@ -439,11 +447,52 @@ impl App {
             cx.notify();
         });
         let glass_note = div().text_xs().text_color(p.muted).child(if rtl { "الزجاج يخصّ الطبقات العائمة فقط: مقابض وأقراص وقوائم. الألواح المسطحة تبقى مسطحة. المظهر يقرّر أي سطح زجاجي في جدول material." } else { "Glass belongs to floating layers only: thumbs, knobs, menus. Flat panels stay flat. Each look says which surfaces are glass in its material table." });
-        let glass_body = div().flex().flex_col().gap_2().child(glass_switch).child(glass_note).into_any_element();
+        // one picker per surface: a step through flat, frosted and clear, so the person is not stuck with whatever the
+        // look shipped. Stepping onto the look's own choice removes the override.
+        let look_material = &self.themes.themes[self.active_theme].material;
+        let mut surfaces = div().flex().flex_col().gap_2();
+        for slot in crate::ui::GlassSlot::ALL {
+            let kind = self.glass_kind(slot);
+            let own = slot.of(look_material);
+            let name = match (slot, rtl) {
+                (crate::ui::GlassSlot::Panels, false) => "Panels and cards",
+                (crate::ui::GlassSlot::Panels, true) => "الألواح والبطاقات",
+                (crate::ui::GlassSlot::Popups, false) => "Menus and dialogs",
+                (crate::ui::GlassSlot::Popups, true) => "القوائم والنوافذ",
+                (crate::ui::GlassSlot::Side, false) => "The side panel",
+                (crate::ui::GlassSlot::Side, true) => "اللوح الجانبي",
+                (crate::ui::GlassSlot::Controls, false) => "Knobs and thumbs",
+                (crate::ui::GlassSlot::Controls, true) => "المقابض والأقراص",
+            };
+            let pick = self.button(format!("glass-{}-next", slot.key()), crate::ui::glass_kind_label(kind, rtl), Kind::Normal, cx, move |a, _, cx| a.cycle_glass(slot, cx));
+            let asked = (kind != own).then(|| div().text_xs().text_color(p.muted).child(if rtl { "اختيارك" } else { "your choice" }));
+            let control = div().flex().items_center().gap_3().child(pick).children(asked).into_any_element();
+            surfaces = surfaces.child(self.app_row(name, control));
+        }
+        let changed = crate::ui::GlassSlot::ALL.iter().any(|s| s.choice(&self.prefs).is_some());
+        let reset = changed.then(|| self.button("glass-reset", if rtl { "أعِد ما يقوله المظهر" } else { "Back to what the look says" }, Kind::Ghost, cx, |a, _, cx| a.reset_glass(cx)));
+        let glass_body = div().flex().flex_col().gap_3()
+            .child(glass_switch)
+            .child(glass_note)
+            .child(div().flex().flex_col().gap_2().children(reset).child(surfaces))
+            .into_any_element();
+        // what the preview shows: the look under the pointer, else the one in use
+        let hovered = self.look_hover.clone().filter(|h| families.iter().any(|f| f == h));
+        let shown = hovered.clone().unwrap_or_else(|| current.clone());
+        let shown_theme = &self.themes.themes[self.themes.resolve(&shown, self.dark())];
+        let preview_caption = hovered.filter(|h| *h != current).map(|h| SharedString::from(if rtl {
+            format!("معاينة {h}. اضغط لاستخدامه.")
+        } else {
+            format!("Previewing {h}. Click it to use it.")
+        }));
+        let preview = div().flex().flex_col().gap_1()
+            .child(self.look_preview(shown_theme, cx))
+            .children(preview_caption.map(|c| div().text_xs().text_color(p.muted).child(c)))
+            .into_any_element();
         let look_body = div().flex().flex_col().gap_3()
             .child(looks)
             .children(follow_row)
-            .child(self.look_preview(cx))
+            .child(preview)
             .into_any_element();
         let look_section = self.app_section(true, if rtl { "المظهر" } else { "Look" }, look_hint, look_body);
         let mode_section = self.app_section(false, if rtl { "الوضع" } else { "Light and dark" }, None, modes.into_any_element());
@@ -479,17 +528,29 @@ impl App {
     /// A small picture of the app in the look in use: a rail, a title, one of your messages and the message box, in
     /// the look's own colours, surfaces and radius. This is what a look is judged by, so the person does not have to
     /// read seven names and guess.
-    fn look_preview(&self, _cx: &mut Context<Self>) -> AnyElement {
-        let p = &self.pal;
+    fn look_preview(&self, t: &lh_gui::theme::Theme, _cx: &mut Context<Self>) -> AnyElement {
+        use lh_gui::theme::BackgroundKind;
+        // the look's own palette, not the one in use: this is what makes the picture mean something
+        let p = crate::style::Pal::from(t, self.window_radius, true, &self.fonts);
         let line = |w: f32, c: Hsla, h: f32| div().h(px(h)).w(px(w)).rounded(px(h / 2.)).bg(c);
-        div().id("look-preview").role(Role::Label).aria_label("A small picture of the app in this look")
-            .h(px(132.)).w_full().flex().rounded(p.inner).border_1().border_color(p.border).overflow_hidden()
-            .child(div().w(px(86.)).h_full().flex_none().bg(p.bg).p_2().flex().flex_col().gap(px(7.))
+        let b = &t.background;
+        let picture = matches!(b.kind, BackgroundKind::Image) && b.image.is_some();
+        // over a picture the two halves sit on a wash of the look's own background, so it still reads
+        let wash = if picture { p.bg.opacity(0.55) } else { p.bg };
+        let mut frame = div().id("look-preview").role(Role::Label).aria_label("A small picture of the app in this look")
+            .relative().h(px(132.)).w_full().flex().rounded(p.inner).border_1().border_color(p.border).overflow_hidden().bg(p.bg);
+        match (&b.image, b.kind) {
+            (Some(path), _) => frame = frame.child(img(path.clone()).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)),
+            (None, BackgroundKind::Gradient) => frame = frame.bg(linear_gradient(b.angle, linear_color_stop(crate::style::hsla(b.from), 0.), linear_color_stop(crate::style::hsla(b.to), 1.))),
+            _ => {}
+        }
+        frame
+            .child(div().w(px(86.)).h_full().flex_none().bg(wash).p_2().flex().flex_col().gap(px(7.))
                 .child(line(46., p.text.opacity(0.55), 6.))
                 .child(line(58., p.muted.opacity(0.3), 4.))
                 .child(line(52., p.muted.opacity(0.3), 4.))
                 .child(line(40., p.muted.opacity(0.3), 4.)))
-            .child(div().flex_1().min_w_0().h_full().bg(p.bg).p_3().flex().flex_col().gap(px(8.))
+            .child(div().flex_1().min_w_0().h_full().bg(wash).p_3().flex().flex_col().gap(px(8.))
                 .child(line(104., p.text.opacity(0.6), 6.))
                 .child(div().flex().justify_end().child(div().px_2().py_1().rounded(p.inner).bg(p.surface).border_1().border_color(p.border).child(line(120., p.text.opacity(0.55), 5.))))
                 .child(line(150., p.muted.opacity(0.3), 4.))

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A colour with opacity, parsed from `#rgb`, `#rrggbb` or `#rrggbbaa`.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -187,7 +187,7 @@ pub struct ThemeFonts {
 }
 
 /// Which liquid glass a surface is made of, if any. `none` keeps it a flat fill.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GlassKind {
     #[default]

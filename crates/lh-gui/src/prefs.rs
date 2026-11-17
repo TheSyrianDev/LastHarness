@@ -51,6 +51,11 @@ pub struct Prefs {
     /// Liquid glass off, for anyone who wants flat surfaces: every surface takes its solid colour and its hairline
     /// instead of a lens. Each look still says which surfaces *would* be glass in its `[material]` table.
     pub glass_off: bool,
+    /// The person's own choice for each surface, instead of the look's `[material]` table. `None` uses the look's.
+    pub glass_panels: Option<crate::theme::GlassKind>,
+    pub glass_popups: Option<crate::theme::GlassKind>,
+    pub glass_side: Option<crate::theme::GlassKind>,
+    pub glass_controls: Option<crate::theme::GlassKind>,
 }
 
 pub fn path() -> PathBuf {
@@ -308,6 +313,24 @@ mod tests {
         let a = Prefs { stop_count: 3, stop_titles: vec!["Slow".into(), String::new(), "Fast".into()], ..Default::default() };
         a.save(&p).unwrap();
         assert_eq!(Prefs::load(&p), a);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn the_glass_choice_per_surface_survives_and_an_old_file_has_none() {
+        use crate::theme::GlassKind;
+        let dir = std::env::temp_dir().join(format!("lh-gui-glass-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("gui.toml");
+        std::fs::write(&p, "model = \"Q\"\n").unwrap();
+        let old = Prefs::load(&p);
+        assert_eq!((old.glass_panels, old.glass_popups, old.glass_side, old.glass_controls), (None, None, None, None), "no choice means the look decides");
+        let a = Prefs { glass_panels: Some(GlassKind::ClearTinted), glass_controls: Some(GlassKind::None), ..Default::default() };
+        a.save(&p).unwrap();
+        assert_eq!(Prefs::load(&p), a);
+        // the file stays readable by hand, like every other setting
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains("glass_panels = \"clear_tinted\""), "{text}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

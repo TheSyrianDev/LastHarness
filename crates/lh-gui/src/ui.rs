@@ -17,6 +17,100 @@ use lh_gui::model::{Block, Mode};
 use lh_gui::rtl;
 use crate::style::{mix, PanelExt};
 
+/// The four surfaces whose glass a person can set for themselves on the Appearance page. A look still ships its own
+/// `[material]` table; this is the override that sits on top of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GlassSlot {
+    /// The sidebar, the rail and cards.
+    Panels,
+    /// Menus, pop-up cards and dialogs.
+    Popups,
+    /// The panel on the right.
+    Side,
+    /// Switch knobs, slider knobs and the segmented thumb.
+    Controls,
+}
+
+impl GlassSlot {
+    pub const ALL: [GlassSlot; 4] = [GlassSlot::Panels, GlassSlot::Popups, GlassSlot::Side, GlassSlot::Controls];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            GlassSlot::Panels => "panels",
+            GlassSlot::Popups => "popups",
+            GlassSlot::Side => "side",
+            GlassSlot::Controls => "controls",
+        }
+    }
+
+    /// What the person chose for this surface, if they chose anything.
+    pub fn choice(self, prefs: &lh_gui::prefs::Prefs) -> Option<lh_gui::theme::GlassKind> {
+        match self {
+            GlassSlot::Panels => prefs.glass_panels,
+            GlassSlot::Popups => prefs.glass_popups,
+            GlassSlot::Side => prefs.glass_side,
+            GlassSlot::Controls => prefs.glass_controls,
+        }
+    }
+
+    pub fn set_choice(self, prefs: &mut lh_gui::prefs::Prefs, kind: Option<lh_gui::theme::GlassKind>) {
+        match self {
+            GlassSlot::Panels => prefs.glass_panels = kind,
+            GlassSlot::Popups => prefs.glass_popups = kind,
+            GlassSlot::Side => prefs.glass_side = kind,
+            GlassSlot::Controls => prefs.glass_controls = kind,
+        }
+    }
+
+    /// What the look itself asks for.
+    pub fn of(self, m: &lh_gui::theme::Material) -> lh_gui::theme::GlassKind {
+        match self {
+            GlassSlot::Panels => m.panels,
+            GlassSlot::Popups => m.popups,
+            GlassSlot::Side => m.side_panel,
+            GlassSlot::Controls => m.controls,
+        }
+    }
+
+    pub fn apply(self, m: &mut lh_gui::theme::Material, kind: lh_gui::theme::GlassKind) {
+        match self {
+            GlassSlot::Panels => m.panels = kind,
+            GlassSlot::Popups => m.popups = kind,
+            GlassSlot::Side => m.side_panel = kind,
+            GlassSlot::Controls => m.controls = kind,
+        }
+    }
+}
+
+/// The name of a glass kind in the pickers. `rtl` picks the Arabic words.
+pub fn glass_kind_label(kind: lh_gui::theme::GlassKind, rtl: bool) -> &'static str {
+    use lh_gui::theme::GlassKind::*;
+    match (kind, rtl) {
+        (None, false) => "Flat",
+        (None, true) => "مستوٍ",
+        (Regular, false) => "Frosted",
+        (Regular, true) => "مثلج",
+        (Clear, false) => "Clear",
+        (Clear, true) => "صافٍ",
+        (RegularTinted, false) => "Frosted, tinted",
+        (RegularTinted, true) => "مثلج بصبغة",
+        (ClearTinted, false) => "Clear, tinted",
+        (ClearTinted, true) => "صافٍ بصبغة",
+    }
+}
+
+/// The order a picker steps through: flat, then frosted to clear, then the same two carried by the look's colour.
+pub fn next_glass_kind(kind: lh_gui::theme::GlassKind) -> lh_gui::theme::GlassKind {
+    use lh_gui::theme::GlassKind::*;
+    match kind {
+        None => Regular,
+        Regular => Clear,
+        Clear => RegularTinted,
+        RegularTinted => ClearTinted,
+        ClearTinted => None,
+    }
+}
+
 actions!(lastai, [NewChat, ToggleSidebar, ShowDepartments, ShowMemory, ShowSettings, ShowContent, ShowTree, ShowWork, ToggleMode, CycleDirection, StopTurn, NextChat, PrevChat, ToggleExpand, ConfirmResume, Dismiss, OpenLastReply, PopOutContent, AllowAsk, DenyAsk, OpenPalette, JumpToLatest]);
 
 /// The keys for every action; also how the app is driven without a mouse.
@@ -280,6 +374,41 @@ impl App {
                     window.request_animation_frame();
                 }
                 v.max(0.)
+            }
+        }
+    }
+
+    /// The glass a surface has now: the person's own choice, else the look's `[material]` table.
+    pub fn glass_kind(&self, slot: GlassSlot) -> lh_gui::theme::GlassKind {
+        slot.choice(&self.prefs).unwrap_or_else(|| slot.of(&self.pal.material))
+    }
+
+    /// Step one surface through flat, frosted, clear and the tinted pair. Stepping back onto what the look itself asks
+    /// for clears the override, so the person can always get back to the look as it shipped.
+    pub fn cycle_glass(&mut self, slot: GlassSlot, cx: &mut Context<Self>) {
+        let next = next_glass_kind(self.glass_kind(slot));
+        let own = slot.of(&self.themes.themes[self.active_theme].material);
+        slot.set_choice(&mut self.prefs, (next != own).then_some(next));
+        self.persist();
+        self.refresh_pal(cx);
+        cx.notify();
+    }
+
+    /// Every surface back to what its look asks for.
+    pub fn reset_glass(&mut self, cx: &mut Context<Self>) {
+        for slot in GlassSlot::ALL {
+            slot.set_choice(&mut self.prefs, None);
+        }
+        self.persist();
+        self.refresh_pal(cx);
+        cx.notify();
+    }
+
+    /// Put the person's own choices over the look's table. Called whenever the palette is rebuilt.
+    pub fn apply_glass_prefs(&mut self) {
+        for slot in GlassSlot::ALL {
+            if let Some(kind) = slot.choice(&self.prefs) {
+                slot.apply(&mut self.pal.material, kind);
             }
         }
     }
