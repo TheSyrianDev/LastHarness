@@ -601,8 +601,8 @@ impl App {
                 Some(lh_gui::theme::Origin::Builtin(_)) => if rtl { "مدمج" } else { "built in" },
                 Some(lh_gui::theme::Origin::File(_)) => if rtl { "ملف مفرد" } else { "a single file" },
                 Some(lh_gui::theme::Origin::Folder(_)) => if rtl { "مجلدك" } else { "your folder" },
-                // the two Omarchy looks come from the desktop's own theme, not from a file here
-                None => if rtl { "سطح المكتب" } else { "this desktop" },
+                // a look with no place on disk was made by the app itself, not read from a file
+                None => if rtl { "من التطبيق" } else { "built in" },
             };
             let swatch = self.look_swatch(&family);
             let name_area: AnyElement = if self.look_rename.as_deref() == Some(family.as_str()) {

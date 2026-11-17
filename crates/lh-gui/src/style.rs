@@ -44,7 +44,7 @@ pub struct Pal {
     pub material: lh_gui::theme::Material,
     /// Liquid glass switched on for the app. Off means every surface is flat, whatever the look asks for.
     pub glass: bool,
-    /// The brand mark's colours: the look's own (Omarchy) or the brand kit's for the mode.
+    /// The brand mark's colours: the look's own, or the brand kit's for the mode.
     pub mark: lh_gui::brand::Colours,
     /// Chart series colours the look brings; empty uses the app's own.
     pub series: Vec<Hsla>,

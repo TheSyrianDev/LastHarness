@@ -30,7 +30,7 @@ build() {
   cd "$_srcdir"
   export RUSTUP_TOOLCHAIN=stable
   cargo build --release -p lh-core -p lh-tui
-  cargo build --release -p lh-gui --no-default-features
+  cargo build --release -p lh-gui
 }
 
 package() {

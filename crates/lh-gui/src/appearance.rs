@@ -39,7 +39,7 @@ pub fn parse_color_scheme(setting: &str) -> Option<bool> {
 }
 
 /// Ask the desktop whether it prefers dark. Read with `gsettings`, which GNOME-family desktops and most others
-/// (Omarchy, Hyprland with the portal) keep up to date. `None` when the desktop does not say.
+/// (a desktop with the settings portal) keep up to date. `None` when the desktop does not say.
 pub fn system_dark() -> Option<bool> {
     let o = std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", "color-scheme"]).output().ok()?;
     o.status.success().then(|| parse_color_scheme(&String::from_utf8_lossy(&o.stdout))).flatten()

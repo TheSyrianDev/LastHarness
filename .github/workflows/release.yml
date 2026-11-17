@@ -109,7 +109,7 @@ jobs:
       - name: Build
         run: |
           cargo build --release -p lh-core -p lh-tui
-          cargo build --release -p lh-gui --no-default-features
+          cargo build --release -p lh-gui
       - name: Get nfpm
         run: |
           curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.41.1/nfpm_2.41.1_Linux_x86_64.tar.gz | tar -xz nfpm
@@ -155,7 +155,7 @@ jobs:
       - name: Build
         run: |
           cargo build --release -p lh-core -p lh-tui
-          cargo build --release -p lh-gui --no-default-features
+          cargo build --release -p lh-gui
       - name: Package
         shell: pwsh
         run: |
@@ -221,7 +221,7 @@ jobs:
       - name: Build
         run: |
           cargo build --release -p lh-core -p lh-tui
-          cargo build --release -p lh-gui --no-default-features
+          cargo build --release -p lh-gui
       - name: Bundle the app
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then ver="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA:0:7}"; fi

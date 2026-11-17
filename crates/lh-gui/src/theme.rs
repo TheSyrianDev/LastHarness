@@ -324,9 +324,9 @@ pub struct Theme {
     pub icons: crate::icons::IconSet,
     /// Icons named in the file that could not be used (they fall back to the app's own). Shown with the theme problems.
     pub icon_problems: Vec<String>,
-    /// The brand mark's colours in this look; `None` uses the brand kit's own for the mode. Set by the Omarchy look.
+    /// The brand mark's colours in this look; `None` uses the brand kit's own for the mode.
     pub mark: Option<crate::brand::Colours>,
-    /// Chart series colours; empty uses the app's own. Set by the Omarchy look from the desktop theme's hues.
+    /// Chart series colours; empty uses the app's own.
     pub series: Vec<Color>,
     /// The desktop theme's text-selection colour, when it gives one.
     pub selection: Option<Color>,

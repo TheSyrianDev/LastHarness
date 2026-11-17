@@ -199,8 +199,8 @@ pub fn spawn() {
     }
 }
 
-/// Re-read the colour and, if it changed, repaint the icon. Reads a small file and, off Omarchy, asks gdbus or
-/// gsettings, so the app calls [`refresh`] rather than this on its UI thread.
+/// Re-read the colour and, if it changed, repaint the icon. Asks gdbus or gsettings, so the app calls [`refresh`]
+/// rather than this on its UI thread.
 pub fn sync() {
     let Some(handle) = HANDLE.get() else { return };
     let next = current_pick();
