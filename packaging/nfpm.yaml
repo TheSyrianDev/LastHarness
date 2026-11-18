@@ -21,11 +21,11 @@ contents:
   - src: target/release/lastaid
     dst: /usr/bin/lastaid
     file_info: {mode: 0755}
-  - src: target/release/la
-    dst: /usr/bin/la
+  - src: target/release/lh
+    dst: /usr/bin/lh
     file_info: {mode: 0755}
-  - src: target/release/lastai
-    dst: /usr/bin/lastai
+  - src: target/release/lastharness
+    dst: /usr/bin/lastharness
     file_info: {mode: 0755}
   - src: packaging/lastai.desktop
     dst: /usr/share/applications/lastai.desktop

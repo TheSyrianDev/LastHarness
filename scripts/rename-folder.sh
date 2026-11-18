@@ -11,4 +11,4 @@ if [ -n "$(git -C "$old" status --porcelain)" ]; then
 fi
 mv "$old" "$new"
 echo "moved to $new"
-echo "Next: relink ~/.local/bin (la, lastaid, lastai-gui) to $new/target/release, and fix the Hyprland and desktop paths if they point at the old folder."
+echo "Next: relink ~/.local/bin (lh, lastharness, lastaid, lastai-gui) to $new/target/release, and fix the Hyprland and desktop paths if they point at the old folder."

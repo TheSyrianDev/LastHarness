@@ -1,4 +1,4 @@
-//! `la`: terminal chat for the Last AI core.
+//! `lh`: terminal chat for the core.
 //!
 //! lh [--url http://127.0.0.1:7842] [--token-file PATH] [--model NAME] [--ask-all] [--incognito]
 //! lh -p "question" [--json] [--model NAME] [--bypass-permissions]   one turn, answer on standard output (see `headless`)

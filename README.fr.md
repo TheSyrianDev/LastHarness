@@ -9,11 +9,13 @@
   <a href="README.md">English</a> · <a href="README.ar.md">العربية</a> · <a href="README.zh-CN.md">简体中文</a> · Français · <a href="README.de.md">Deutsch</a>
 </p>
 
+<p align="center"><a href="https://github.com/TheSyrianDev/LastAI">Last AI</a> · LastHarness · <a href="https://github.com/TheSyrianDev/LastEngine">LastEngine</a> · <a href="https://github.com/TheSyrianDev/Model-Downloader">Model-Downloader</a></p>
+
 <p align="center"><em>Le dernier harnais dont vous aurez besoin.</em><br>
 Un harnais d'IA local d'abord, construit autour d'une équipe : des départements, et les travailleurs qui y sont.</p>
 
 > [!WARNING]
-> **Alpha.** Last AI est un logiciel en phase initiale et n'est utilisé sur une seule machine pour l'instant. Attendez-vous à des aspérités et à des changements incompatibles. Last AI (l'application de bureau et l'application terminal `la`) est testé sous Linux (Omarchy) et Windows (testé par l'auteur). La version macOS est en alpha précoce : elle démarre dans la CI, mais personne ne l'utilise encore au quotidien.
+> **Alpha.** Last AI est un logiciel en phase initiale et n'est utilisé sur une seule machine pour l'instant. Attendez-vous à des aspérités et à des changements incompatibles. Last AI (l'application de bureau et l'application terminal `lh`) est testé sous Linux (Omarchy) et Windows (testé par l'auteur). La version macOS est en alpha précoce : elle démarre dans la CI, mais personne ne l'utilise encore au quotidien.
 
 <p align="center">
   <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
@@ -32,7 +34,7 @@ Il fonctionne sous Linux et Windows ; macOS en est à l'alpha précoce.
 cargo build --release
 ```
 
-Cela produit quatre programmes dans `target/release/` : `lastaid` (le programme central), `la` et `lastai` (le même client terminal sous deux noms) et `lastai-gui` (l'application de bureau). L'application de bureau prend quelques minutes à compiler la première fois ; `cargo build --release -p lh-core -p lh-tui` ne compile que le programme central et le terminal.
+Cela produit quatre programmes dans `target/release/` : `lastaid` (le programme central), `lh` et `lastharness` (le même client terminal sous deux noms) et `lastai-gui` (l'application de bureau). L'application de bureau prend quelques minutes à compiler la première fois ; `cargo build --release -p lh-core -p lh-tui` ne compile que le programme central et le terminal.
 
 ## Premier lancement
 
@@ -78,7 +80,7 @@ Le bloc Create de la page Modèles et clés produit des images (Z-Image Turbo) e
 Chaque commande a `help`, qui fonctionne sans que le programme central tourne, par exemple `lh team help`.
 
 - `lastaid` est le programme central. Il écoute uniquement sur `127.0.0.1:7842`. Les réglages viennent de `config.toml` ; une option de ligne de commande remplace le fichier. Le jeton dont les clients ont besoin est écrit dans `$XDG_RUNTIME_DIR/lastai/token`.
-- `la` et `lastai` ouvrent la conversation terminal. Options : `--url`, `--token-file`, `--model`, `--ask-all`, `--incognito`.
+- `lh` et `lastharness` ouvrent la conversation terminal. Options : `--url`, `--token-file`, `--model`, `--ask-all`, `--incognito`.
 - `lh setup` : les questions du premier lancement. `lh settings` : voir et modifier chaque réglage (`set`, `reset`).
 - `lh memory ...` : les notes que l'assistant conserve. `lh learn ...` : les règles, le style, les compétences et les suggestions qui attendent votre décision.
 - `lh team ...` : rôles, types de modèles, départements, donner un objectif à un département (`lh team run`), travailleurs, mode absence, dossiers de plugins.

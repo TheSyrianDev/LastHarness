@@ -162,7 +162,7 @@ jobs:
           $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "dev-$($env:GITHUB_SHA.Substring(0,7))" }
           $dir = "dist/LastAI"
           New-Item -ItemType Directory -Force $dir | Out-Null
-          foreach ($b in 'lastai-gui','lastaid','la','lastai') { Copy-Item "target/release/$b.exe" $dir }
+          foreach ($b in 'lastai-gui','lastaid','lh','lastharness') { Copy-Item "target/release/$b.exe" $dir }
           Copy-Item README.md, LICENSE, COMMERCIAL-LICENSING.md $dir
           Compress-Archive -Path "$dir/*" -DestinationPath "dist/LastAI-$ver-windows-x64.zip"
           Get-ChildItem dist
@@ -227,7 +227,7 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then ver="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA:0:7}"; fi
           app="dist/LastAI.app"
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-          for b in lastai-gui lastaid la lastai; do cp "target/release/$b" "$app/Contents/MacOS/"; done
+          for b in lastai-gui lastaid lh lastharness; do cp "target/release/$b" "$app/Contents/MacOS/"; done
           cat > "$app/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

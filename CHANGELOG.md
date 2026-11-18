@@ -2,14 +2,14 @@
 
 ## Unreleased
 
-- Renamed from LastHarness to Last AI. Config and data move to `~/.config/lastai` and `~/.local/share/lastai`; the old `lastharness` folders are copied over on first run. `LASTAI_*` env vars are read first; `LASTHARNESS_*` still work. Binaries: `lastai-gui`, `lastaid`, `la`, `lastai`.
+- Renamed from LastHarness to Last AI. Config and data move to `~/.config/lastai` and `~/.local/share/lastai`; the old `lastharness` folders are copied over on first run. `LASTAI_*` env vars are read first; `LASTHARNESS_*` still work. Binaries: `lastai-gui`, `lastaid`, and the terminal as `lh` / `lastharness`.
 
 ## 0.1.0-alpha
 
 First alpha. Built from the code in this repository; see the sections above for what each part does.
 
 ### Added
-- Local core `lhd` with an HTTP API and SSE, a terminal app (`la`, alias `lh`) and the desktop app (`lastai-gui`).
+- Local core `lhd` with an HTTP API and SSE, a terminal app (`lh`, alias `lastharness`) and the desktop app (`lastai-gui`).
 - Models and keys: search GGUF models by fit, download through hfd-core, run and use installed models.
 - Create: image and video jobs through a local ComfyUI.
 - Team: departments and workers; outside CLI workers bound in `~/.lastharness/external-workers.json`, writes need approval.

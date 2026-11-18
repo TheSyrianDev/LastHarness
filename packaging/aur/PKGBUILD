@@ -36,7 +36,7 @@ build() {
 package() {
   cd "$_srcdir"
   local t="${CARGO_TARGET_DIR:-target}/release" b
-  for b in lastai-gui lastaid la lastai; do
+  for b in lastai-gui lastaid lh lastharness; do
     install -Dm755 "$t/$b" "$pkgdir/usr/bin/$b"
   done
   install -Dm644 packaging/lastai.desktop "$pkgdir/usr/share/applications/lastai.desktop"

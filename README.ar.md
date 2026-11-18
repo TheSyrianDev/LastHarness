@@ -9,11 +9,13 @@
   <a href="README.md">English</a> · <a href="README.ar.md">العربية</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a>
 </p>
 
+<p align="center"><a href="https://github.com/TheSyrianDev/LastAI">Last AI</a> · LastHarness · <a href="https://github.com/TheSyrianDev/LastEngine">LastEngine</a> · <a href="https://github.com/TheSyrianDev/Model-Downloader">Model-Downloader</a></p>
+
 <p align="center"><em>الإطار الأخير الذي ستحتاجه.</em><br>
 إطار ذكاء اصطناعي محلي أولاً، مبني حول فريق: أقسام، والعاملين فيها.</p>
 
 > [!WARNING]
-> **ألفا.** Last AI برنامج في مراحله الأولى، ويُستخدم حتى الآن على جهاز واحد فقط. توقع خشونة في التجربة وتغييرات تكسر التوافق. Last AI (التطبيق المكتبي وتطبيق الطرفية `la`) مُختبر على Linux (Omarchy) وWindows (اختبره المؤلف). نسخة macOS في مرحلة ألفا مبكرة: تبدأ في CI، لكن لم يستخدمها أحد يومياً بعد.
+> **ألفا.** Last AI برنامج في مراحله الأولى، ويُستخدم حتى الآن على جهاز واحد فقط. توقع خشونة في التجربة وتغييرات تكسر التوافق. Last AI (التطبيق المكتبي وتطبيق الطرفية `lh`) مُختبر على Linux (Omarchy) وWindows (اختبره المؤلف). نسخة macOS في مرحلة ألفا مبكرة: تبدأ في CI، لكن لم يستخدمها أحد يومياً بعد.
 
 <p align="center">
   <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
@@ -32,7 +34,7 @@ Last AI هو إطار ذكاء اصطناعي محلي أولاً لحاسوب �
 cargo build --release
 ```
 
-يُنتج هذا أربعة برامج في `target/release/`: `lastaid` (البرنامج الأساسي)، و`la` و`lastai` (العميل الطرفي نفسه باسمين مختلفين)، و`lastai-gui` (التطبيق المكتبي). يستغرق التطبيق المكتبي بضع دقائق في البناء لأول مرة؛ أما `cargo build --release -p lh-core -p lh-tui` فيبني البرنامج الأساسي والطرفية فقط.
+يُنتج هذا أربعة برامج في `target/release/`: `lastaid` (البرنامج الأساسي)، و`lh` و`lastharness` (العميل الطرفي نفسه باسمين مختلفين)، و`lastai-gui` (التطبيق المكتبي). يستغرق التطبيق المكتبي بضع دقائق في البناء لأول مرة؛ أما `cargo build --release -p lh-core -p lh-tui` فيبني البرنامج الأساسي والطرفية فقط.
 
 ## أول تشغيل
 
@@ -78,7 +80,7 @@ o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 كل أمر لديه `help`، ويعمل دون تشغيل البرنامج الأساسي، مثل `lh team help`.
 
 - `lastaid` هو البرنامج الأساسي. يستمع على `127.0.0.1:7842` فقط. تأتي الإعدادات من `config.toml`؛ وخيار سطر الأوامر يتجاوز الملف. الرمز الذي تحتاجه العملاء يُكتب في `$XDG_RUNTIME_DIR/lastai/token`.
-- `la` و`lastai` يفتحان محادثة الطرفية. الخيارات: `--url` و`--token-file` و`--model` و`--ask-all` و`--incognito`.
+- `lh` و`lastharness` يفتحان محادثة الطرفية. الخيارات: `--url` و`--token-file` و`--model` و`--ask-all` و`--incognito`.
 - `lh setup`: أسئلة التشغيل الأول. `lh settings`: عرض كل إعداد وتغييره (`set` و`reset`).
 - `lh memory ...`: الملاحظات التي يحتفظ بها المساعد. `lh learn ...`: القواعد والأسلوب والمهارات والاقتراحات التي تنتظر موافقتك.
 - `lh team ...`: الأدوار وأنواع النماذج والأقسام، وإعطاء هدف لقسم (`lh team run`)، والعاملون، ووضع الغياب، ومجلدات الإضافات.

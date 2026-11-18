@@ -9,11 +9,13 @@
   <a href="README.md">English</a> · <a href="README.ar.md">العربية</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a>
 </p>
 
+<p align="center"><a href="https://github.com/TheSyrianDev/LastAI">Last AI</a> · LastHarness · <a href="https://github.com/TheSyrianDev/LastEngine">LastEngine</a> · <a href="https://github.com/TheSyrianDev/Model-Downloader">Model-Downloader</a></p>
+
 <p align="center"><em>你需要的最后一个框架。</em><br>
 一个本地优先的 AI 框架，围绕团队构建：部门，以及部门里的工作者。</p>
 
 > [!WARNING]
-> **Alpha 版。** Last AI 是早期软件，目前只在一台机器上使用。预计会有粗糙之处和破坏性变更。Last AI（桌面应用和 `la` 终端应用）在 Linux（Omarchy）和 Windows（作者本人测试）上经过测试。macOS 版本处于早期 alpha 阶段：它能在 CI 中启动，但还没有人日常使用。
+> **Alpha 版。** Last AI 是早期软件，目前只在一台机器上使用。预计会有粗糙之处和破坏性变更。Last AI（桌面应用和 `lh` 终端应用）在 Linux（Omarchy）和 Windows（作者本人测试）上经过测试。macOS 版本处于早期 alpha 阶段：它能在 CI 中启动，但还没有人日常使用。
 
 <p align="center">
   <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
@@ -32,7 +34,7 @@ Last AI 是一个为个人电脑设计的本地优先 AI 框架。核心程序�
 cargo build --release
 ```
 
-这会在 `target/release/` 中生成四个程序：`lastaid`（核心）、`la` 和 `lastai`（同一个终端客户端的两个名字），以及 `lastai-gui`（桌面应用）。桌面应用第一次构建需要几分钟；如果只需要核心和终端，可以运行 `cargo build --release -p lh-core -p lh-tui`。
+这会在 `target/release/` 中生成四个程序：`lastaid`（核心）、`lh` 和 `lastharness`（同一个终端客户端的两个名字），以及 `lastai-gui`（桌面应用）。桌面应用第一次构建需要几分钟；如果只需要核心和终端，可以运行 `cargo build --release -p lh-core -p lh-tui`。
 
 ## 首次运行
 
@@ -78,7 +80,7 @@ o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 每个命令都有 `help`，无需核心运行即可使用，例如 `lh team help`。
 
 - `lastaid` 是核心。它只监听 `127.0.0.1:7842`。设置来自 `config.toml`；命令行参数会覆盖该文件。客户端需要的令牌写在 `$XDG_RUNTIME_DIR/lastai/token`。
-- `la` 和 `lastai` 打开终端对话。选项：`--url`、`--token-file`、`--model`、`--ask-all`、`--incognito`。
+- `lh` 和 `lastharness` 打开终端对话。选项：`--url`、`--token-file`、`--model`、`--ask-all`、`--incognito`。
 - `lh setup`：首次运行的问题。`lh settings`：查看和修改每项设置（`set`、`reset`）。
 - `lh memory ...`：助手保存的笔记。`lh learn ...`：等待你处理的规则、风格、技能和建议。
 - `lh team ...`：角色、模型类型、部门、给部门下达目标（`lh team run`）、工作者、离开模式、插件文件夹。
