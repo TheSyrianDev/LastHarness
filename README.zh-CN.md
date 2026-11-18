@@ -9,7 +9,7 @@
   <a href="README.md">English</a> · <a href="README.ar.md">العربية</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a>
 </p>
 
-<p align="center"><a href="https://thesyyriandev.github.io/LastSoft/">Part of LastSoft</a></p>
+<p align="center"><a href="https://thesyriandev.github.io/LastSoft/">Part of LastSoft</a></p>
 
 <p align="center"><em>你需要的最后一个框架。</em><br>
 一个本地优先的 AI 框架，围绕团队构建：部门，以及部门里的工作者。</p>

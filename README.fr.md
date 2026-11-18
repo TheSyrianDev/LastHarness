@@ -9,7 +9,7 @@
   <a href="README.md">English</a> · <a href="README.ar.md">العربية</a> · <a href="README.zh-CN.md">简体中文</a> · Français · <a href="README.de.md">Deutsch</a>
 </p>
 
-<p align="center"><a href="https://thesyyriandev.github.io/LastSoft/">Part of LastSoft</a></p>
+<p align="center"><a href="https://thesyriandev.github.io/LastSoft/">Part of LastSoft</a></p>
 
 <p align="center"><em>Le dernier harnais dont vous aurez besoin.</em><br>
 Un harnais d'IA local d'abord, construit autour d'une équipe : des départements, et les travailleurs qui y sont.</p>

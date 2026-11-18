@@ -9,7 +9,7 @@
   <a href="README.md">English</a> · <a href="README.ar.md">العربية</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a>
 </p>
 
-<p align="center"><a href="https://thesyyriandev.github.io/LastSoft/">Part of LastSoft</a></p>
+<p align="center"><a href="https://thesyriandev.github.io/LastSoft/">Part of LastSoft</a></p>
 
 <p align="center"><em>الإطار الأخير الذي ستحتاجه.</em><br>
 إطار ذكاء اصطناعي محلي أولاً، مبني حول فريق: أقسام، والعاملين فيها.</p>
