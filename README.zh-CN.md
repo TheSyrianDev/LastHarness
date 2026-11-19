@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-mark-on-dark.svg">
-    <img alt="LastHarness" src="brand/assets/lastharness-mark-on-light.svg" width="240">
+    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-lockup-on-dark.svg">
+    <img alt="LastHarness" src="brand/assets/lastharness-lockup-on-light.svg" width="300">
   </picture>
 </p>
 
@@ -59,7 +59,6 @@ o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 
 服务商是负责回答对话的服务器：本地的 llama-swap 或 llama.cpp、Ollama、LM Studio，或兼容 OpenAI 或 Anthropic 风格的云 API。你可以在桌面应用的"模型与密钥"页面添加和测试它们，也可以使用 `lh settings`。API 密钥从你指定的环境变量中读取；未添加的服务商不会收到任何数据。
 
-在"模型与密钥"页面，可以在 Hugging Face 上搜索 GGUF 模型。结果按是否适合这台电脑的内存分组（可放入内存、紧张、过大、大小未知）。把文件下载到 `~/AI/Models/`。已下载但尚未被 llama-swap 路由服务的模型，可以用它的 Run 按钮注册：这会备份路由文件、校验配置矩阵并重启 llama-swap。已经提供服务的模型会显示"Use in chat"。搜索需要网络；没有网络时页面会提示。
 
 ## Create（图像和视频）
 

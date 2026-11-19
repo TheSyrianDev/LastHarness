@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-mark-on-dark.svg">
-    <img alt="LastHarness" src="brand/assets/lastharness-mark-on-light.svg" width="240">
+    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-lockup-on-dark.svg">
+    <img alt="LastHarness" src="brand/assets/lastharness-lockup-on-light.svg" width="300">
   </picture>
 </p>
 
@@ -59,7 +59,6 @@ Pour lancer le programme central à chaque connexion : `lh service preview`, pui
 
 Les fournisseurs sont les serveurs qui répondent aux conversations : un llama-swap ou llama.cpp local, Ollama, LM Studio, ou une API cloud compatible OpenAI ou de style Anthropic. Ajoutez-les et testez-les dans la page Modèles et clés de l'application de bureau, ou avec `lh settings`. Les clés d'API sont lues depuis des variables d'environnement que vous nommez ; rien n'est envoyé à un fournisseur que vous n'avez pas ajouté.
 
-Dans la page Modèles et clés, recherchez des modèles GGUF sur Hugging Face. Les résultats sont regroupés selon leur adéquation avec la mémoire de cet ordinateur (Tient en mémoire, Juste, Trop grand, Taille inconnue). Téléchargez un fichier dans `~/AI/Models/`. Un modèle téléchargé qu'un routeur llama-swap ne sert pas encore peut être enregistré avec son bouton Run, qui sauvegarde les fichiers du routeur, valide la matrice et redémarre llama-swap. Les modèles déjà servis affichent « Use in chat ». La recherche nécessite le réseau ; sans lui, la page le signale.
 
 ## Create (images et vidéos)
 

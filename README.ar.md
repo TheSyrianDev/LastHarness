@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-mark-on-dark.svg">
-    <img alt="LastHarness" src="brand/assets/lastharness-mark-on-light.svg" width="240">
+    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-lockup-on-dark.svg">
+    <img alt="LastHarness" src="brand/assets/lastharness-lockup-on-light.svg" width="300">
   </picture>
 </p>
 
@@ -59,7 +59,6 @@ o.window("lastai-gui", { opacity = "0.85 override 0.85 override" })
 
 المزودون هم الخوادم التي تجيب على المحادثة: llama-swap أو llama.cpp المحلي، أو Ollama، أو LM Studio، أو واجهة سحابية متوافقة مع OpenAI أو بأسلوب Anthropic. أضفهم واختبرهم في صفحة النماذج والمفاتيح في التطبيق المكتبي، أو باستخدام `lh settings`. تُقرأ مفاتيح الواجهات من متغيرات بيئة تسميها أنت؛ لا يُرسل أي شيء إلى مزود لم تضفه.
 
-في صفحة النماذج والمفاتيح، ابحث في Hugging Face عن نماذج GGUF. تُجمَّع النتائج حسب مناسبتها لذاكرة هذا الحاسوب (تناسب الذاكرة، ضيقة، أكبر من اللازم، حجم غير معروف). نزّل الملف إلى `~/AI/Models/`. يمكن تسجيل نموذج مُنزَّل لا يخدمه موجه llama-swap بعد بزر Run الخاص به، وهو يحفظ نسخة احتياطية من ملفات الموجه ويتحقق من المصفوفة ويعيد تشغيل llama-swap. النماذج المخدومة بالفعل تعرض "Use in chat". البحث يحتاج إلى الشبكة؛ وبدونها تقول الصفحة ذلك.
 
 ## Create (الصور والفيديو)
 

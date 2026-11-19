@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-mark-on-dark.svg">
-    <img alt="LastHarness" src="brand/assets/lastharness-mark-on-light.svg" width="240">
+    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-lockup-on-dark.svg">
+    <img alt="LastHarness" src="brand/assets/lastharness-lockup-on-light.svg" width="300">
   </picture>
 </p>
 
@@ -59,7 +59,6 @@ Um den Kern bei jeder Anmeldung zu starten: `lh service preview`, dann `lh servi
 
 Anbieter sind die Server, die Chats beantworten: ein lokales llama-swap oder llama.cpp, Ollama, LM Studio oder eine cloudbasierte API, die mit OpenAI kompatibel ist oder dem Anthropic-Stil folgt. Füge sie auf der Seite „Modelle und Schlüssel“ der Desktop-App hinzu und teste sie dort oder mit `lh settings`. API-Schlüssel werden aus Umgebungsvariablen gelesen, die du benennst; an einen Anbieter, den du nicht hinzugefügt hast, wird nichts gesendet.
 
-Auf der Seite „Modelle und Schlüssel“ kannst du auf Hugging Face nach GGUF-Modellen suchen. Die Ergebnisse sind danach gruppiert, ob sie in den Speicher dieses Rechners passen (Passt in den Speicher, Knapp, Zu groß, Größe unbekannt). Lade eine Datei nach `~/AI/Models/` herunter. Ein heruntergeladenes Modell, das ein llama-swap-Router noch nicht bereitstellt, kann mit seinem Run-Knopf registriert werden; dieser sichert die Router-Dateien, prüft die Matrix und startet llama-swap neu. Bereits bereitgestellte Modelle zeigen „Use in chat“. Die Suche braucht eine Netzwerkverbindung; ohne sie meldet die Seite das.
 
 ## Create (Bilder und Video)
 

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-mark-on-dark.svg">
-    <img alt="LastHarness" src="brand/assets/lastharness-mark-on-light.svg" width="240">
+    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/lastharness-lockup-on-dark.svg">
+    <img alt="LastHarness" src="brand/assets/lastharness-lockup-on-light.svg" width="300">
   </picture>
 </p>
 
@@ -57,8 +57,6 @@ To start the core at every login: `lh service preview`, then `lh service install
 ## Providers and models
 
 Providers are the servers that answer chat: a local llama-swap or llama.cpp, Ollama, LM Studio, or an OpenAI-compatible or Anthropic-style cloud API. Add and test them on the Models and keys page of the desktop app, or with `lh settings`. API keys are read from environment variables you name; nothing is sent to a provider you have not added.
-
-On the Models and keys page, search Hugging Face for GGUF models. Results are grouped by whether they fit this computer's memory (Fits in memory, Tight, Too big, Size not known). Download a file to `~/AI/Models/`. A downloaded model that a llama-swap router does not serve yet can be registered with its Run button, which backs up the router files, validates the matrix and restarts llama-swap. Models that are already served show "Use in chat". The search needs the network; without it the page says so.
 
 ## Create (images and video)
 
