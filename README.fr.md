@@ -18,7 +18,7 @@ Un harnais d'IA local d'abord, construit autour d'une équipe : des département
 > **Alpha.** Last AI est un logiciel en phase initiale et n'est utilisé sur une seule machine pour l'instant. Attendez-vous à des aspérités et à des changements incompatibles. Last AI (l'application de bureau et l'application terminal `lh`) est testé sous Linux (Omarchy) et Windows (testé par l'auteur). La version macOS est en alpha précoce : elle démarre dans la CI, mais personne ne l'utilise encore au quotidien.
 
 <p align="center">
-  <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue"></a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-orange">
 </p>

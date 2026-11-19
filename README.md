@@ -16,15 +16,15 @@
 A local-first AI harness built around a team: departments, and the workers in them.</p>
 
 > [!WARNING]
-> **Alpha, version 0.1.0-alpha.** See [CHANGELOG.md](CHANGELOG.md) for what works and the known gaps. Last AI is early software and is only used on one machine so far. Expect rough edges and breaking changes. Last AI (the desktop app and the `lh` terminal app) is tested on Linux (Omarchy) and Windows (author-tested). The macOS build is early alpha: it starts in CI, but no one has used it day to day yet.
+> **Alpha, version 0.1.0-alpha.** See [CHANGELOG.md](CHANGELOG.md) for what works and the known gaps. LastHarness is early software and is only used on one machine so far. Expect rough edges and breaking changes. The core, the terminal app (`lh`) and the desktop app are tested on Linux (Omarchy) and Windows (author-tested). The macOS build is early alpha: it starts in CI, but no one has used it day to day yet.
 
 <p align="center">
-  <a href="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/TheSyrianDev/LastHarness/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheSyrianDev/LastAI/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue"></a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-orange">
 </p>
 
-Last AI is a local-first AI harness for one person's computer. A core program (`lastaid`) holds the conversation, the team (departments and their workers), tools, memory and learning, and is model-agnostic, with no model lock-in. It works with any model or provider: local servers such as llama-swap, llama.cpp, Ollama and LM Studio, or any OpenAI-compatible or Anthropic-style cloud API (tested so far with llama.cpp through llama-swap). Front ends are thin clients of the core's local API: a terminal app, a browser page, and messaging channels.
+LastHarness is a local-first AI harness for one person's computer. A core program (`lhd`) holds the conversation, the team (departments and their workers), tools, memory and learning, and is model-agnostic, with no model lock-in. It works with any model or provider: local servers such as llama-swap, llama.cpp, Ollama and LM Studio, or any OpenAI-compatible or Anthropic-style cloud API (tested so far with llama.cpp through llama-swap). Front ends are thin clients of the core's local API: a terminal app, a browser page, and messaging channels.
 It remembers across sessions (notes you can read and edit as Markdown), learns your habits as rules you approve, and can hand bigger jobs to departments of role workers that plan, run and check the work.
 Sensitive notes and rules are used only with a model on this machine. Permissions are tiered: reads are free, writes ask once, and anything risky always asks.
 It runs on Linux and Windows; macOS is early alpha.
@@ -35,20 +35,20 @@ It runs on Linux and Windows; macOS is early alpha.
 cargo build --release
 ```
 
-This makes four programs in `target/release/`: `lastaid` (the core), `lh` and `lastharness` (the same terminal client under two names) and `lastai-gui` (the desktop app). The desktop app takes a few minutes to build the first time; `cargo build --release -p lh-core -p lh-tui` builds only the core and the terminal.
+This makes these programs in `target/release/`: `lhd` (the core, also built as `lastaid`), `lh` and `lastharness` (the same terminal client under two names) and `lastharness-gui` (the desktop app, also built as `lastai-gui`). The desktop app takes a few minutes to build the first time; `cargo build --release -p lh-core -p lh-tui` builds only the core and the terminal.
 
 ## First run
 
 ```
-target/release/la setup        # twelve plain questions; Enter accepts each default
-target/release/lastaid          # start the core (it reads the settings file)
-target/release/la              # chat
-target/release/lastai-gui # or the desktop app (needs the core running)
+lh setup                       # twelve plain questions; Enter accepts each default
+lhd                            # start the core (it reads the settings file)
+lh                             # chat
+lastharness-gui                # or the desktop app (needs the core running)
 ```
 
 The desktop app finds the core and its token by itself (flags: `--base`, `--token-file`). It has plain default looks you can change: a look is a folder in `~/.config/lastai/themes/` with a `theme.toml` inside (and a `background.png` beside it if you want a picture), and the folder's name is the look's name. [docs/looks.md](docs/looks.md) lists every key; the built-in looks, each family in light and dark, are in `crates/lh-gui/themes/` as examples. Press Ctrl+N for a new chat.
 
-The Omarchy edition of the desktop app (theme following, a see-through look in the desktop's colours, its own Arch package and setup script) lives on the `omarchy` branch of this repository, not here. This branch is LastAI Studio on its own: the same themes, `theme.toml` and folders, no desktop coupling.
+The Omarchy edition of the desktop app (theme following, a see-through look in the desktop's colours, its own Arch package and setup script) lives on the `omarchy` branch of this repository, not here. This branch is the harness on its own: the same themes, `theme.toml` and folders, no desktop coupling.
 
 Check a built core without the desktop: `scripts/smoke-headless.sh` (starts `lhd` on a temp store and checks the HTTP API).
 
@@ -66,7 +66,7 @@ The Create block on the Models and keys page makes images (Z-Image Turbo) and sh
 
 ## Web search
 
-`web_search` uses a SearXNG instance. If the settings name none, Last AI looks for one on `127.0.0.1:8888`. If nothing answers there, the tool says so and suggests starting SearXNG or setting its address.
+`web_search` uses a SearXNG instance. If the settings name none, LastHarness looks for one on `127.0.0.1:8888`. If nothing answers there, the tool says so and suggests starting SearXNG or setting its address.
 
 ## Install and release build
 
